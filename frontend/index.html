@@ -1,0 +1,2924 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recipro — ระบบคิดต้นทุนจากสูตร (SaaS)</title>
+<link rel="icon" href="assets/recipro-icon.svg">
+<!-- Icon system (must load BEFORE the main inline script so icon()/renderIcons exist) -->
+<script src="./icons.js"></script>
+<script src="./app-config.js"></script>
+<script src="./api.js"></script>
+<script src="https://cdn.omise.co/omise.js"></script>
+
+<!-- Google Fonts: IBM Plex Sans Thai (Thai-first) + Inter (Latin/numerals) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Redesigned stylesheet (replaces the former inline style block) -->
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div class="glow-container">
+  <div class="glow-blob blob-1"></div>
+  <div class="glow-blob blob-2"></div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1. AUTH SCREEN (SIGN IN) -->
+<!-- ============================================================ -->
+<div class="auth-container" id="authScreen">
+  <!-- ซ้าย: แบรนด์ + จุดเด่น -->
+  <div class="auth-hero">
+    <div class="auth-blob auth-blob-1"></div>
+    <div class="auth-blob auth-blob-2"></div>
+    <div class="auth-hero-inner">
+      <div class="auth-wordmark-row">
+        <img src="assets/recipro-icon.svg" alt="Recipro" class="auth-logo">
+        <span class="auth-wordmark">Reci<span class="hl">pro</span></span>
+      </div>
+      <h1 class="auth-headline">คุมต้นทุนอาหารให้<span class="hl">แม่นยำ</span></h1>
+      <p class="auth-sub">จัดการสูตร สต็อก ร้าน และออกบิล — ในแอปเดียว</p>
+      <div class="auth-accent"></div>
+
+      <div class="auth-features">
+        <div class="auth-feature">
+          <span class="auth-feat-ico brand"><span class="ico" data-icon="file-text"></span></span>
+          <div>
+            <div class="auth-feat-t">คำนวณต้นทุนจากสูตรจริง</div>
+            <div class="auth-feat-d">คำนวณต้นทุนเมนูจากวัตถุดิบแบบละเอียด</div>
+          </div>
+        </div>
+        <div class="auth-feature">
+          <span class="auth-feat-ico green"><span class="ico" data-icon="trending-up"></span></span>
+          <div>
+            <div class="auth-feat-t">เช็กกำไรต่อเมนูได้ทันที</div>
+            <div class="auth-feat-d">ดูต้นทุน กำไร และราคาขายที่เหมาะสมแบบเรียลไทม์</div>
+          </div>
+        </div>
+        <div class="auth-feature">
+          <span class="auth-feat-ico green"><span class="ico" data-icon="store"></span></span>
+          <div>
+            <div class="auth-feat-t">จัดการร้านและออกบิลอย่างเป็นระบบ</div>
+            <div class="auth-feat-d">จัดการสต๊อก ร้านค้า และออกบิลได้ครบในที่เดียว</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ขวา: การ์ดเข้าสู่ระบบ / สมัคร -->
+  <div class="auth-form-container">
+    <div class="auth-card" id="loginFormCard" style="position:relative;">
+      <div id="mockModeTag" style="display:none; position:absolute; top:-15px; left:50%; transform:translateX(-50%); background: linear-gradient(135deg, var(--color-secondary), var(--green-dark)); color:#fff; font-size:11px; padding:4px 12px; border-radius:20px; font-weight:700; box-shadow:var(--shadow); white-space:nowrap; align-items:center; gap:5px;">
+        <span class="ico" data-icon="zap"></span> โหมดออฟไลน์ / จำลองใช้งาน (Local Storage Mode)
+      </div>
+
+      <div class="sub-tabs" id="authTabs" style="display:flex; width:100%; margin-bottom:24px;">
+        <div class="sub-tab active" id="authTabLogin" onclick="showAuthTab('login')" style="flex:1; text-align:center;">เข้าสู่ระบบ</div>
+        <div class="sub-tab" id="authTabRegister" onclick="showAuthTab('register')" style="flex:1; text-align:center;">สมัครสมาชิก</div>
+      </div>
+
+      <!-- แผงเข้าสู่ระบบ -->
+      <div id="authLoginPane">
+        <div class="auth-welcome">
+          <span class="auth-avatar"><img src="assets/recipro-icon.svg" alt=""></span>
+          <div>
+            <h2 style="margin:0;">ยินดีต้อนรับกลับ</h2>
+            <p class="auth-welcome-sub">เข้าสู่ระบบเพื่อจัดการร้านของคุณ</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>อีเมลผู้ใช้งาน</label>
+          <div class="auth-input">
+            <span class="auth-input-ico ico" data-icon="mail"></span>
+            <input id="loginEmail" type="email" placeholder="example@domain.com">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom: 8px;">
+          <label>รหัสผ่าน</label>
+          <div class="auth-input">
+            <span class="auth-input-ico ico" data-icon="lock"></span>
+            <input id="loginPass" type="password" placeholder="••••••••">
+            <button type="button" class="auth-eye" onclick="togglePass('loginPass', this)" aria-label="แสดง/ซ่อนรหัสผ่าน"><span class="ico" data-icon="eye-off"></span></button>
+          </div>
+        </div>
+        <div style="text-align:right; margin-bottom:18px;">
+          <a href="#" class="auth-link" onclick="forgotPassword(); return false;">ลืมรหัสผ่าน?</a>
+        </div>
+
+        <button class="btn btn-primary auth-submit" onclick="handleSignIn()"><span class="ico" data-icon="arrow-right"></span> เข้าสู่ระบบ</button>
+
+        <div class="auth-divider"><span>หรือ</span></div>
+        <button class="btn auth-google" onclick="googleAuth()"><svg class="g-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> เข้าสู่ระบบด้วย Google</button>
+
+        <p class="auth-switch" id="loginHintText">ยังไม่มีบัญชี? <a href="#" class="auth-link strong" onclick="showAuthTab('register'); return false;">สมัครสมาชิก</a></p>
+      </div>
+
+      <!-- แผงสมัครสมาชิก -->
+      <div id="authRegisterPane" class="hidden">
+        <div class="auth-welcome">
+          <span class="auth-avatar"><img src="assets/recipro-icon.svg" alt=""></span>
+          <div>
+            <h2 style="margin:0;">เปิดร้านใหม่กับ Recipro</h2>
+            <p class="auth-welcome-sub">สมัครฟรี เริ่มต้นทดลองใช้งานได้ทันที</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>ชื่อร้านค้า</label>
+          <div class="auth-input">
+            <span class="auth-input-ico ico" data-icon="store"></span>
+            <input id="regShopName" placeholder="เช่น ร้านเบเกอรี่ของฉัน">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>อีเมลผู้ใช้งาน</label>
+          <div class="auth-input">
+            <span class="auth-input-ico ico" data-icon="mail"></span>
+            <input id="regEmail" type="email" placeholder="example@domain.com">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom: 22px;">
+          <label>ตั้งรหัสผ่าน</label>
+          <div class="auth-input">
+            <span class="auth-input-ico ico" data-icon="lock"></span>
+            <input id="regPass" type="password" placeholder="อย่างน้อย 8 ตัวอักษร">
+            <button type="button" class="auth-eye" onclick="togglePass('regPass', this)" aria-label="แสดง/ซ่อนรหัสผ่าน"><span class="ico" data-icon="eye-off"></span></button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary auth-submit" onclick="handleRegister()"><span class="ico" data-icon="user-plus"></span> สมัครและเริ่มใช้งาน</button>
+
+        <div class="auth-divider"><span>หรือ</span></div>
+        <button class="btn auth-google" onclick="googleAuth()"><svg class="g-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> สมัครด้วย Google</button>
+
+        <p class="auth-switch">มีบัญชีอยู่แล้ว? <a href="#" class="auth-link strong" onclick="showAuthTab('login'); return false;">เข้าสู่ระบบ</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 2. MAIN APP DASHBOARD -->
+<!-- ============================================================ -->
+<div class="app-layout" id="appLayout">
+  <!-- มืดหลังเมื่อเปิดเมนูบนมือถือ (overlay drawer backdrop) -->
+  <div class="sidebar-backdrop" onclick="closeSidebarDrawer()"></div>
+
+  <!-- SIDEBAR NAVIGATION -->
+  <aside class="sidebar">
+    <!-- TOP ZONE: brand (system layer) + operational nav -->
+    <div class="sidebar-top">
+      <div class="brand-logo-area">
+        <img id="sidebarBrandLogo" src="assets/recipro-icon.svg" alt="Recipro Logo">
+        <span class="title-brand" style="font-size: 22px;">Recipro</span>
+        <button class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebar()" title="ย่อ/ขยายเมนู" aria-label="ย่อ/ขยายเมนู" style="margin-left:auto;">
+          <span class="ico" data-icon="panel-left-close"></span>
+        </button>
+      </div>
+
+      <div class="nav-section-label">เมนู</div>
+      <nav class="nav-menu">
+        <a class="nav-item active" id="menuMaterials" onclick="switchTab('materials')" title="วัตถุดิบ"><span class="ico" data-icon="carrot"></span><span>วัตถุดิบ</span></a>
+        <a class="nav-item" id="menuRecipes" onclick="switchTab('recipes')" title="สูตร/เมนู"><span class="ico" data-icon="utensils"></span><span>สูตร/เมนู</span></a>
+        <a class="nav-item" id="menuStock" onclick="switchTab('stock')" title="สต๊อก/ผลิต"><span class="ico" data-icon="package"></span><span>สต๊อก/ผลิต</span></a>
+        <a class="nav-item" id="menuPos" onclick="switchTab('pos')" title="ขาย & ออกบิล"><span class="ico" data-icon="receipt"></span><span>ขาย &amp; ออกบิล</span></a>
+        <a class="nav-item hidden" id="menuAdmin" onclick="switchTab('admin')" title="ควบคุมระบบ"><span class="ico" data-icon="crown"></span><span>ควบคุมระบบ</span></a>
+      </nav>
+    </div>
+
+    <!-- BOTTOM ZONE: user account card + account menu popover -->
+    <div class="sidebar-bottom">
+      <!-- ACCOUNT MENU POPOVER (opens above the user card) -->
+      <div id="accountMenu" role="menu" aria-label="เมนูบัญชี">
+        <div class="account-menu-head">
+          <span class="avatar avatar-lg" id="accountAvatar">R</span>
+          <div class="account-menu-id">
+            <span class="account-menu-name" id="accountShopName">กำลังโหลด...</span>
+            <span id="userEmailDisplay"></span>
+          </div>
+        </div>
+
+        <div class="account-plan-row">
+          <span id="accountPlanBadge" class="shop-status-badge status-trial">ทดลองใช้ (Trial)</span>
+          <button class="btn btn-primary btn-sm" onclick="switchTab('billing'); toggleAccountMenu(false);"><span class="ico" data-icon="arrow-up"></span><span>อัปเกรด</span></button>
+        </div>
+
+        <button class="account-item" onclick="switchTab('set'); toggleAccountMenu(false);"><span class="ico" data-icon="settings"></span><span>ตั้งค่าบัญชี/ข้อมูลร้าน</span></button>
+        <button class="account-item" onclick="switchTab('billing'); toggleAccountMenu(false);"><span class="ico" data-icon="credit-card"></span><span>การชำระเงิน &amp; ใบเสร็จ</span></button>
+        <button class="account-item disabled" disabled title="เร็วๆ นี้"><span class="ico" data-icon="store"></span><span>สลับร้าน (เร็วๆ นี้)</span></button>
+        <div class="account-menu-sep"></div>
+        <button class="account-item danger" onclick="toggleAccountMenu(false); handleSignOut();"><span class="ico" data-icon="log-out"></span><span>ออกจากระบบ</span></button>
+      </div>
+
+      <!-- USER ACCOUNT CARD -->
+      <button class="user-card" id="userCardBtn" onclick="toggleAccountMenu()" aria-haspopup="true" aria-expanded="false">
+        <span class="avatar" id="userAvatar">R</span>
+        <span class="user-card-info">
+          <span class="user-card-name" id="sidebarShopName">กำลังโหลด...</span>
+          <span id="shopStatusBadge" class="shop-status-badge status-trial">Trial</span>
+        </span>
+        <span class="user-card-chevron"><span class="ico" data-icon="chevron-down"></span></span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN SCROLLABLE CONTENT -->
+  <main class="main-container">
+    <div class="top-bar">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button class="sidebar-toggle" id="sidebarDrawerBtn" onclick="openSidebarDrawer()" title="เปิดเมนู" aria-label="เปิดเมนู" style="display:none;">
+          <span class="ico" data-icon="menu"></span>
+        </button>
+        <h2 id="currentPageTitle">คลังวัตถุดิบ &amp; แหล่งจัดซื้อ</h2>
+      </div>
+      <div class="topbar-right">
+        <span id="globalSyncStatus" class="sync-indicator"><span class="ico" data-icon="circle-check"></span> ซิงค์กับคลาวด์แล้ว</span>
+      </div>
+    </div>
+
+    <!-- ==================== TABS ==================== -->
+    
+    <!-- 1a. MATERIALS PAGE (วัตถุดิบ + แหล่งจัดซื้อ) -->
+    <section id="materialsPage" class="page-section">
+      <div class="sub-tabs">
+        <div class="sub-tab active" id="subTabMat" onclick="toggleSopLeft('mat')">วัตถุดิบ</div>
+        <div class="sub-tab" id="subTabSup" onclick="toggleSopLeft('sup')">แหล่งจัดซื้อ (Suppliers)</div>
+      </div>
+
+      <!-- รายการวัตถุดิบ -->
+      <div class="glass-card" id="cardMat">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
+          <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="carrot"></span> รายการวัตถุดิบ</h2>
+          <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+          <input id="matSearch" placeholder="ค้นหาวัตถุดิบ..." oninput="renderMatList()" style="padding:8px 12px;">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('csvFile').click()" style="white-space:nowrap; padding:8px 12px;"><span class="ico" data-icon="download"></span> นำเข้า Excel/CSV</button>
+          <input id="csvFile" type="file" accept=".csv, .xlsx, .xls" style="display:none" onchange="importCSV(this)">
+        </div>
+
+        <div style="max-height: 540px; overflow-y: auto;">
+          <table class="lst">
+            <thead>
+              <tr>
+                <th>วัตถุดิบ</th>
+                <th>ราคา/หน่วยหลัก</th>
+                <th>ต้นทุน/หน่วยย่อย</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="matList"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- แหล่งจัดซื้อ -->
+      <div class="glass-card hidden" id="cardSup">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
+          <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="store"></span> แหล่งจัดซื้อวัตถุดิบ</h2>
+          <button class="btn btn-primary btn-sm" onclick="openSupForm()"><span class="ico" data-icon="plus"></span> เพิ่มแหล่งซื้อ</button>
+        </div>
+        <table class="lst">
+          <thead>
+            <tr>
+              <th>ชื่อแหล่งซื้อ</th>
+              <th>โน้ตรายละเอียด</th>
+              <th>จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="supList"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 1b. RECIPES PAGE (สูตร/เมนู) -->
+    <section id="recipesPage" class="page-section hidden">
+      <div class="glass-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
+          <h2 style="margin:0;"><span class="ico" data-icon="cake"></span> สูตรคำนวณและผลิต</h2>
+          <button class="btn btn-primary btn-sm" onclick="openRecipeForm()"><span class="ico" data-icon="plus"></span> สร้างสูตร</button>
+        </div>
+
+        <div style="max-height: 560px; overflow-y: auto;">
+          <table class="lst">
+            <thead>
+              <tr>
+                <th>สูตร (ขนม/สินค้า)</th>
+                <th>ต้นทุน/หน่วย</th>
+                <th>ราคาขาย</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="recipeList"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. STOCK PAGE -->
+    <section id="stockPage" class="page-section hidden">
+      <div class="grid-2" style="margin-bottom: 24px;">
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="siren"></span> การเตือนสต๊อกเหลือน้อย</h2>
+          <div id="alertBox" style="max-height: 200px; overflow-y:auto;"></div>
+        </div>
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="utensils"></span> สั่งผลิตเข้าร้าน</h2>
+          <div class="grid-2" style="margin-bottom: 15px;">
+            <div class="field">
+              <label>เลือกสูตรที่ต้องการผลิต</label>
+              <select id="prodRecipe" onchange="renderProdPreview()"></select>
+            </div>
+            <div class="field">
+              <label>จำนวนรอบการทำสูตร</label>
+              <input id="prodRounds" type="number" min="1" value="1" oninput="renderProdPreview()">
+            </div>
+          </div>
+          <div id="prodPreview" style="margin-bottom: 20px;"></div>
+          <button class="btn btn-primary" onclick="produce()"><span class="ico" data-icon="egg-fried"></span> ยืนยันผลิต (ตัดสต๊อกส่วนผสมทันที)</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- สต๊อกสินค้าสำเร็จรูป -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="package"></span> สต๊อกขนม / สินค้าพร้อมขาย</h2>
+          <table class="lst">
+            <thead>
+              <tr>
+                <th>สินค้า</th>
+                <th class="r">คงเหลือ</th>
+                <th class="r">แจ้งเตือนขั้นต่ำ</th>
+                <th class="r">ปรับแก้</th>
+              </tr>
+            </thead>
+            <tbody id="fgList"></tbody>
+          </table>
+        </div>
+
+        <!-- สต๊อกวัตถุดิบ -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="milk"></span> สต๊อกส่วนผสม / วัตถุดิบดิบ</h2>
+          <div style="margin-bottom:15px;">
+            <input id="stkSearch" placeholder="ค้นหาวัตถุดิบในสต๊อก..." oninput="renderStockList()">
+          </div>
+          <table class="lst">
+            <thead>
+              <tr>
+                <th>วัตถุดิบ</th>
+                <th class="r">คงเหลือ</th>
+                <th class="r">แจ้งเตือนขั้นต่ำ</th>
+                <th class="r">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="stockList"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. POS PAGE -->
+    <section id="posPage" class="page-section hidden">
+      <div class="grid-2" style="margin-bottom: 24px;">
+        <!-- สร้าง/แก้ไขบิล -->
+        <div class="glass-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h2><span class="ico" data-icon="file-pen"></span> จัดการรายละเอียดเอกสารบิล</h2>
+            <button class="btn btn-ghost btn-sm" onclick="newBill()" style="width:auto;"><span class="ico" data-icon="plus"></span> เปิดบิลใหม่</button>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:12px;">
+            <div class="field">
+              <label>เลขที่บิล</label>
+              <input id="bNo" disabled>
+            </div>
+            <div class="field">
+              <label>วันที่เอกสาร</label>
+              <input id="bDate" type="date">
+            </div>
+          </div>
+          <div class="grid-2" style="margin-bottom:12px;">
+            <div class="field">
+              <label>ชื่อลูกค้า / สถานที่จัดส่ง</label>
+              <textarea id="bCust" rows="2" placeholder="ชื่อลูกค้า ที่อยู่ และเบอร์ติดต่อ..."></textarea>
+            </div>
+            <div class="field">
+              <label>ชื่อผู้เขียนบิล / ผู้ออกบิล</label>
+              <textarea id="bSender" rows="2" placeholder="เช่น ร้าน Merry Jane เบเกอรี่..."></textarea>
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:15px;">
+            <div class="field">
+              <label>สถานะบิล</label>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-ghost btn-sm" id="stWait" onclick="setStatus('wait')" style="flex:1;"><span class="ico" data-icon="hourglass"></span> รอส่ง</button>
+                <button class="btn btn-ghost btn-sm" id="stShip" onclick="setStatus('ship')" style="flex:1;"><span class="ico" data-icon="truck"></span> ส่งแล้ว</button>
+                <button class="btn btn-ghost btn-sm" id="stPaid" onclick="setStatus('paid')" style="flex:1;"><span class="ico" data-icon="banknote"></span> จ่ายแล้ว</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>ประเภทเอกสาร</label>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-ghost btn-sm" id="dcDelivery" onclick="setDoc('delivery')" style="flex:1;">ใบส่งของ</button>
+                <button class="btn btn-ghost btn-sm" id="dcBilling" onclick="setDoc('billing')" style="flex:1;">ใบวางบิล</button>
+                <button class="btn btn-ghost btn-sm" id="dcReceipt" onclick="setDoc('receipt')" style="flex:1;">ใบเสร็จ</button>
+              </div>
+            </div>
+          </div>
+
+          <h3><span class="ico" data-icon="shopping-bag"></span> รายการในบิล</h3>
+          <div id="billRows" style="margin-bottom:15px;"></div>
+          <button class="btn btn-ghost btn-sm" onclick="addBillItem()" style="margin-bottom: 20px;"><span class="ico" data-icon="plus"></span> เพิ่มรายการสินค้า</button>
+
+          <div class="grid-2" style="margin-bottom: 15px;">
+            <div class="field">
+              <label>ส่วนลดท้ายบิล</label>
+              <div style="display:flex; gap:6px;">
+                <input id="bDiscV" type="number" step="any" placeholder="0" style="flex:2;">
+                <select id="bDiscT" style="flex:1;" onchange="render()">
+                  <option value="%">%</option>
+                  <option value="บาท">บาท</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>ภาษีมูลค่าเพิ่ม (VAT)</label>
+              <div style="display:flex; gap:6px;">
+                <input id="bTaxV" type="number" step="any" value="0" style="flex:2;">
+                <select id="bTaxT" style="flex:1;" onchange="render()">
+                  <option value="%">%</option>
+                  <option value="บาท">บาท</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <button class="btn btn-primary" onclick="saveBill()"><span class="ico" data-icon="save"></span> บันทึกและตัดสต๊อกบิล</button>
+            <button class="btn btn-secondary" onclick="window.print()"><span class="ico" data-icon="printer"></span> พิมพ์เอกสารบิล</button>
+          </div>
+        </div>
+
+        <!-- รายการบิลทั้งหมด -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="chart-column"></span> ประวัติและรายการบิลทั้งหมด</h2>
+          
+          <div class="grid-3" style="text-align:center; margin-bottom: 20px;">
+            <div style="background:#fef3c7; padding:10px; border-radius:10px;">
+              <span style="font-size:12px; color:#92400e;">รอส่ง</span>
+              <div id="sumWait" style="font-size:18px; font-weight:700; color:#92400e;">฿0.00</div>
+            </div>
+            <div style="background:#dbeafe; padding:10px; border-radius:10px;">
+              <span style="font-size:12px; color:#1e40af;">ส่งแล้ว</span>
+              <div id="sumShip" style="font-size:18px; font-weight:700; color:#1e40af;">฿0.00</div>
+            </div>
+            <div style="background:#d1fae5; padding:10px; border-radius:10px;">
+              <span style="font-size:12px; color:#065f46;">จ่ายแล้ว</span>
+              <div id="sumPaid" style="font-size:18px; font-weight:700; color:#065f46;">฿0.00</div>
+            </div>
+          </div>
+
+          <table class="lst">
+            <thead>
+              <tr>
+                <th>เลขที่</th>
+                <th>ลูกค้า</th>
+                <th class="r">ยอดสุทธิ</th>
+                <th>สถานะ</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="billList"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ส่วนสำหรับพิมพ์เอกสารจริง -->
+      <div class="glass-card" style="margin-top:20px;">
+        <h2><span class="ico" data-icon="eye"></span> พรีวิวหน้าเอกสารพิมพ์</h2>
+        <div class="bill-stage">
+          <div class="bill-document-preview" id="billDoc"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. SETTINGS PAGE -->
+    <section id="setPage" class="page-section hidden">
+      <div class="grid-2">
+        <!-- ข้อมูลร้านค้าและบัญชีรับเงิน -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="building-2"></span> ตั้งค่าข้อมูลแบรนด์และบัญชีร้าน</h2>
+          
+          <div class="field">
+            <label>ชื่อร้านค้า (จะอัปเดตระบบหลักด้วย)</label>
+            <input id="setShop" placeholder="ชื่อร้านของคุณ" onchange="saveSettings()">
+          </div>
+          
+          <div class="grid-2">
+            <div class="field">
+              <label>เบอร์โทรศัพท์ติดต่อ</label>
+              <input id="setPhone" placeholder="08x-xxxxxxx" onchange="saveSettings()">
+            </div>
+            <div class="field">
+              <label>เลขผู้เสียภาษี (ถ้ามี)</label>
+              <input id="setTax" placeholder="x-xxxx-xxxxx-xx-x" onchange="saveSettings()">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>ที่อยู่ร้านอย่างละเอียด</label>
+            <textarea id="setAddr" rows="2" placeholder="ที่อยู่ร้านพิมพ์ลงท้ายเอกสาร..." onchange="saveSettings()"></textarea>
+          </div>
+
+          <hr style="border:0; border-top:1px solid rgba(139,143,201,0.15); margin: 20px 0;">
+
+          <h3><span class="ico" data-icon="landmark"></span> ข้อมูลบัญชีธนาคารสำหรับโอนเงิน</h3>
+          <div class="grid-3">
+            <div class="field">
+              <label>ชื่อธนาคาร</label>
+              <input id="setBank" placeholder="กสิกรไทย" onchange="saveSettings()">
+            </div>
+            <div class="field">
+              <label>เลขบัญชี</label>
+              <input id="setAcc" placeholder="xxx-x-xxxxx-x" onchange="saveSettings()">
+            </div>
+            <div class="field">
+              <label>ชื่อเจ้าของบัญชี</label>
+              <input id="setHolder" placeholder="นายสมชาย ใจดี" onchange="saveSettings()">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>เบอร์พร้อมเพย์ (สำหรับสร้างคิวอาร์โค้ดสแกนจ่ายเงินในบิล)</label>
+            <input id="setPP" placeholder="08xxxxxxxx หรือ เลขบัตรประชาชน" onchange="saveSettings()">
+          </div>
+        </div>
+
+        <!-- การแต่งธีม โลโก้ และข้อมูลสำรอง -->
+        <div>
+          <div class="glass-card" style="margin-bottom: 20px;">
+            <h2><span class="ico" data-icon="image"></span> โลโก้และภาพแบรนด์ร้านค้า</h2>
+            <div style="display:flex; align-items:center; gap:20px; margin-bottom:15px;">
+              <img id="settingsLogoPreview" src="assets/recipro-icon.svg" style="width:100px; height:100px; border-radius:12px; object-fit:contain; background:var(--card,#fff); padding:8px; border:1px solid var(--glass-border);">
+              <div>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('logoFile').click()"><span class="ico" data-icon="upload"></span> เลือกอัปโหลดโลโก้</button>
+                <input id="logoFile" type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">
+                <button class="btn btn-danger btn-sm" onclick="removeLogo()" style="margin-top:8px;"><span class="ico" data-icon="trash-2"></span> ลบโลโก้</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card" style="margin-bottom: 20px;">
+            <h2><span class="ico" data-icon="palette"></span> เปลี่ยนชุดธีมสีระบบ</h2>
+            <p class="hint">เลือกธีมระบบภาพที่สอดคล้องกับภาพลักษณ์ร้านของคุณ</p>
+            <div id="themePickerArea" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;"></div>
+          </div>
+
+          <div class="glass-card">
+            <h2><span class="ico" data-icon="life-buoy"></span> สำรองข้อมูลออกภายนอก</h2>
+            <p class="hint">คุณสามารถเซฟประวัติเป็นไฟล์ JSON เก็บไว้กับตัว หรือโหลดข้อมูลที่สำรองกลับเข้าระบบได้</p>
+            <div class="grid-2">
+              <button class="btn btn-ghost" onclick="exportData()"><span class="ico" data-icon="arrow-down"></span> บันทึกไฟล์สำรอง</button>
+              <button class="btn btn-ghost" onclick="document.getElementById('impFile').click()"><span class="ico" data-icon="arrow-up"></span> โหลดไฟล์กู้คืน</button>
+            </div>
+            <input id="impFile" type="file" accept="application/json" style="display:none" onchange="importData(this)">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. BILLING & SUBSCRIPTION PAGE -->
+    <section id="billingPage" class="page-section hidden">
+      <div class="glass-card" style="margin-bottom: 24px;">
+        <h2><span class="ico" data-icon="credit-card"></span> สถานะการเป็นสมาชิกของคุณ</h2>
+        <div class="grid-2" style="align-items: center;">
+          <div>
+            <p>สถานะร้านค้าปัจจุบันของคุณคือ: <b id="billingShopStatusText" style="color:var(--color-primary);">Trial (ทดลองใช้ฟรี)</b></p>
+            <p>วันสิ้นสุดรอบการใช้งานปัจจุบัน: <b id="billingPeriodEndText">-</b></p>
+          </div>
+          <div>
+            <button class="btn btn-primary" id="btnStripePortal" onclick="redirectToBillingPortal()" style="display:none;"><span class="ico" data-icon="settings"></span> จัดการบัตร &amp; การเรียกเก็บเงิน</button>
+          </div>
+        </div>
+      </div>
+
+      <h2><span class="ico" data-icon="package"></span> แพ็กเกจสมาชิกให้เลือกสมัคร</h2>
+      <div class="grid-2" id="plansSelectionGrid">
+        <!-- วนซ้ำสร้างการ์ดที่นี่ -->
+      </div>
+    </section>
+
+    <!-- 6. SUPER ADMIN CONTROL PAGE -->
+    <section id="adminPage" class="page-section hidden">
+      <!-- แดชบอร์ดสรุปภาพรวมทั้งระบบ (Phase D) -->
+      <div class="glass-card" style="margin-bottom: 24px;">
+        <h2><span class="ico" data-icon="trending-up"></span> ภาพรวมระบบ (Dashboard)</h2>
+        <div class="dash-grid" id="adminDashStats"></div>
+        <div style="margin-top: 22px;">
+          <h3 style="font-size:15px; margin:0 0 10px 0; color:var(--color-text-main);"><span class="ico" data-icon="hourglass"></span> ร้านใกล้หมดอายุ (ภายใน 7 วัน)</h3>
+          <div id="adminExpiringList"></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- สร้างร้านและไอดีร้าน -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="store"></span> เปิดร้านค้าและสร้างบัญชีใหม่</h2>
+          <div class="field">
+            <label>ชื่อร้านค้าใหม่</label>
+            <input id="adminShopName" placeholder="เช่น ร้านเบเกอรี่สุขอารมณ์">
+          </div>
+          <div class="field">
+            <label>อีเมลผู้ใช้งานเริ่มต้น (Owner Email)</label>
+            <input id="adminOwnerEmail" type="email" placeholder="owner@domain.com">
+          </div>
+          <div class="field">
+            <label>รหัสผ่านเริ่มต้น</label>
+            <input id="adminOwnerPassword" type="password" placeholder="อย่างน้อย 8 ตัวอักษร">
+          </div>
+          <button class="btn btn-primary" onclick="adminCreateShop()"><span class="ico" data-icon="rocket"></span> ยืนยันเปิดร้านและบัญชีใหม่</button>
+        </div>
+
+        <!-- รายชื่อร้านค้าทั้งหมดในระบบ -->
+        <div class="glass-card">
+          <h2><span class="ico" data-icon="chart-column"></span> ร้านค้าทั้งหมดในระบบ SaaS</h2>
+          <div style="max-height: 450px; overflow-y:auto;">
+            <table class="lst">
+              <thead>
+                <tr>
+                  <th>ชื่อร้าน</th>
+                  <th>สถานะ</th>
+                  <th>จัดการสถานะ</th>
+                </tr>
+              </thead>
+              <tbody id="adminShopList"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE-IN DRAWERS (add/edit forms) + shared overlay -->
+  <!-- ============================================================ -->
+  <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+  <!-- MATERIAL ADD/EDIT DRAWER -->
+  <aside class="drawer" id="matDrawer" role="dialog" aria-label="ฟอร์มวัตถุดิบ">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="carrot"></span> ข้อมูลวัตถุดิบ</h3>
+      <button class="drawer-close" onclick="closeDrawer()" title="ปิด" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="grid-2" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>ชื่อวัตถุดิบ</label>
+          <input id="mName" placeholder="เช่น แป้งสาลี">
+        </div>
+        <div class="field">
+          <label>แหล่งซื้อ (Supplier)</label>
+          <select id="mSup"></select>
+        </div>
+      </div>
+      <div class="grid-3" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>จำนวนบรรจุ</label>
+          <input id="mQty" type="number" step="any" placeholder="1">
+        </div>
+        <div class="field">
+          <label>หน่วยซื้อ</label>
+          <select id="mUnit">
+            <option value="กิโลกรัม">กิโลกรัม (กก.)</option>
+            <option value="กรัม">กรัม</option>
+            <option value="ลิตร">ลิตร</option>
+            <option value="มิลลิลิตร">มิลลิลิตร (มล.)</option>
+            <option value="ฟอง">ฟอง</option>
+            <option value="ชิ้น">ชิ้น</option>
+            <option value="แพ็ค">แพ็ค</option>
+            <option value="ขวด">ขวด</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>ราคาซื้อ (฿)</label>
+          <input id="mPrice" type="number" step="any" placeholder="0">
+        </div>
+      </div>
+      <div class="field">
+        <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
+        <input id="mUrl" placeholder="https://...">
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="width:auto;"><span class="ico" data-icon="x"></span> ยกเลิก</button>
+      <button class="btn btn-primary" id="mSaveBtn" onclick="saveMat()" style="width:auto;"><span class="ico" data-icon="save"></span> บันทึกวัตถุดิบ</button>
+    </div>
+  </aside>
+
+  <!-- SUPPLIER ADD/EDIT DRAWER -->
+  <aside class="drawer" id="supDrawer" role="dialog" aria-label="ฟอร์มแหล่งจัดซื้อ">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="store"></span> ข้อมูลแหล่งจัดซื้อ</h3>
+      <button class="drawer-close" onclick="closeDrawer()" title="ปิด" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="field" style="margin-bottom: 12px;">
+        <label>ชื่อแหล่งซื้อ</label>
+        <input id="sName" placeholder="เช่น แม็คโคร">
+      </div>
+      <div class="field">
+        <label>โน้ตย่อ/รายละเอียดติดต่อ</label>
+        <textarea id="sNote" rows="2" placeholder="เบอร์โทรหรือที่อยู่สาขา..."></textarea>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="width:auto;"><span class="ico" data-icon="x"></span> ยกเลิก</button>
+      <button class="btn btn-primary" id="sSaveBtn" onclick="saveSup()" style="width:auto;"><span class="ico" data-icon="save"></span> บันทึกแหล่งซื้อ</button>
+    </div>
+  </aside>
+
+  <!-- RECIPE CREATE/EDIT DRAWER (wide) -->
+  <aside class="drawer drawer-wide" id="recipeDrawer" role="dialog" aria-label="ฟอร์มสูตร">
+    <div class="drawer-header">
+      <h3 class="drawer-title" id="recipeFormTitle"><span class="ico" data-icon="plus"></span> สร้างสูตรใหม่</h3>
+      <button class="drawer-close" onclick="closeDrawer()" title="ปิด" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="grid-3" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>รหัสสินค้า/สูตร</label>
+          <input id="rCode" placeholder="R01">
+        </div>
+        <div class="field">
+          <label>ชื่อสูตร/เมนู</label>
+          <input id="rName" placeholder="เช่น ครัวซองต์เนยสด">
+        </div>
+        <div class="field">
+          <label>ราคาขาย (฿)</label>
+          <input id="rSell" type="number" step="any" placeholder="0">
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom: 15px;">
+        <div class="field">
+          <label>จำนวนผลลัพธ์ต่อสูตร</label>
+          <input id="rYield" type="number" step="any" value="1">
+        </div>
+        <div class="field">
+          <label>หน่วยผลลัพธ์</label>
+          <input id="rYieldUnit" value="ชิ้น">
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom: 15px;">
+        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="rRaw" style="width:auto; margin:0;" onchange="updateRecipeTotals()">
+          เป็น "สูตรกึ่งสำเร็จรูป" (เพื่อใช้เป็นวัตถุดิบในสูตรอื่นอีกที)
+        </label>
+      </div>
+
+      <h3><span class="ico" data-icon="soup"></span> ส่วนผสมในสูตร</h3>
+      <div id="recipeIngRows" style="margin-bottom: 15px;"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addRecipeIng()" style="margin-bottom: 20px;"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบลงในสูตร</button>
+
+      <!-- กล่องสรุปคำนวณต้นทุนเรียลไทม์ -->
+      <div style="background: rgba(124, 58, 237, 0.05); padding: 16px; border-radius: var(--r-small); margin-bottom: 20px; border: 1px dashed var(--color-primary);">
+        <div class="grid-3" style="text-align:center;">
+          <div>
+            <div style="font-size:12px; color:var(--color-text-muted);">ต้นทุน/หน่วย</div>
+            <div id="rCost" style="font-size:20px; font-weight:800; color:var(--color-primary);">฿0.00</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--color-text-muted);">กำไร/หน่วย</div>
+            <div id="rProfit" style="font-size:20px; font-weight:800; color:var(--color-secondary);">฿0.00</div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--color-text-muted);">มาร์จิ้น</div>
+            <div id="rMargin" style="font-size:20px; font-weight:800; color:#b45309;">0%</div>
+          </div>
+        </div>
+        <p id="rBatch" style="margin: 10px 0 0 0; font-size:13px; text-align:center; color:var(--color-text-main); font-weight:500;"></p>
+      </div>
+
+      <div class="field">
+        <label>วิธีทำ/ขั้นตอนการผลิต</label>
+        <textarea id="rSteps" rows="3" placeholder="ระบุวิธีผสม อุณหภูมิอบ และเวลาผลิต..."></textarea>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()" style="width:auto;"><span class="ico" data-icon="x"></span> ยกเลิก</button>
+      <button class="btn btn-primary" id="rSaveBtn" onclick="saveRecipe()" style="width:auto;"><span class="ico" data-icon="save"></span> บันทึกสูตรนี้</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ============================================================ -->
+<!-- 3. SUSPENSION OVERLAY (LOCK SCREEN) -->
+<!-- ============================================================ -->
+<div class="suspended-overlay" id="suspendedOverlay">
+  <div class="glass-card" style="max-width: 500px; text-align: center; border-radius: var(--r-large);">
+    <span class="ico" data-icon="triangle-alert" data-icon-size="64px" style="color:#ef4444;"></span>
+    <h2 style="color: #ef4444; margin-top:20px;">การใช้งานของร้านค้าถูกระงับ</h2>
+    <p style="color: var(--color-text-muted); font-size:15px; line-height: 1.6; margin-bottom: 24px;">
+      ขออภัยในความไม่สะดวก บัญชีร้านค้าของคุณหมดเวลาการใช้งานฟรี หรือการหักเงินค่าบริการอัตโนมัติไม่ผ่านการอนุมัติ 
+      คุณสามารถเข้าไปเพื่อทำการชำระเงินค่าแพ็กเกจสมาชิกได้ทันทีที่ปุ่มด้านล่างนี้
+    </p>
+    <button class="btn btn-primary" onclick="goToBillingFromSuspended()"><span class="ico" data-icon="credit-card"></span> จัดการชำระเงิน / แพ็กเกจสมาชิก</button>
+  </div>
+</div>
+
+
+<script>
+// ============================================================
+// 1. INITIALIZATION & HYBRID MOCK / CLOUD DETECTOR
+// ============================================================
+const cfg = window.RECIPRO_CONFIG || {};
+// ตั้ง API_BASE_URL จริงใน app-config.js = โหมดคลาวด์ (ต่อ Node API)
+// ไม่งั้น = โหมดจำลอง (localStorage) ใช้พัฒนา/เดโมได้โดยไม่ต้องมีหลังบ้าน
+let isMockMode = !(window.API && window.API.isConfigured);
+
+// อัปเดต UI เมื่ออยู่ใน Mock Mode
+if (isMockMode) {
+  document.addEventListener("DOMContentLoaded", () => {
+    $('mockModeTag').style.display = 'inline-flex';
+    $('loginHintText').innerHTML = icon('lock') + ' เข้าใช้งานได้ทันทีโดยไม่ต้องใช้รหัสผ่านจริงในโหมดจำลอง';
+  });
+}
+
+let SESSION = null;
+let CURRENT_USER = null;
+let CURRENT_SHOP = null;
+let USER_ROLE = null; // superadmin | owner | staff
+
+const $ = id => document.getElementById(id);
+const uid = () => crypto.randomUUID();
+const money = n => '฿' + (Number(n) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const UNITS = {
+  'กิโลกรัม': { f: 1000, base: 'กรัม' },
+  'กรัม': { f: 1, base: 'กรัม' },
+  'ลิตร': { f: 1000, base: 'มล.' },
+  'มิลลิลิตร': { f: 1, base: 'มล.' },
+  'ฟอง': { f: 1, base: 'ฟอง' },
+  'ชิ้น': { f: 1, base: 'ชิ้น' },
+  'แพ็ค': { f: 1, base: 'แพ็ค' },
+  'ขวด': { f: 1, base: 'ขวด' }
+};
+const baseU = m => (UNITS[m.unit] || { base: m.unit }).base;
+const perBase = m => {
+  const u = UNITS[m.unit] || { f: 1 };
+  return m.price / ((m.qty * u.f) || 1);
+};
+
+// ธีมระบบภาพสีที่แนะนำ
+const SYSTEMS = {
+  recipro: { label: 'Recipro · แครอท', primary: '#F47A1F', secondary: '#39A845', bg: '#FBF7EE', text: '#2A2520' },
+  sage:    { label: 'เขียวสด · Sage',  primary: '#39A845', secondary: '#F47A1F', bg: '#F4F8F1', text: '#22301F' },
+  dark:    { label: 'มืดอุ่น · Dark',  primary: '#F9943E', secondary: '#46C156', bg: '#1E1B17', text: '#F5EFE6' }
+};
+const DEFAULT_THEME = 'recipro';
+
+// ข้อมูลหลักในแอปรันแบบ Synchronous Memory
+let suppliers = [];
+let materials = [];
+let recipes = [];
+let bills = [];
+let counter = 0;
+let settings = {
+  shopName: 'ร้านเบเกอรี่ของคุณ',
+  phone: '', tax: '', addr: '',
+  bank: '', acc: '', holder: '', pp: '',
+  logoData: '', theme: 'recipro'
+};
+
+// ตัวแปรเก็บข้อมูลร้านสำหรับโหมดจำลอง (Mock database)
+let mockShops = [];
+let mockSubscriptions = [];   // อายุสมาชิกแต่ละร้าน (ใช้คำนวณร้านใกล้หมดอายุ)
+let mockPayments = [];        // ประวัติการชำระเงิน (ใช้คำนวณรายได้รวม)
+
+// แพ็กเกจตัวอย่างสำหรับโหมดจำลอง (ใช้ทั้งหน้าเลือกแพ็กเกจและตอนคิดรายได้)
+const MOCK_PLANS = [
+  { id: 'plan-basic', name: 'เริ่มต้น', price_month: 199, price_year: 1990, features_json: { label: 'ร้านเล็ก/ทำคนเดียว' } },
+  { id: 'plan-pro', name: 'โปร', price_month: 390, price_year: 3900, features_json: { label: 'มีพนักงานหลายคน' } }
+];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const DEFAULT_LOGO = "assets/recipro-icon.svg";  // โลโก้ Recipro (แครอท) เป็นค่าเริ่มต้น
+function logoSrc() { return settings.logoData || DEFAULT_LOGO; }
+
+// อัปเดตป้ายสถานะการซิงค์ (มุมขวาบน) — เรียกได้ทั้งโหมดจำลองและคลาวด์
+// iconName (ไม่บังคับ) = ชื่อไอคอน Lucide เช่น 'circle-check', 'wifi-off', 'circle-x'
+function updateCloudStatus(msg, iconName) {
+  const el = $('globalSyncStatus');
+  if (el && msg) {
+    const ic = iconName ? icon(iconName) + ' ' : '';
+    el.innerHTML = ic + msg.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  }
+}
+
+// ============================================================
+// ระบบกล่องโต้ตอบ/แจ้งเตือนของเราเอง (แทน alert/confirm/prompt ของเบราว์เซอร์)
+// ============================================================
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const ui = (function () {
+  function build({ title, message, icon: ic, variant, buttons, input }) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'ui-modal-overlay';
+      const iconHtml = ic ? `<div class="ui-modal-icon ${variant || 'brand'}">${icon(ic)}</div>` : '';
+      const msgHtml = esc(message).replace(/\n/g, '<br>');
+      const inputHtml = input
+        ? `<input class="ui-modal-input" id="__uiInput" type="${input.type || 'text'}" placeholder="${esc(input.placeholder)}" value="${esc(input.value)}">`
+        : '';
+      overlay.innerHTML = `
+        <div class="ui-modal" role="dialog" aria-modal="true">
+          ${iconHtml}
+          ${title ? `<div class="ui-modal-title">${esc(title)}</div>` : ''}
+          <div class="ui-modal-msg">${msgHtml}</div>
+          ${inputHtml}
+          <div class="ui-modal-actions"></div>
+        </div>`;
+      const actions = overlay.querySelector('.ui-modal-actions');
+      const getVal = () => (input ? overlay.querySelector('#__uiInput').value : undefined);
+      function close() { overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 180); document.removeEventListener('keydown', onKey); }
+      function done(v) { close(); resolve(v); }
+      buttons.forEach((b) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn ' + (b.class || 'btn-ghost');
+        btn.innerHTML = (b.icon ? icon(b.icon) + ' ' : '') + esc(b.label);
+        btn.onclick = () => done(b.value === 'INPUT' ? getVal() : b.value);
+        actions.appendChild(btn);
+      });
+      function onKey(e) {
+        if (e.key === 'Escape') done(input ? null : false);
+        else if (e.key === 'Enter') done(input ? getVal() : true);
+      }
+      overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) done(input ? null : false); });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => {
+        overlay.classList.add('open');
+        if (typeof renderIcons === 'function') renderIcons(overlay);
+        const inp = overlay.querySelector('#__uiInput');
+        if (inp) { inp.focus(); inp.select(); }
+      });
+    });
+  }
+
+  return {
+    alert(message, opts = {}) {
+      return build({
+        title: opts.title || 'แจ้งเตือน', message, icon: opts.icon || 'alert-triangle', variant: opts.variant || 'warn',
+        buttons: [{ label: opts.okText || 'รับทราบ', class: 'btn-primary', value: true }],
+      });
+    },
+    confirm(message, opts = {}) {
+      return build({
+        title: opts.title || 'ยืนยันการทำรายการ', message,
+        icon: opts.icon || (opts.danger ? 'trash-2' : 'help-circle'), variant: opts.danger ? 'danger' : 'brand',
+        buttons: [
+          { label: opts.cancelText || 'ยกเลิก', class: 'btn-ghost', value: false },
+          { label: opts.okText || 'ตกลง', class: opts.danger ? 'btn-danger' : 'btn-primary', value: true },
+        ],
+      });
+    },
+    prompt(message, def = '', opts = {}) {
+      return build({
+        title: opts.title || 'กรอกข้อมูล', message, icon: opts.icon || 'pencil', variant: 'brand',
+        input: { value: def, type: opts.type || 'text', placeholder: opts.placeholder || '' },
+        buttons: [
+          { label: 'ยกเลิก', class: 'btn-ghost', value: '__CANCEL__' },
+          { label: opts.okText || 'ตกลง', class: 'btn-primary', value: 'INPUT' },
+        ],
+      }).then((r) => (r === '__CANCEL__' || r === false || r == null) ? null : r);
+    },
+    toast(message, type = 'success') {
+      let wrap = $('__uiToasts');
+      if (!wrap) { wrap = document.createElement('div'); wrap.id = '__uiToasts'; wrap.className = 'ui-toasts'; document.body.appendChild(wrap); }
+      const t = document.createElement('div');
+      t.className = 'ui-toast ui-toast-' + type;
+      const ic = type === 'success' ? 'check-circle' : type === 'error' ? 'alert-triangle' : 'cloud';
+      t.innerHTML = icon(ic) + '<span>' + esc(message) + '</span>';
+      wrap.appendChild(t);
+      if (typeof renderIcons === 'function') renderIcons(t);
+      requestAnimationFrame(() => t.classList.add('open'));
+      setTimeout(() => { t.classList.remove('open'); setTimeout(() => t.remove(), 250); }, 2800);
+    },
+  };
+})();
+
+// แทน popup ของเบราว์เซอร์ทั้งระบบ — alert เดิมกลายเป็นกล่องของเราอัตโนมัติ
+window.alert = (m) => ui.alert(m);
+
+// แปลงวันที่เป็นปฏิทินไทย
+function thaiDate(iso){
+  if(!iso) return '';
+  const M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const d = new Date(iso+'T00:00');
+  return d.getDate() + ' ' + M[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+}
+
+// ฟังก์ชันแปลงจำนวนเงินบาทสะกดเป็นภาษาไทย (bahtText)
+function bahtText(a){
+  a = Math.round(a * 100) / 100;
+  let b = Math.floor(a), s = Math.round((a - b) * 100);
+  const t = ['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'];
+  const u = ['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+  
+  function r(n){
+    if(n === 0) return '';
+    if(n > 999999) return r(Math.floor(n / 1e6)) + 'ล้าน' + r(n % 1e6);
+    let x = String(n), L = x.length, o = '';
+    for(let i = 0; i < L; i++){
+      let d = +x[i], p = L - i - 1;
+      if(!d) continue;
+      if(p === 1 && d === 1) o += 'สิบ';
+      else if(p === 1 && d === 2) o += 'ยี่สิบ';
+      else if(p === 0 && d === 1 && L > 1) o += 'เอ็ด';
+      else o += t[d] + u[p];
+    }
+    return o;
+  }
+  
+  if(!b && !s) return 'ศูนย์บาทถ้วน';
+  let o = b > 0 ? r(b) + 'บาท' : '';
+  o += s > 0 ? r(s) + 'สตางค์' : 'ถ้วน';
+  return o;
+}
+
+// ดูวิธีทำขั้นตอนการผลิต
+function viewSteps(id) {
+  const r = recById(id);
+  if (!r) return;
+  const stepsText = r.steps || '(ยังไม่มีวิธีทำ)';
+  const w = window.open('', '_blank', 'width=520,height=640');
+  if (w) {
+    w.document.write(`<meta charset="utf-8"><title>วิธีทำ ${r.name}</title><body style="font-family:'IBM Plex Sans Thai', sans-serif; padding:22px; color:#1e1b4b; background:#F6F7FB;"><h2 style="color:#7C3AED;">วิธีทำ — ${r.name}</h2><div style="font-size:16px; white-space:pre-wrap; line-height:1.8;">${stepsText.replace(/</g, '&lt;')}</div></body>`);
+    w.document.close();
+  } else {
+    alert(`วิธีทำ — ${r.name}\n\n${stepsText}`);
+  }
+}
+
+// ข้อมูลสำหรับออกเอกสารบิลพิมพ์
+const DOC = {
+  delivery: { t: 'ใบส่งสินค้า', s: 'DELIVERY NOTE', sigL: 'ผู้รับสินค้า', sigR: 'ผู้ส่งสินค้า', money: false, pay: false },
+  billing: { t: 'ใบวางบิล', s: 'BILLING STATEMENT', sigL: 'ผู้รับวางบิล', sigR: 'ผู้วางบิล', money: true, pay: true },
+  receipt: { t: 'ใบเสร็จรับเงิน', s: 'RECEIPT', sigL: 'ผู้จ่ายเงิน', sigR: 'ผู้รับเงิน', money: true, pay: true }
+};
+
+// ============================================================
+// 2. AUTH STATE TRIGGER
+// ============================================================
+function showAuthScreen() {
+  SESSION = null;
+  CURRENT_USER = null;
+  $('authScreen').classList.remove('hidden');
+  $('appLayout').style.display = 'none';
+  $('suspendedOverlay').style.display = 'none';
+}
+
+function enterApp(user) {
+  SESSION = { access_token: API.getAccess() };
+  CURRENT_USER = user;
+  $('authScreen').classList.add('hidden');
+  $('appLayout').style.display = 'flex';
+  $('userEmailDisplay').textContent = user.email;
+}
+
+// โหมดคลาวด์: ถ้ามี token เดิม → ตรวจ /auth/me แล้วเข้าแอป ไม่งั้นโชว์หน้าล็อกอิน
+async function initCloudSession() {
+  if (!API.getAccess()) { showAuthScreen(); return; }
+  try {
+    const { user } = await API.me();
+    enterApp(user);
+    await boot();
+  } catch (e) {
+    API.logout();
+    showAuthScreen();
+  }
+}
+
+async function handleSignIn() {
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPass').value;
+  
+  if (isMockMode) {
+    // โหมดออฟไลน์: ยืนยันการเข้าระบบทันที
+    SESSION = { access_token: 'mock-token' };
+    CURRENT_USER = { id: 'mock-user-id', email: email || 'demo-owner@recipro.local' };
+    $('authScreen').classList.add('hidden');
+    $('appLayout').style.display = 'flex';
+    $('userEmailDisplay').textContent = CURRENT_USER.email;
+    await boot();
+    return;
+  }
+
+  if(!email || !password) { alert('กรอกอีเมลและรหัสผ่าน'); return; }
+  try {
+    const d = await API.login(email, password);
+    enterApp(d.user);
+    await boot();
+  } catch (e) {
+    alert('ไม่สามารถเข้าสู่ระบบ: ' + e.message);
+  }
+}
+
+async function handleSignOut() {
+  if (await ui.confirm('คุณต้องการออกจากระบบใช่หรือไม่?', { okText: 'ออกจากระบบ', danger: true })) {
+    if (isMockMode) {
+      SESSION = null;
+      CURRENT_USER = null;
+      $('authScreen').classList.remove('hidden');
+      $('appLayout').style.display = 'none';
+      $('suspendedOverlay').style.display = 'none';
+    } else {
+      API.logout();
+      showAuthScreen();
+    }
+  }
+}
+
+// สลับแท็บหน้าเข้าสู่ระบบ / สมัครสมาชิก
+function showAuthTab(t) {
+  const isLogin = t !== 'register';
+  $('authLoginPane').classList.toggle('hidden', !isLogin);
+  $('authRegisterPane').classList.toggle('hidden', isLogin);
+  $('authTabLogin').classList.toggle('active', isLogin);
+  $('authTabRegister').classList.toggle('active', !isLogin);
+}
+
+// แสดง/ซ่อนรหัสผ่าน
+function togglePass(id, btn) {
+  const inp = $(id);
+  if (!inp) return;
+  const reveal = inp.type === 'password';
+  inp.type = reveal ? 'text' : 'password';
+  btn.innerHTML = icon(reveal ? 'eye' : 'eye-off');
+}
+
+// ลืมรหัสผ่าน (ยังไม่มีระบบส่งอีเมลรีเซ็ต — แจ้งช่องทางชั่วคราว)
+function forgotPassword() {
+  alert('การรีเซ็ตรหัสผ่านด้วยตนเองกำลังจะมาเร็ว ๆ นี้\nระหว่างนี้ติดต่อแอดมินหลักเพื่อรีเซ็ตรหัสผ่านให้ได้ครับ');
+}
+
+// เข้าสู่ระบบด้วย Google (ต้องตั้งค่า Google OAuth ฝั่งเซิร์ฟเวอร์ก่อน)
+function googleAuth() {
+  alert('เข้าสู่ระบบด้วย Google กำลังจะเปิดให้ใช้เร็ว ๆ นี้\n(ต้องตั้งค่า Google OAuth ฝั่งเซิร์ฟเวอร์ก่อน)');
+}
+
+// สมัครสมาชิก/เปิดร้านใหม่ — รองรับทั้งโหมดคลาวด์และโหมดจำลอง
+async function handleRegister() {
+  const shopName = $('regShopName').value.trim();
+  const email = $('regEmail').value.trim();
+  const password = $('regPass').value;
+
+  if (!shopName) { alert('กรอกชื่อร้านค้า'); return; }
+  if (!email) { alert('กรอกอีเมลผู้ใช้งาน'); return; }
+  if (!password || password.length < 8) { alert('ตั้งรหัสผ่านอย่างน้อย 8 ตัวอักษร'); return; }
+
+  if (isMockMode) {
+    // โหมดจำลอง: เริ่มใช้งานทันทีเหมือน handleSignIn พร้อมตั้งชื่อร้านเริ่มต้น
+    SESSION = { access_token: 'mock-token' };
+    CURRENT_USER = { id: 'mock-user-id', email };
+    settings.shopName = shopName;
+    localStorage.setItem('mj_settings', JSON.stringify(settings));
+    $('authScreen').classList.add('hidden');
+    $('appLayout').style.display = 'flex';
+    $('userEmailDisplay').textContent = CURRENT_USER.email;
+    await boot();
+    return;
+  }
+
+  try {
+    const d = await API.post('/auth/register', { shopName, email, password });
+    API.setTokens(d.accessToken, d.refreshToken);
+    enterApp(d.user);
+    await boot();
+  } catch (e) {
+    alert('ไม่สามารถสมัครสมาชิก: ' + e.message);
+  }
+}
+
+// ============================================================
+// 2b. COLLAPSIBLE SIDEBAR + MOBILE DRAWER
+// ============================================================
+const SIDEBAR_KEY = 'recipro_sidebar';
+
+// ตั้งไอคอนปุ่มย่อ/ขยายให้ตรงกับสถานะปัจจุบัน
+function syncSidebarToggleIcon() {
+  const collapsed = $('appLayout').classList.contains('sidebar-collapsed');
+  const btn = $('sidebarToggleBtn');
+  if (btn) {
+    btn.innerHTML = icon(collapsed ? 'panel-left-open' : 'panel-left-close');
+  }
+}
+
+// ย่อ/ขยายแถบเมนู (เดสก์ท็อป) + จำสถานะใน localStorage
+function toggleSidebar() {
+  const collapsed = $('appLayout').classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (e) {}
+  syncSidebarToggleIcon();
+}
+
+// เปิด/ปิดเมนูแบบลิ้นชักบนมือถือ
+function openSidebarDrawer() { $('appLayout').classList.add('sidebar-open'); }
+function closeSidebarDrawer() { $('appLayout').classList.remove('sidebar-open'); }
+
+// คืนค่าสถานะย่อ/ขยายตอนโหลด + แสดงปุ่มเปิดเมนูบนมือถือตามขนาดจอ
+function restoreSidebar() {
+  try {
+    if (localStorage.getItem(SIDEBAR_KEY) === '1') {
+      $('appLayout').classList.add('sidebar-collapsed');
+    }
+  } catch (e) {}
+  syncSidebarToggleIcon();
+  updateDrawerButton();
+}
+
+// ปุ่ม hamburger ในแถบบนจะโผล่เฉพาะจอ <=820px (ลิ้นชัก)
+function updateDrawerButton() {
+  const drawerBtn = $('sidebarDrawerBtn');
+  if (drawerBtn) drawerBtn.style.display = (window.innerWidth <= 820) ? 'inline-flex' : 'none';
+}
+window.addEventListener('resize', () => {
+  updateDrawerButton();
+  if (window.innerWidth > 820) closeSidebarDrawer();
+});
+
+// ============================================================
+// 3. BOOT ENGINE & LOAD DATA
+// ============================================================
+async function boot() {
+  updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์" : "กำลังโหลดข้อมูลจากระบบ...", isMockMode ? "wifi-off" : "refresh-cw");
+  
+  if (isMockMode) {
+    CURRENT_SHOP = 'mock-shop-id';
+    USER_ROLE = 'superadmin'; // เปิดสิทธิ์ Admin ให้อัตโนมัติสำหรับทดสอบหน้าจอทั้งหมด
+    $('menuAdmin').classList.remove('hidden');
+
+    // โหลดข้อมูลออฟไลน์จาก localStorage
+    const localSups = localStorage.getItem('mj_suppliers');
+    const localMats = localStorage.getItem('mj_materials');
+    const localRecs = localStorage.getItem('mj_recipes');
+    const localBills = localStorage.getItem('mj_bills');
+    const localSettings = localStorage.getItem('mj_settings');
+    const localShops = localStorage.getItem('mj_shops');
+
+    suppliers = localSups ? JSON.parse(localSups) : [];
+    materials = localMats ? JSON.parse(localMats) : [];
+    recipes = localRecs ? JSON.parse(localRecs) : [];
+    bills = localBills ? JSON.parse(localBills) : [];
+    counter = bills.reduce((max, b) => {
+      const num = parseInt(b.billNo.replace('HB-', ''), 10);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 0);
+
+    settings = localSettings ? JSON.parse(localSettings) : {
+      shopName: 'ร้านเบเกอรี่โฮมเมด',
+      phone: '081-234-5678', tax: '1234567890123', addr: '123 ถนนออโรร่า แขวงลาเวนเดอร์ เขตปทุมวัน กรุงเทพฯ',
+      bank: 'กสิกรไทย', acc: '123-4-56789-0', holder: 'สมศรี มีดี', pp: '0812345678',
+      logoData: '', theme: 'recipro'
+    };
+
+    mockShops = localShops ? JSON.parse(localShops) : [
+      { id: 'mock-shop-id', name: 'ร้านเบเกอรี่โฮมเมด', status: 'trial' },
+      { id: 'shop-b', name: 'คาเฟ่กรีนเซจ (แบรนด์สาขา)', status: 'active' }
+    ];
+
+    // โหลด/สร้างข้อมูลสมาชิก+การชำระเงินจำลอง (ป้อนตัวเลขให้แดชบอร์ดมีอะไรให้ดู)
+    const localSubs = localStorage.getItem('mj_subscriptions');
+    const localPays = localStorage.getItem('mj_payments');
+    mockSubscriptions = localSubs ? JSON.parse(localSubs) : [
+      { shop_id: 'shop-b', status: 'active', billing_cycle: 'month', current_period_end: new Date(Date.now() + 3 * DAY_MS).toISOString() }
+    ];
+    mockPayments = localPays ? JSON.parse(localPays) : [
+      { shop_id: 'shop-b', amount: 390, currency: 'THB', status: 'paid', paid_at: new Date(Date.now() - 27 * DAY_MS).toISOString() }
+    ];
+
+    const currentLocalShop = mockShops.find(s => s.id === CURRENT_SHOP);
+    const status = currentLocalShop ? currentLocalShop.status : 'trial';
+
+    $('sidebarShopName').textContent = settings.shopName;
+    applyTheme(settings.theme);
+    applyBrand();
+
+    $('shopStatusBadge').textContent = status;
+    $('shopStatusBadge').className = 'shop-status-badge status-' + status;
+
+    if (status === 'suspended') {
+      $('suspendedOverlay').style.display = 'flex';
+    } else {
+      $('suspendedOverlay').style.display = 'none';
+    }
+
+    $('billingShopStatusText').textContent = status === 'trial' ? 'Trial (ทดลองใช้ฟรี)' : 'Active (เป็นสมาชิกใช้งานปกติ)';
+    $('billingPeriodEndText').textContent = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('th-TH');
+    $('btnStripePortal').style.display = 'none';
+  } else {
+    // โหมดคลาวด์จริง — โหลดข้อมูลร้านทั้งก้อนจาก Node API
+    const data = await API.get('/api/bootstrap');
+
+    USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
+    CURRENT_SHOP = data.shop ? data.shop.id : null;
+    if (data.isSuperadmin) $('menuAdmin').classList.remove('hidden');
+
+    if (CURRENT_SHOP) {
+      suppliers = (data.suppliers || []).map(s => ({ id: s.id, name: s.name, note: s.note }));
+      materials = (data.materials || []).map(m => ({
+        id: m.id, name: m.name, qty: Number(m.qty), unit: m.unit, price: Number(m.price),
+        supId: m.supplier_id, orderUrl: m.order_url, stock: Number(m.stock), lowStock: Number(m.low_stock)
+      }));
+
+      const itemsGroup = data.recipe_items || [];
+      recipes = (data.recipes || []).map(r => ({
+        id: r.id, code: r.code, name: r.name, sell: Number(r.sell_price),
+        batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
+        steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
+        items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
+          matId: it.material_id, amount: Number(it.amount)
+        }))
+      }));
+
+      bills = (data.bills || []).map(b => ({
+        id: b.id, billNo: b.number, status: b.status, ...b.items_json
+      }));
+      counter = bills.reduce((max, b) => {
+        const num = parseInt((b.billNo || '').replace('HB-', ''), 10);
+        return isNaN(num) ? max : Math.max(max, num);
+      }, 0);
+
+      const sRow = data.settings;
+      settings = {
+        shopName: data.shop?.name || 'ร้านของฉัน',
+        phone: sRow?.phone || '', tax: sRow?.tax_id || '', addr: sRow?.address || '',
+        bank: sRow?.bank || '', acc: sRow?.account || '', holder: sRow?.holder || '', pp: sRow?.promptpay || '',
+        logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro'
+      };
+
+      $('sidebarShopName').textContent = settings.shopName;
+      applyTheme(settings.theme);
+      applyBrand();
+
+      const status = data.shop?.status || 'trial';
+      $('shopStatusBadge').textContent = status;
+      $('shopStatusBadge').className = 'shop-status-badge status-' + status;
+
+      if (status === 'suspended') {
+        $('suspendedOverlay').style.display = 'flex';
+      } else {
+        $('suspendedOverlay').style.display = 'none';
+      }
+
+      $('billingShopStatusText').textContent = status === 'trial' ? 'Trial (ทดลองใช้ฟรี)' : 'Active (เป็นสมาชิกใช้งานปกติ)';
+
+      if (data.subscription) {
+        $('billingPeriodEndText').textContent = new Date(data.subscription.current_period_end).toLocaleDateString('th-TH');
+        $('btnStripePortal').style.display = 'block';
+      }
+    }
+  }
+
+  fillSettings();
+  fillForm();
+  render();
+  renderThemePicker();
+  syncAccountUI();   // ซิงค์การ์ดผู้ใช้/เมนูบัญชี (avatar + ชื่อร้าน + ป้ายสถานะ) ให้ตรงล่าสุด
+
+  if (USER_ROLE === 'superadmin') {
+    if (isMockMode) {
+      renderMockShops();
+    } else {
+      await adminLoadShops();
+    }
+    await adminLoadDashboard();
+  }
+
+  updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์ (อัปเดตบราวเซอร์แล้ว)" : "ซิงค์คลาวด์เรียบร้อย", isMockMode ? "wifi-off" : "circle-check");
+
+  renderIcons();
+}
+
+let syncTimeout = null;
+function saveAll() {
+  updateCloudStatus(isMockMode ? "บันทึกในสตอเรจเครื่องแล้ว..." : "กำลังบันทึกข้อมูล...");
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    try {
+      await syncToSupabase();
+    } catch (e) {
+      updateCloudStatus("ซิงค์คลาวด์ผิดพลาด", "circle-x");
+    }
+  }, 1500);
+}
+
+async function syncToSupabase() {
+  if (isMockMode) {
+    localStorage.setItem('mj_suppliers', JSON.stringify(suppliers));
+    localStorage.setItem('mj_materials', JSON.stringify(materials));
+    localStorage.setItem('mj_recipes', JSON.stringify(recipes));
+    localStorage.setItem('mj_bills', JSON.stringify(bills));
+    localStorage.setItem('mj_settings', JSON.stringify(settings));
+    localStorage.setItem('mj_shops', JSON.stringify(mockShops));
+    localStorage.setItem('mj_subscriptions', JSON.stringify(mockSubscriptions));
+    localStorage.setItem('mj_payments', JSON.stringify(mockPayments));
+    updateCloudStatus("ซิงค์สตอเรจเครื่องแล้ว (โหมดจำลอง)", "circle-check");
+    return;
+  }
+
+  if (!CURRENT_SHOP) return;
+  updateCloudStatus("กำลังเชื่อมโยงคลาวด์...");
+
+  // map เป็น snake_case แล้วส่งทั้งก้อนให้ /api/sync (server บังคับ shop_id เอง)
+  const payload = {
+    suppliers: suppliers.map(s => ({ id: s.id, name: s.name, note: s.note })),
+    materials: materials.map(m => ({
+      id: m.id, name: m.name, qty: m.qty, unit: m.unit, price: m.price,
+      supplier_id: m.supId || null, order_url: m.orderUrl, stock: m.stock, low_stock: m.lowStock
+    })),
+    recipes: recipes.map(r => ({
+      id: r.id, code: r.code, name: r.name, sell_price: r.sell,
+      batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
+      fg_stock: r.fgStock, fg_low: r.fgLow
+    })),
+    recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
+      recipe_id: r.id, material_id: it.matId || null, amount: it.amount
+    }))),
+    bills: bills.map(b => ({
+      id: b.id, number: b.billNo, status: b.status,
+      items_json: {
+        items: b.items, cust: b.cust, sender: b.sender,
+        discV: b.discV, discT: b.discT, taxV: b.taxV, taxT: b.taxT, date: b.date
+      }
+    })),
+    shop_settings: {
+      phone: settings.phone, tax_id: settings.tax, address: settings.addr,
+      bank: settings.bank, account: settings.acc, holder: settings.holder, promptpay: settings.pp,
+      logo_url: settings.logoData, theme: settings.theme
+    },
+    shop: { name: settings.shopName }
+  };
+
+  await API.post('/api/sync', payload);
+  updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+}
+
+// ============================================================
+// 4. NAVIGATION & TAB SWITCHER
+// ============================================================
+function switchTab(t) {
+  const tabs = ['materials', 'recipes', 'stock', 'pos', 'set', 'admin', 'billing'];
+  tabs.forEach(k => {
+    const el = $(k + 'Page');
+    if (el) {
+      if (k === t) {
+        el.classList.remove('hidden');
+        el.classList.add('page-section');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
+    const menu = $('menu' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (menu) {
+      menu.classList.toggle('active', k === t);
+    }
+  });
+
+  const titles = {
+    materials: 'คลังวัตถุดิบ & แหล่งจัดซื้อ',
+    recipes: 'สูตร & วิเคราะห์ต้นทุน',
+    stock: 'สต๊อกวัตถุดิบ & สินค้า',
+    pos: 'ระบบหน้าร้าน & ออกเอกสารบิล',
+    set: 'ตั้งค่าร้านค้า & บัญชีรับโอนเงิน',
+    admin: 'แผงควบคุมหลัก Super Admin',
+    billing: 'จัดการสมาชิก & ชำระเงินรายปี'
+  };
+  $('currentPageTitle').textContent = titles[t] || '';
+
+  // เปิดแท็บแอดมิน → รีเฟรชตัวเลขแดชบอร์ดให้ล่าสุดเสมอ
+  if (t === 'admin' && USER_ROLE === 'superadmin') {
+    adminLoadDashboard();
+  }
+
+  // ปิดลิ้นชักเมนูบนมือถือหลังเลือกหน้า
+  if (typeof closeSidebarDrawer === 'function') closeSidebarDrawer();
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleSopLeft(k) {
+  if (k === 'mat') {
+    $('cardMat').classList.remove('hidden');
+    $('cardSup').classList.add('hidden');
+    $('subTabMat').classList.add('active');
+    $('subTabSup').classList.remove('active');
+  } else {
+    $('cardMat').classList.add('hidden');
+    $('cardSup').classList.remove('hidden');
+    $('subTabMat').classList.remove('active');
+    $('subTabSup').classList.add('active');
+  }
+}
+
+// ============================================================
+// 4b. SLIDE-IN DRAWERS (add/edit forms)
+// ============================================================
+// เปิดลิ้นชักฟอร์ม + แสดง overlay (toggle .open ทั้งสองชั้น)
+function openDrawer(id) {
+  const d = $(id);
+  if (!d) return;
+  $('drawerOverlay').classList.add('open');
+  d.classList.add('open');
+  renderIcons();
+}
+
+// ปิดลิ้นชักทุกตัว + overlay
+function closeDrawer() {
+  ['matDrawer', 'supDrawer', 'recipeDrawer'].forEach(id => {
+    const d = $(id);
+    if (d) d.classList.remove('open');
+  });
+  $('drawerOverlay').classList.remove('open');
+}
+
+// เปิดฟอร์ม "เพิ่มวัตถุดิบ" แบบล้างค่าใหม่
+function openMatForm() {
+  editMatId = null;
+  $('mName').value = '';
+  $('mQty').value = '';
+  $('mPrice').value = '';
+  $('mUrl').value = '';
+  $('mSup').value = '';
+  if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
+  $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
+  openDrawer('matDrawer');
+}
+
+// เปิดฟอร์ม "เพิ่มแหล่งซื้อ" แบบล้างค่าใหม่
+function openSupForm() {
+  editSupId = null;
+  $('sName').value = '';
+  $('sNote').value = '';
+  $('sSaveBtn').innerHTML = icon('save') + ' บันทึกแหล่งซื้อ';
+  openDrawer('supDrawer');
+}
+
+// เปิดฟอร์ม "สร้างสูตร" แบบล้างค่าใหม่
+function openRecipeForm() {
+  resetRecipeForm();
+  openDrawer('recipeDrawer');
+}
+
+// ============================================================
+// 4c. ACCOUNT MENU (popover above the user card)
+// ============================================================
+let accountMenuOutsideHandler = null;
+
+// เปิด/ปิดเมนูบัญชี — ส่ง force=true เพื่อบังคับเปิด, false เพื่อบังคับปิด
+function toggleAccountMenu(force) {
+  const menu = $('accountMenu');
+  const card = $('userCardBtn');
+  if (!menu) return;
+  const willOpen = (typeof force === 'boolean') ? force : !menu.classList.contains('open');
+
+  menu.classList.toggle('open', willOpen);
+  if (card) {
+    card.classList.toggle('open', willOpen);
+    card.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  }
+
+  if (willOpen) {
+    // ปิดเมื่อคลิกนอกเมนู (ติดตั้งครั้งเดียว, หน่วงเพื่อข้ามคลิกที่เพิ่งกดเปิด)
+    accountMenuOutsideHandler = function (e) {
+      if (!menu.contains(e.target) && card && !card.contains(e.target)) {
+        toggleAccountMenu(false);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', accountMenuOutsideHandler), 0);
+  } else if (accountMenuOutsideHandler) {
+    document.removeEventListener('click', accountMenuOutsideHandler);
+    accountMenuOutsideHandler = null;
+  }
+}
+
+// Escape ปิดเมนูบัญชี
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const menu = $('accountMenu');
+    if (menu && menu.classList.contains('open')) toggleAccountMenu(false);
+  }
+});
+
+// 2 ตัวอักษรย่อจากชื่อร้าน (ใช้ทำ avatar เมื่อไม่มีโลโก้)
+function shopInitials(name) {
+  const n = (name || '').trim();
+  if (!n) return 'R';
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return n.slice(0, 2).toUpperCase();
+}
+
+// ซิงค์ avatar (โลโก้/ตัวย่อ) + ชื่อร้าน + ป้ายสถานะ ในการ์ดผู้ใช้และเมนูบัญชี
+function syncAccountUI() {
+  const name = settings.shopName || 'ร้านของฉัน';
+  const initials = shopInitials(name);
+  const avatarHTML = settings.logoData
+    ? `<img src="${settings.logoData}" alt="">`
+    : initials;
+
+  const userAvatar = $('userAvatar');
+  if (userAvatar) {
+    userAvatar.innerHTML = avatarHTML;
+    userAvatar.classList.toggle('has-logo', !!settings.logoData);
+  }
+  const accountAvatar = $('accountAvatar');
+  if (accountAvatar) {
+    accountAvatar.innerHTML = avatarHTML;
+    accountAvatar.classList.toggle('has-logo', !!settings.logoData);
+  }
+
+  const accountShopName = $('accountShopName');
+  if (accountShopName) accountShopName.textContent = name;
+
+  // มิเรอร์ป้ายสถานะร้านไปยังป้ายแพ็กเกจในเมนูบัญชี
+  const badge = $('shopStatusBadge');
+  const planBadge = $('accountPlanBadge');
+  if (badge && planBadge) {
+    planBadge.className = badge.className;
+    const st = badge.textContent.trim().toLowerCase();
+    planBadge.textContent = st === 'trial' ? 'ทดลองใช้ (Trial)' : badge.textContent;
+  }
+}
+
+// ============================================================
+// 5. SUPPLIERS & MATERIALS CRUD
+// ============================================================
+const matById = id => materials.find(m => m.id === id);
+const supById = id => suppliers.find(s => s.id === id);
+
+let editSupId = null;
+function saveSup() {
+  const name = $('sName').value.trim();
+  if (!name) { alert('กรอกชื่อแหล่งซื้อ'); return; }
+  const note = $('sNote').value.trim();
+  
+  if (editSupId) {
+    Object.assign(supById(editSupId), { name, note });
+    editSupId = null;
+    $('sSaveBtn').innerHTML = icon('save') + ' บันทึกแหล่งซื้อ';
+  } else {
+    suppliers.push({ id: uid(), name, note });
+  }
+  
+  saveAll();
+  $('sName').value = '';
+  $('sNote').value = '';
+  render();
+  closeDrawer();
+}
+
+function editSup(id) {
+  const s = supById(id);
+  editSupId = id;
+  $('sName').value = s.name;
+  $('sNote').value = s.note || '';
+  $('sSaveBtn').innerHTML = icon('pencil') + ' อัปเดตแหล่งซื้อ';
+  openDrawer('supDrawer');
+}
+
+async function delSup(id) {
+  if (!(await ui.confirm('ลบแหล่งซื้อนี้? วัตถุดิบในระบบที่ผูกจะเปลี่ยนเป็นไม่ระบุ', { okText: 'ลบ', danger: true }))) return;
+  suppliers = suppliers.filter(s => s.id !== id);
+  materials.forEach(m => { if(m.supId === id) m.supId = ''; });
+  
+  if (!isMockMode) {
+    await API.del('/api/suppliers/' + id);
+  }
+  saveAll();
+  render();
+}
+
+function renderSup() {
+  $('supList').innerHTML = suppliers.map(s => `<tr>
+    <td><b>${s.name}</b></td>
+    <td>${s.note || '-'}</td>
+    <td>
+      <button class="btn btn-ghost btn-sm" onclick="editSup('${s.id}')" title="แก้ไข">${icon('pencil')}</button>
+      <button class="btn btn-danger btn-sm" onclick="delSup('${s.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
+    </td>
+  </tr>`).join('') || '<tr><td colspan="3" style="color:#999; text-align:center;">ยังไม่มีแหล่งจัดซื้อ</td></tr>';
+
+  $('mSup').innerHTML = '<option value="">— ไม่ระบุ —</option>' + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+}
+
+let editMatId = null;
+function saveMat() {
+  const name = $('mName').value.trim();
+  const qty = +$('mQty').value || 1;
+  const price = +$('mPrice').value || 0;
+  const unit = $('mUnit').value;
+  const supId = $('mSup').value;
+  const orderUrl = $('mUrl').value.trim();
+  
+  if (!name) { alert('ระบุชื่อวัตถุดิบ'); return; }
+
+  if (editMatId) {
+    Object.assign(matById(editMatId), { name, qty, unit, price, supId, orderUrl });
+    editMatId = null;
+    $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
+  } else {
+    materials.push({ id: uid(), name, qty, unit, price, supId, orderUrl, stock: 0, lowStock: 0 });
+  }
+
+  saveAll();
+  $('mName').value = '';
+  $('mQty').value = '';
+  $('mPrice').value = '';
+  $('mUrl').value = '';
+  render();
+  closeDrawer();
+}
+
+function editMat(id) {
+  const m = matById(id);
+  editMatId = id;
+  $('mName').value = m.name;
+  $('mQty').value = m.qty;
+  $('mUnit').value = m.unit;
+  $('mPrice').value = m.price;
+  $('mSup').value = m.supId || '';
+  $('mUrl').value = m.orderUrl || '';
+  $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
+  openDrawer('matDrawer');
+}
+
+async function delMat(id) {
+  if (!(await ui.confirm('ลบวัตถุดิบนี้ออกจากระบบอย่างถาวร?', { okText: 'ลบ', danger: true }))) return;
+  materials = materials.filter(m => m.id !== id);
+  if (!isMockMode) {
+    await API.del('/api/materials/' + id);
+  }
+  saveAll();
+  render();
+}
+
+function renderMatList() {
+  const q = ($('matSearch').value || '').trim().toLowerCase();
+  const filtered = materials.filter(m => !q || m.name.toLowerCase().includes(q));
+  
+  $('matList').innerHTML = filtered.map(m => {
+    const sp = supById(m.supId);
+    return `<tr>
+      <td><b>${m.name}</b><br><span style="font-size:12px; color:var(--color-text-muted);">${sp ? sp.name : 'ไม่มีแหล่งจัดซื้อ'}</span></td>
+      <td>${money(m.price)} / ${m.qty} ${m.unit}</td>
+      <td>${money(perBase(m))} / ${baseU(m)}</td>
+      <td>
+        ${m.orderUrl ? `<button class="btn btn-ghost btn-sm" onclick="window.open('${m.orderUrl}','_blank')" style="padding:6px 10px;" title="ลิงก์สั่งซื้อ">${icon('shopping-cart')} Link</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="padding:6px 10px;" title="แก้ไข">${icon('pencil')}</button>
+        <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
+}
+
+// ============================================================
+// 6. RECIPE & INGREDIENT FORM
+// ============================================================
+const recById = id => recipes.find(r => r.id === id);
+let recipeIng = [{ matId: '', amount: 0 }];
+let editRecipeId = null;
+
+function addRecipeIng() {
+  recipeIng.push({ matId: materials[0]?.id || '', amount: 0 });
+  renderRecipeForm();
+}
+
+function delRecipeIng(i) {
+  recipeIng.splice(i, 1);
+  if (!recipeIng.length) recipeIng.push({ matId: '', amount: 0 });
+  renderRecipeForm();
+}
+
+function renderRecipeForm() {
+  $('recipeIngRows').innerHTML = recipeIng.map((it, i) => {
+    const m = matById(it.matId);
+    const unitName = m ? baseU(m) : 'หน่วย';
+    return `<div class="recipe-row">
+      <select onchange="recipeIng[${i}].matId=this.value; renderRecipeForm();">
+        <option value="">— เลือกวัตถุดิบ —</option>
+        ${materials.map(mat => `<option value="${mat.id}" ${mat.id === it.matId ? 'selected' : ''}>${mat.name}</option>`).join('')}
+      </select>
+      <input type="number" step="any" value="${it.amount || 0}" oninput="recipeIng[${i}].amount=+this.value; updateRecipeTotals();" placeholder="จำนวน">
+      <span style="font-size:14px; font-weight:600; color:var(--color-text-muted);">${unitName}</span>
+      <button class="btn btn-danger" onclick="delRecipeIng(${i})" style="padding:8px 10px;" title="ลบ">${icon('trash-2')}</button>
+    </div>`;
+  }).join('');
+  updateRecipeTotals();
+}
+
+function recipeCost(items) {
+  return items.reduce((sum, it) => {
+    const m = matById(it.matId);
+    return sum + (m ? perBase(m) * it.amount : 0);
+  }, 0);
+}
+
+function updateRecipeTotals() {
+  const batch = recipeCost(recipeIng);
+  const sell = +$('rSell').value || 0;
+  const yld = Math.max(0.0001, +$('rYield').value || 1);
+  const cost = batch / yld;
+  const unit = $('rYieldUnit').value || 'ชิ้น';
+
+  $('rCost').textContent = money(cost);
+  $('rProfit').textContent = money(sell - cost);
+  $('rMargin').textContent = (sell > 0 ? Math.round((sell - cost) / sell * 100) : 0) + '%';
+  $('rBatch').textContent = `ต้นทุนทั้งสูตร ${money(batch)} · ทำได้ ${yld} ${unit}`;
+}
+
+function saveRecipe() {
+  const code = $('rCode').value.trim() || ('R' + String(recipes.length + 1).padStart(2, '0'));
+  const name = $('rName').value.trim();
+  const sell = +$('rSell').value || 0;
+  const batchYield = Math.max(0.0001, +$('rYield').value || 1);
+  const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
+  const isRaw = $('rRaw').checked;
+  const steps = $('rSteps').value;
+
+  if (!name) { alert('ระบุชื่อสูตรการผลิต'); return; }
+
+  const items = recipeIng.filter(it => it.matId && it.amount > 0);
+
+  if (editRecipeId) {
+    const r = recById(editRecipeId);
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items });
+    editRecipeId = null;
+    $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
+    $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
+  } else {
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0 });
+  }
+
+  saveAll();
+  resetRecipeForm();
+  render();
+  closeDrawer();
+}
+
+function editRecipe(id) {
+  const r = recById(id);
+  editRecipeId = id;
+  $('rCode').value = r.code || '';
+  $('rName').value = r.name;
+  $('rSell').value = r.sell;
+  $('rYield').value = r.batchYield || 1;
+  $('rYieldUnit').value = r.yieldUnit || 'ชิ้น';
+  $('rRaw').checked = !!r.isRaw;
+  $('rSteps').value = r.steps || '';
+  
+  recipeIng = r.items && r.items.length ? r.items.map(x => ({ ...x })) : [{ matId: '', amount: 0 }];
+  $('rSaveBtn').innerHTML = icon('pencil') + ' อัปเดตสูตรการผลิต';
+  $('recipeFormTitle').innerHTML = icon('pencil') + ' แก้ไขข้อมูลสูตร';
+  renderRecipeForm();
+  openDrawer('recipeDrawer');
+}
+
+async function delRecipe(id) {
+  if (!(await ui.confirm('ลบสูตรนี้ทิ้งอย่างถาวร?', { okText: 'ลบ', danger: true }))) return;
+  recipes = recipes.filter(r => r.id !== id);
+  if (!isMockMode) {
+    await API.del('/api/recipes/' + id);
+  }
+  saveAll();
+  render();
+}
+
+function cloneRecipe(id) {
+  const r = recById(id);
+  if (!r) return;
+  const cloned = {
+    ...r,
+    id: uid(),
+    code: r.code + '-CLONE',
+    name: r.name + ' (โคลน)',
+    items: r.items.map(x => ({ ...x }))
+  };
+  recipes.push(cloned);
+  saveAll();
+  render();
+  alert('โคลนสูตรเรียบร้อย!');
+}
+
+function renderRecipeList() {
+  $('recipeList').innerHTML = recipes.map(r => {
+    const cost = recipeCost(r.items) / (r.batchYield || 1);
+    return `<tr>
+      <td>
+        <b>[${r.code || '-'}] ${r.name}</b><br>
+        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'สูตรดิบกึ่งสำเร็จรูป' : 'สินค้าปกติ'}</span>
+      </td>
+      <td>${money(cost)}</td>
+      <td>${money(r.sell)}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="viewSteps('${r.id}')" style="padding:6px 10px;" title="วิธีทำ">${icon('file-pen')} วิธีทำ</button>
+        <button class="btn btn-ghost btn-sm" onclick="editRecipe('${r.id}')" style="padding:6px 10px;" title="แก้ไข">${icon('pencil')}</button>
+        <button class="btn btn-ghost btn-sm" onclick="cloneRecipe('${r.id}')" style="padding:6px 10px;" title="โคลนสูตร">${icon('users')}</button>
+        <button class="btn btn-danger btn-sm" onclick="delRecipe('${r.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ยังไม่มีสูตรถูกสร้างขึ้น</td></tr>';
+
+  $('prodRecipe').innerHTML = recipes.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+}
+
+function resetRecipeForm() {
+  editRecipeId = null;
+  $('rCode').value = '';
+  $('rName').value = '';
+  $('rSell').value = '';
+  $('rYield').value = 1;
+  $('rYieldUnit').value = 'ชิ้น';
+  $('rRaw').checked = false;
+  $('rSteps').value = '';
+  recipeIng = [{ matId: '', amount: 0 }];
+  $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
+  $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
+  renderRecipeForm();
+}
+
+// ============================================================
+// 7. STOCK & INVENTORY CONTROL
+// ============================================================
+const matStockBase = m => Number(m.stock) || 0;
+const matLowBase = m => Number(m.lowStock) || 0;
+
+function lowAlerts() {
+  const alerts = [];
+  materials.forEach(m => {
+    if (matLowBase(m) > 0 && matStockBase(m) <= matLowBase(m)) {
+      alerts.push(`${icon('milk')} ${m.name} เหลือเพียง ${matStockBase(m)} ${baseU(m)} (เกณฑ์เตือน: ${matLowBase(m)})`);
+    }
+  });
+  recipes.forEach(r => {
+    const lo = Number(r.fgLow) || 0;
+    const st = Number(r.fgStock) || 0;
+    if (lo > 0 && st <= lo) {
+      alerts.push(`${icon('cake')} ${r.name} เหลือเพียง ${st} ${r.yieldUnit} (เกณฑ์เตือน: ${lo})`);
+    }
+  });
+  return alerts;
+}
+
+function renderAlerts() {
+  const alerts = lowAlerts();
+  $('alertBox').innerHTML = alerts.length ? alerts.map(a => `<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; padding:10px 14px; border-radius:var(--r-small); margin-bottom:8px; font-weight:600;">${a}</div>`).join('')
+    : `<p style="color:var(--color-secondary); font-weight:600; text-align:center; margin:0;">${icon('circle-check')} ทุกอย่างเพียงพอ คลังวัตถุดิบสมบูรณ์ดี</p>`;
+
+  // อัปเดตเม็ด Badge สีแดงแจ้งเตือนของหน้า Sidebar
+  const sidebarStockBtn = $('menuStock');
+  if (sidebarStockBtn) {
+    sidebarStockBtn.querySelector('.badge')?.remove();
+    if (alerts.length) {
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = alerts.length;
+      sidebarStockBtn.appendChild(badge);
+    }
+  }
+}
+
+function renderProdPreview() {
+  const r = recById($('prodRecipe').value);
+  const rounds = Math.max(1, +$('prodRounds').value || 1);
+  if (!r) { $('prodPreview').innerHTML = ''; return; }
+
+  const rows = r.items.map(it => {
+    const m = matById(it.matId);
+    if (!m) return '';
+    const need = it.amount * rounds;
+    const have = matStockBase(m);
+    const enough = have >= need;
+    return `<tr>
+      <td>${m.name}</td>
+      <td class="r">${need.toLocaleString()} ${baseU(m)}</td>
+      <td class="r" style="color:${enough ? 'var(--color-secondary)' : '#ef4444'}; font-weight:700;">${have.toLocaleString()} ${baseU(m)}${enough ? '' : ' ' + icon('triangle-alert')}</td>
+    </tr>`;
+  }).join('');
+
+  const made = (r.batchYield || 1) * rounds;
+  $('prodPreview').innerHTML = `<table class="lst">
+    <thead>
+      <tr>
+        <th>วัตถุดิบ</th>
+        <th class="r">ต้องใช้</th>
+        <th class="r">มีในคลัง</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="margin-top:10px; font-weight:600;">ผลผลิตที่จะได้: <span style="color:var(--color-primary);">${made} ${r.yieldUnit}</span></p>`;
+}
+
+async function produce() {
+  const r = recById($('prodRecipe').value);
+  const rounds = Math.max(1, +$('prodRounds').value || 1);
+  if (!r) { alert('กรุณาเลือกสูตรที่ต้องการผลิต'); return; }
+
+  const short = r.items.map(it => ({ m: matById(it.matId), need: it.amount * rounds }))
+    .filter(x => x.m && matStockBase(x.m) < x.need);
+
+  if (short.length) {
+    const msg = short.map(x => `• ${x.m.name} (ต้องการ ${x.need} มี ${matStockBase(x.m)} ${baseU(x.m)})`).join('\n');
+    if (!(await ui.confirm(`วัตถุดิบไม่เพียงพอ:\n${msg}\n\nต้องการผลิตต่อไปหรือไม่? (สต๊อกวัตถุดิบจะติดลบ)`, { title: 'สต๊อกวัตถุดิบไม่พอ', okText: 'ผลิตต่อไป', icon: 'alert-triangle' }))) return;
+  }
+
+  r.items.forEach(it => {
+    const m = matById(it.matId);
+    if (m) m.stock = matStockBase(m) - it.amount * rounds;
+  });
+
+  const made = (r.batchYield || 1) * rounds;
+  r.fgStock = (Number(r.fgStock) || 0) + made;
+
+  saveAll();
+  render();
+  alert('บันทึกยอดผลิตและหักคลังวัตถุดิบเรียบร้อย!');
+}
+
+function renderFgList() {
+  $('fgList').innerHTML = recipes.map(r => {
+    const st = Number(r.fgStock) || 0;
+    const lo = Number(r.fgLow) || 0;
+    const isLow = lo > 0 && st <= lo;
+    return `<tr>
+      <td><b>${r.name}</b>${isLow ? ` <span style="color:#ef4444;">${icon('circle')}</span>` : ''}</td>
+      <td class="r"><b>${st.toLocaleString()}</b> ${r.yieldUnit}</td>
+      <td class="r"><input type="number" min="0" value="${lo}" style="width:70px; text-align:right; padding:4px;" onchange="recById('${r.id}').fgLow=+this.value||0; saveAll(); renderAlerts();"></td>
+      <td class="r"><button class="btn btn-ghost btn-sm" onclick="adjFg('${r.id}')" style="padding:6px 10px;">${icon('pencil')} ปรับคลัง</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ยังไม่มีสินค้าเพื่อขาย</td></tr>';
+}
+
+async function adjFg(id) {
+  const r = recById(id);
+  const v = await ui.prompt(`ป้อนจำนวนคงเหลือใหม่ของ "${r.name}" (${r.yieldUnit})`, Number(r.fgStock) || 0, { type: 'number', title: 'ปรับสต๊อกสินค้า' });
+  if (v === null || v === "") return;
+  r.fgStock = +v || 0;
+  saveAll();
+  render();
+}
+
+function renderStockList() {
+  const q = ($('stkSearch').value || '').trim().toLowerCase();
+  const list = materials.filter(m => !q || m.name.toLowerCase().includes(q));
+
+  $('stockList').innerHTML = list.map(m => {
+    const st = matStockBase(m);
+    const lo = matLowBase(m);
+    const isLow = lo > 0 && st <= lo;
+    return `<tr>
+      <td><b>${m.name}</b>${isLow ? ` <span style="color:#ef4444;">${icon('circle')}</span>` : ''}<br><span style="font-size:12px; color:var(--color-text-muted);">รับต่อหน่วย: ${m.qty} ${m.unit}</span></td>
+      <td class="r"><b style="color:${isLow ? '#ef4444' : 'inherit'}">${st.toLocaleString()}</b> ${baseU(m)}</td>
+      <td class="r"><input type="number" min="0" value="${lo}" style="width:70px; text-align:right; padding:4px;" onchange="matById('${m.id}').lowStock=+this.value||0; saveAll(); renderAlerts();"></td>
+      <td class="r">
+        <button class="btn btn-ghost btn-sm" onclick="receiveMat('${m.id}')" style="padding:6px 10px;">${icon('plus')} รับเข้า</button>
+        <button class="btn btn-ghost btn-sm" onclick="adjMat('${m.id}')" style="padding:6px 10px;">${icon('pencil')} ปรับค่า</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ยังไม่มีวัตถุดิบในคลัง</td></tr>';
+}
+
+async function receiveMat(id) {
+  const m = matById(id);
+  const u = UNITS[m.unit] || { f: 1 };
+  const v = await ui.prompt(`ป้อนจำนวนที่จะรับเข้าสำหรับ "${m.name}" (หน่วย: ${m.unit})\nระบบจะแปลงเป็นหน่วยย่อยสำหรับหักสูตรให้ทันที`, 1, { type: 'number', title: 'รับวัตถุดิบเข้าสต๊อก' });
+  if (v === null || v === "") return;
+  const add = (+v || 0) * u.f;
+  m.stock = matStockBase(m) + add;
+  saveAll();
+  render();
+}
+
+async function adjMat(id) {
+  const m = matById(id);
+  const v = await ui.prompt(`ตั้งค่าจำนวนคงเหลือจริงของ "${m.name}" (หน่วยหลัก: ${baseU(m)})`, matStockBase(m), { type: 'number', title: 'ปรับสต๊อกวัตถุดิบ' });
+  if (v === null || v === "") return;
+  m.stock = +v || 0;
+  saveAll();
+  render();
+}
+
+function renderStockPage() {
+  renderProdPreview();
+  renderFgList();
+  renderStockList();
+  renderAlerts();
+}
+
+// ============================================================
+// 8. POS & BILL CREATOR
+// ============================================================
+let currentBill = blankBill();
+let docType = 'receipt'; // delivery | billing | receipt
+
+function blankBill() {
+  return {
+    id: null,
+    billNo: 'HB-' + String(counter + 1).padStart(4, '0'),
+    date: new Date().toISOString().slice(0, 10),
+    cust: '',
+    sender: '',
+    discV: 0,
+    discT: '%',
+    taxV: 0,
+    taxT: '%',
+    status: 'wait',
+    items: [{ recipeId: recipes[0]?.id || '', qty: 1, price: recipes[0]?.sell || 0 }]
+  };
+}
+
+function newBill() {
+  currentBill = blankBill();
+  fillForm();
+  render();
+}
+
+function fillForm() {
+  $('bNo').value = currentBill.billNo;
+  $('bDate').value = currentBill.date;
+  $('bCust').value = currentBill.cust;
+  $('bSender').value = currentBill.sender;
+  $('bDiscV').value = currentBill.discV;
+  $('bDiscT').value = currentBill.discT;
+  $('bTaxV').value = currentBill.taxV;
+  $('bTaxT').value = currentBill.taxT;
+  setStatus(currentBill.status, true);
+}
+
+function bindForm() {
+  currentBill.date = $('bDate').value;
+  currentBill.cust = $('bCust').value;
+  currentBill.sender = $('bSender').value;
+  currentBill.discV = +$('bDiscV').value || 0;
+  currentBill.discT = $('bDiscT').value;
+  currentBill.taxV = +$('bTaxV').value || 0;
+  currentBill.taxT = $('bTaxT').value;
+}
+
+function setStatus(s, silent) {
+  currentBill.status = s;
+  ['Wait', 'Ship', 'Paid'].forEach(k => {
+    $('st' + k).classList.toggle('btn-primary', k.toLowerCase() === s);
+    $('st' + k).classList.toggle('btn-ghost', k.toLowerCase() !== s);
+  });
+  if (!silent) render();
+}
+
+function setDoc(d) {
+  docType = d;
+  ['Delivery', 'Billing', 'Receipt'].forEach(k => {
+    $('dc' + k).classList.toggle('btn-primary', k.toLowerCase() === d);
+    $('dc' + k).classList.toggle('btn-ghost', k.toLowerCase() !== d);
+  });
+  render();
+}
+
+function addBillItem() {
+  const r = recipes[0];
+  currentBill.items.push({ recipeId: r ? r.id : '', qty: 1, price: r ? r.sell : 0 });
+  render();
+}
+
+function delBillItem(i) {
+  currentBill.items.splice(i, 1);
+  if (!currentBill.items.length) {
+    const r = recipes[0];
+    currentBill.items.push({ recipeId: r ? r.id : '', qty: 1, price: r ? r.sell : 0 });
+  }
+  render();
+}
+
+function renderBillRows() {
+  $('billRows').innerHTML = currentBill.items.map((it, i) => `
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
+      <select style="flex:2;" onchange="currentBill.items[${i}].recipeId=this.value; currentBill.items[${i}].price=recById(this.value)?.sell||0; render();">
+        <option value="">— เลือกสินค้า —</option>
+        ${recipes.map(r => `<option value="${r.id}" ${r.id === it.recipeId ? 'selected' : ''}>[${r.code || '-'}] ${r.name}</option>`).join('')}
+      </select>
+      <input type="number" value="${it.qty}" style="flex:1;" oninput="currentBill.items[${i}].qty=+this.value||1; render();" placeholder="จำนวน">
+      <input type="number" value="${it.price}" style="flex:1.2;" oninput="currentBill.items[${i}].price=+this.value||0; render();" placeholder="ราคา/ชิ้น">
+      <button class="btn btn-danger" onclick="delBillItem(${i})" style="flex:none; width:auto; padding:10px 12px;" title="ลบ">${icon('trash-2')}</button>
+    </div>
+  `).join('');
+}
+
+function calcBill(b) {
+  const sub = b.items.reduce((sum, it) => sum + (it.qty * it.price), 0);
+  let disc = b.discV || 0;
+  if (b.discT === '%') disc = sub * (b.discV / 100);
+  const afterDisc = sub - disc;
+  let tax = b.taxV || 0;
+  if (b.taxT === '%') tax = afterDisc * (b.taxV / 100);
+  const grand = afterDisc + tax;
+  return { sub, disc, tax, grand };
+}
+
+function saveBill() {
+  bindForm();
+  if (!currentBill.items.some(it => it.recipeId && it.qty > 0)) {
+    alert('เลือกสินค้าอย่างน้อย 1 รายการเพื่อออกบิล');
+    return;
+  }
+
+  if (!currentBill.id) {
+    currentBill.id = uid();
+    // ตัดสต๊อกสินค้าสำเร็จรูปทันที
+    currentBill.items.forEach(it => {
+      const r = recById(it.recipeId);
+      if (r) {
+        r.fgStock = Math.max(0, (Number(r.fgStock) || 0) - it.qty);
+      }
+    });
+    bills.push({ ...currentBill });
+    counter++;
+  } else {
+    const idx = bills.findIndex(b => b.id === currentBill.id);
+    if (idx !== -1) {
+      bills[idx] = { ...currentBill };
+    }
+  }
+
+  saveAll();
+  render();
+  alert('บันทึกและปรับยอดสินค้าเรียบร้อย!');
+}
+
+function openBill(id) {
+  const b = bills.find(x => x.id === id);
+  if (!b) return;
+  currentBill = { ...b, items: b.items.map(it => ({ ...it })) };
+  fillForm();
+  render();
+}
+
+async function delBill(id) {
+  if (!(await ui.confirm('ยืนยันเพื่อลบบิลประวัตินี้?', { okText: 'ลบ', danger: true }))) return;
+  bills = bills.filter(b => b.id !== id);
+  if (!isMockMode) {
+    await API.del('/api/bills/' + id);
+  }
+  saveAll();
+  render();
+}
+
+function renderBillList() {
+  const ST_LABEL = {
+    wait: ['รอผลิต', 'status-trial'],
+    ship: ['รอเก็บเงิน', 'status-active'],
+    paid: ['เก็บเงินแล้ว', 'status-active']
+  };
+
+  let w = 0, sh = 0, p = 0;
+  bills.forEach(b => {
+    const { grand } = calcBill(b);
+    if (b.status === 'wait') w += grand;
+    else if (b.status === 'ship') sh += grand;
+    else if (b.status === 'paid') p += grand;
+  });
+
+  $('sumWait').textContent = money(w);
+  $('sumShip').textContent = money(sh);
+  $('sumPaid').textContent = money(p);
+
+  $('billList').innerHTML = bills.map(b => {
+    const { grand } = calcBill(b);
+    const [lbl, cls] = ST_LABEL[b.status] || ['รอส่ง', 'status-trial'];
+    return `<tr>
+      <td><b>${b.billNo}</b></td>
+      <td>${b.cust || '-'}</td>
+      <td class="r"><b>${money(grand)}</b></td>
+      <td><span class="shop-status-badge ${cls}" style="margin:0; padding:4px 8px; font-size:11px;">${lbl}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="openBill('${b.id}')" style="padding:6px 10px;" title="เปิด/แก้ไข">${icon('pencil')}</button>
+        <button class="btn btn-danger btn-sm" onclick="delBill('${b.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="color:#999; text-align:center;">ยังไม่มีประวัติการขาย</td></tr>';
+}
+
+function renderDoc() {
+  const d = DOC[docType];
+  const c = calcBill(currentBill);
+  const meta = ['โทร. ' + settings.phone, settings.addr, settings.tax ? 'เลขผู้เสียภาษี ' + settings.tax : ''].filter(Boolean).join('\n');
+  
+  let rows = currentBill.items.map((it, i) => {
+    const r = recById(it.recipeId);
+    const nm = r ? `[${r.code || '-'}] ${r.name}` : '-';
+    if (d.money) {
+      return `<tr><td class="c">${i + 1}</td><td>${nm}</td><td class="c">${it.qty} ชิ้น</td><td class="r">${money(it.price)}</td><td class="r">${money(it.qty * it.price)}</td></tr>`;
+    }
+    return `<tr><td class="c">${i + 1}</td><td>${nm}</td><td class="c">${it.qty} ชิ้น</td></tr>`;
+  }).join('');
+
+  const thead = d.money ? `<tr><th style="width:32px">ที่</th><th>รายการ</th><th style="width:74px">จำนวน</th><th style="width:92px">ราคา/ชิ้น</th><th style="width:104px">รวม</th></tr>`
+    : `<tr><th style="width:32px">ที่</th><th>รายการ</th><th style="width:90px">จำนวน</th></tr>`;
+  
+  const tfoot = d.money ? `<tfoot>
+      <tr><td colspan="4" class="r">รวมเป็นเงิน</td><td class="r">${money(c.sub)}</td></tr>
+      ${c.disc > 0 ? `<tr><td colspan="4" class="r">ส่วนลด</td><td class="r">- ${money(c.disc)}</td></tr>` : ''}
+      ${c.tax > 0 ? `<tr><td colspan="4" class="r">ภาษี</td><td class="r">${money(c.tax)}</td></tr>` : ''}
+      <tr><td colspan="4" class="r">ยอดสุทธิ</td><td class="r">${money(c.grand)}</td></tr></tfoot>` : '';
+
+  const payInfo = [settings.bank && ('ธนาคาร ' + settings.bank), settings.acc && ('เลขบัญชี ' + settings.acc),
+    settings.holder && ('ชื่อบัญชี ' + settings.holder), settings.pp && ('พร้อมเพย์ ' + settings.pp)].filter(Boolean).join(' · ');
+
+  const payBlock = (d.pay && payInfo) ? `<div class="bd-pay"><b>ช่องทางชำระเงิน:</b> ${payInfo}<br>ยอดที่ต้องชำระ <b>${money(c.grand)}</b> (${bahtText(c.grand)})</div>` : '';
+
+  let qrCodeHtml = '';
+  if (settings.pp && d.pay) {
+    const totalAmount = c.grand.toFixed(2);
+    qrCodeHtml = `<img src="https://promptpay.io/${settings.pp}/${totalAmount}.png" style="width:120px; height:120px; border:1px solid #ddd; padding:4px; border-radius:8px; margin-top:5px;">`;
+  }
+
+  $('billDoc').innerHTML = `
+    <div class="bd-top">
+      <div class="bd-head">
+        <img src="${logoSrc()}" alt="Logo">
+        <div class="bd-shop">
+          <div class="nm">${settings.shopName}</div>
+          <div class="meta">${meta}</div>
+        </div>
+      </div>
+      <div class="bd-title">
+        <div class="t">${d.t}</div>
+        <div class="ts">${d.s}</div>
+        <div class="doc">เลขที่ <b>${currentBill.billNo}</b><br>วันที่ ${thaiDate(currentBill.date) || '…'}</div>
+      </div>
+    </div>
+    
+    <div class="bd-cust">
+      <div><span class="lbl">ลูกค้า:</span> ${currentBill.cust || '………………………'}</div>
+      <div><span class="lbl">ผู้จัดส่ง:</span> ${currentBill.sender || '…………'}</div>
+    </div>
+    
+    <table class="bd">
+      <thead>${thead}</thead>
+      <tbody>${rows}</tbody>
+      ${tfoot}
+    </table>
+    
+    ${d.money ? `<div class="bd-words">จำนวนเงินตัวอักษร : <b>(${bahtText(c.grand)})</b></div>` : ''}
+    
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div style="flex:1;">
+        ${payBlock}
+      </div>
+      <div style="margin-left: 20px;">
+        ${qrCodeHtml}
+      </div>
+    </div>
+    
+    <div class="bd-sign">
+      <div class="box"><div class="line"></div><div class="cap">${d.sigL}</div></div>
+      <div class="box"><div class="line"></div><div class="cap">${d.sigR}</div></div>
+    </div>
+  `;
+}
+
+// ============================================================
+// 9. SETTINGS & BRAND DESIGN SYSTEM
+// ============================================================
+function fillSettings() {
+  $('setShop').value = settings.shopName;
+  $('setPhone').value = settings.phone;
+  $('setTax').value = settings.tax;
+  $('setAddr').value = settings.addr;
+  $('setBank').value = settings.bank;
+  $('setAcc').value = settings.acc;
+  $('setHolder').value = settings.holder;
+  $('setPP').value = settings.pp;
+}
+
+function saveSettings() {
+  settings.shopName = $('setShop').value.trim() || 'ร้านของฉัน';
+  settings.phone = $('setPhone').value.trim();
+  settings.tax = $('setTax').value.trim();
+  settings.addr = $('setAddr').value.trim();
+  settings.bank = $('setBank').value.trim();
+  settings.acc = $('setAcc').value.trim();
+  settings.holder = $('setHolder').value.trim();
+  settings.pp = $('setPP').value.trim();
+
+  $('sidebarShopName').textContent = settings.shopName;
+  syncAccountUI();
+  saveAll();
+}
+
+function applyTheme(k) {
+  const sys = SYSTEMS[k] || SYSTEMS[DEFAULT_THEME];
+  document.documentElement.style.setProperty('--color-primary', sys.primary);
+  document.documentElement.style.setProperty('--color-secondary', sys.secondary);
+  document.documentElement.style.setProperty('--color-bg-base', sys.bg);
+  document.documentElement.style.setProperty('--color-text-main', sys.text);
+  
+  if (k === 'dark') {
+    document.body.classList.add('theme-dark');
+  } else {
+    document.body.classList.remove('theme-dark');
+  }
+}
+
+function applyBrand() {
+  // โลโก้ของร้าน (ถ้าอัปโหลดไว้) ไม่งั้นใช้โลโก้ Recipro (แครอท) — แสดงทั้ง sidebar + หน้าตั้งค่า
+  const src = logoSrc();
+  const prev = $('settingsLogoPreview'); if (prev) prev.src = src;
+  const side = $('sidebarBrandLogo'); if (side) side.src = src;
+  syncAccountUI();
+}
+
+function renderThemePicker() {
+  $('themePickerArea').innerHTML = Object.keys(SYSTEMS).map(k => {
+    const sys = SYSTEMS[k];
+    return `<button class="btn btn-ghost" onclick="settings.theme='${k}'; saveAll(); applyTheme('${k}'); renderThemePicker();" style="flex-direction:column; align-items:flex-start; border: 2px solid ${settings.theme === k ? 'var(--color-primary)' : 'rgba(255,255,255,0.5)'}; padding:10px;">
+      <span style="font-weight:700; font-size:12px; color:${sys.text};">${sys.label}</span>
+      <div style="display:flex; gap:4px; margin-top:6px;">
+        <span style="width:14px; height:14px; border-radius:50%; background:${sys.primary}; display:inline-block;"></span>
+        <span style="width:14px; height:14px; border-radius:50%; background:${sys.secondary}; display:inline-block;"></span>
+      </div>
+    </button>`;
+  }).join('');
+}
+
+function uploadLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function () {
+    settings.logoData = reader.result;
+    saveAll();
+    applyBrand();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  settings.logoData = '';
+  saveAll();
+  applyBrand();
+}
+
+function exportData() {
+  const payload = { suppliers, materials, recipes, bills };
+  const str = JSON.stringify(payload, null, 2);
+  const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(str);
+  const dlAnchor = document.createElement('a');
+  dlAnchor.setAttribute("href", dataUri);
+  dlAnchor.setAttribute("download", `recipro_backup_${new Date().toISOString().slice(0,10)}.json`);
+  document.body.appendChild(dlAnchor);
+  dlAnchor.click();
+  dlAnchor.remove();
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async function() {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.suppliers) suppliers = data.suppliers;
+      if (data.materials) materials = data.materials;
+      if (data.recipes) recipes = data.recipes;
+      if (data.bills) bills = data.bills;
+      
+      saveAll();
+      render();
+      alert('โหลดข้อมูลสำรองเรียบร้อย! ข้อมูลจะถูกซิงค์ขึ้นระบบคลาวด์ในลำดับถัดไป');
+    } catch(e) {
+      alert('ไฟล์สแปคไม่ถูกต้อง: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ============================================================
+// 10. MEMBER PAYMENTS (STRIPE REDIRECT)
+// ============================================================
+async function loadPlans() {
+  if (isMockMode) {
+    // โหลดแผนแบบจำลองในหน้าจอชำระเงิน
+    renderPlansHTML(MOCK_PLANS);
+    return;
+  }
+
+  const { plans } = await API.get('/api/plans');
+  if (plans) {
+    renderPlansHTML(plans);
+  }
+}
+
+function renderPlansHTML(plans) {
+  $('plansSelectionGrid').innerHTML = plans.map(p => `
+    <div class="glass-card" style="text-align: center; border: 2px solid var(--glass-border);">
+      <h3 style="font-size:24px; color:var(--color-primary);">${p.name}</h3>
+      <p style="color:var(--color-text-muted); font-size:14px; margin-bottom: 20px;">${p.features_json?.label || ''}</p>
+      <div style="font-size: 32px; font-weight:800; color:var(--color-text-main); margin-bottom: 20px;">
+        ฿${p.price_month} <span style="font-size:14px; font-weight:500;">/ เดือน</span>
+        <br>
+        <span style="font-size:14px; color:var(--color-secondary);">หรือ ฿${p.price_year} / ปี</span>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button class="btn btn-primary btn-sm" onclick="checkoutPlan('${p.id}', 'month')">ชำระรายเดือน</button>
+        <button class="btn btn-secondary btn-sm" onclick="checkoutPlan('${p.id}', 'year')">ชำระรายปี</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function checkoutPlan(planId, billingCycle) {
+  if (isMockMode) {
+    const isConfirm = await ui.confirm("คุณต้องการชำระเงินจำลอง (Mock Checkout) เพื่ออัปเกรดสถานะร้านค้าเป็น Active หรือไม่?", { title: 'ชำระเงิน (โหมดจำลอง)', okText: 'ยืนยันชำระเงิน' });
+    if (isConfirm) {
+      const shop = mockShops.find(s => s.id === CURRENT_SHOP);
+      if (shop) shop.status = 'active';
+
+      // บันทึกการชำระเงิน + อายุสมาชิกจำลอง เพื่อให้แดชบอร์ดคิดรายได้/วันหมดอายุได้จริง
+      const plan = MOCK_PLANS.find(p => p.id === planId) || MOCK_PLANS[0];
+      const amount = billingCycle === 'year' ? plan.price_year : plan.price_month;
+      const periodEnd = new Date(Date.now() + (billingCycle === 'year' ? 365 : 30) * DAY_MS).toISOString();
+      mockPayments.push({ shop_id: CURRENT_SHOP, amount, currency: 'THB', status: 'paid', paid_at: new Date().toISOString() });
+      const existSub = mockSubscriptions.find(s => s.shop_id === CURRENT_SHOP);
+      if (existSub) {
+        Object.assign(existSub, { status: 'active', billing_cycle: billingCycle, current_period_end: periodEnd });
+      } else {
+        mockSubscriptions.push({ shop_id: CURRENT_SHOP, status: 'active', billing_cycle: billingCycle, current_period_end: periodEnd });
+      }
+
+      localStorage.setItem('mj_shops', JSON.stringify(mockShops));
+      localStorage.setItem('mj_subscriptions', JSON.stringify(mockSubscriptions));
+      localStorage.setItem('mj_payments', JSON.stringify(mockPayments));
+      alert("ชำระเงินจำลองสำเร็จ! สถานะร้านค้าอัปเดตเป็น Active");
+      await boot();
+    }
+    return;
+  }
+
+  if (!CURRENT_SHOP) { alert('ไม่พบบัญชีร้านค้าสำหรับการชำระเงิน'); return; }
+  if (!cfg.OMISE_PUBLIC_KEY) { alert('ยังไม่ได้ตั้งค่า OMISE_PUBLIC_KEY ใน app-config.js'); return; }
+  if (typeof Omise === 'undefined') { alert('โหลด Omise.js ไม่สำเร็จ'); return; }
+
+  // ขอเลขบัตรจากผู้ใช้ผ่านฟอร์มของ Omise (เลขบัตรไม่ผ่านเซิร์ฟเวอร์เรา)
+  const cardNumber = await ui.prompt('เลขบัตร (ทดสอบ: 4242424242424242)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' });
+  if (!cardNumber) return;
+  const exp = (await ui.prompt('วันหมดอายุบัตร MM/YY (เช่น 12/30)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' })) || '';
+  const cvc = (await ui.prompt('CVC (เช่น 123)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' })) || '';
+  const [em, ey] = exp.split('/').map(s => s.trim());
+
+  Omise.setPublicKey(cfg.OMISE_PUBLIC_KEY);
+  updateCloudStatus("กำลังเชื่อมต่อ Omise...");
+
+  Omise.createToken('card', {
+    name: CURRENT_USER?.email || 'Recipro',
+    number: cardNumber.replace(/\s/g, ''),
+    expiration_month: em,
+    expiration_year: ey && ey.length === 2 ? '20' + ey : ey,
+    security_code: cvc
+  }, async (statusCode, response) => {
+    if (statusCode !== 200) {
+      alert('สร้าง token บัตรไม่สำเร็จ: ' + (response.message || statusCode));
+      updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+      return;
+    }
+    try {
+      const out = await API.post('/api/billing/checkout', {
+        planId, billingCycle, omiseToken: response.id
+      });
+      if (out.authorizeUri) {
+        window.location.href = out.authorizeUri;   // 3-D Secure
+      } else if (out.ok) {
+        alert('ชำระเงินสำเร็จ! สถานะร้านอัปเดตเป็น Active');
+        await boot();
+      }
+    } catch (err) {
+      alert('ชำระเงินไม่สำเร็จ: ' + err.message);
+    } finally {
+      updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+    }
+  });
+}
+
+function redirectToBillingPortal() {
+  if (isMockMode) return;
+  alert('การจัดการบัตร/ยกเลิกสมาชิก ติดต่อผ่านระบบ Omise (จะเพิ่มหน้าให้ในเฟสถัดไป)');
+}
+
+function goToBillingFromSuspended() {
+  $('suspendedOverlay').style.display = 'none';
+  switchTab('billing');
+}
+
+// ============================================================
+// 11. SUPERADMIN ACTIONS
+// ============================================================
+async function adminLoadShops() {
+  if (isMockMode) {
+    renderMockShops();
+    return;
+  }
+
+  const { shops } = await API.get('/api/admin/shops');
+  renderShopsTableHTML(shops || []);
+}
+
+function renderShopsTableHTML(shops) {
+  $('adminShopList').innerHTML = shops.map(sh => `
+    <tr>
+      <td><b>${sh.name}</b><br><span style="font-size:11px; color:var(--color-text-muted);">${sh.id}</span></td>
+      <td><span class="shop-status-badge status-${sh.status}">${sh.status}</span></td>
+      <td>
+        <select onchange="adminUpdateShopStatus('${sh.id}', this.value)" style="padding:4px; font-size:12px;">
+          <option value="trial" ${sh.status === 'trial' ? 'selected' : ''}>Trial</option>
+          <option value="active" ${sh.status === 'active' ? 'selected' : ''}>Active</option>
+          <option value="suspended" ${sh.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+        </select>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderMockShops() {
+  renderShopsTableHTML(mockShops);
+}
+
+// ============================================================
+// 11b. SUPERADMIN DASHBOARD — สถิติภาพรวมทั้งระบบ
+// ============================================================
+async function adminLoadDashboard() {
+  let shops, payments, subs;
+
+  if (isMockMode) {
+    shops = mockShops;
+    payments = mockPayments;
+    subs = mockSubscriptions;
+  } else {
+    const d = await API.get('/api/admin/dashboard');
+    shops = d.shops || [];
+    payments = d.payments || [];
+    subs = d.subscriptions || [];
+  }
+
+  const countBy = st => shops.filter(s => s.status === st).length;
+  const paidList = payments.filter(p => p.status === 'paid');
+  const revenue = paidList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+  const now = Date.now();
+  const soon = now + 7 * DAY_MS;
+  const shopName = id => (shops.find(s => s.id === id) || {}).name || '(ไม่ทราบชื่อ)';
+  const expiring = subs
+    .filter(s => {
+      if (!s.current_period_end || s.status === 'canceled') return false;
+      const t = new Date(s.current_period_end).getTime();
+      return t >= now && t <= soon;
+    })
+    .map(s => ({
+      name: shopName(s.shop_id),
+      end: s.current_period_end,
+      cycle: s.billing_cycle,
+      daysLeft: Math.max(0, Math.ceil((new Date(s.current_period_end).getTime() - now) / DAY_MS))
+    }))
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+
+  renderAdminDashboard({
+    total: shops.length,
+    active: countBy('active'),
+    trial: countBy('trial'),
+    suspended: countBy('suspended'),
+    revenue,
+    paymentCount: paidList.length,
+    expiring
+  });
+}
+
+function renderAdminDashboard(d) {
+  const statCard = (ico, val, lab, sub, color) => `
+    <div class="stat-card">
+      <div class="stat-ico">${ico}</div>
+      <div class="stat-val" style="color:${color};">${val}</div>
+      <div class="stat-lab">${lab}</div>
+      ${sub ? `<div class="stat-sub">${sub}</div>` : ''}
+    </div>`;
+
+  $('adminDashStats').innerHTML = [
+    statCard(icon('store'), d.total, 'ร้านค้าทั้งหมด', `ทดลอง ${d.trial} · ระงับ ${d.suspended}`, 'var(--color-primary)'),
+    statCard(icon('circle-check'), d.active, 'กำลังใช้งาน (Active)', `จากทั้งหมด ${d.total} ร้าน`, 'var(--color-secondary)'),
+    statCard(icon('coins'), money(d.revenue), 'รายได้รวมสะสม', `${d.paymentCount} รายการชำระ`, '#b45309'),
+    statCard(icon('hourglass'), d.expiring.length, 'ร้านใกล้หมดอายุ', 'ภายใน 7 วัน', d.expiring.length ? '#ef4444' : 'var(--color-secondary)')
+  ].join('');
+
+  if (!d.expiring.length) {
+    $('adminExpiringList').innerHTML = `<p style="color:var(--color-text-muted); font-size:13px; margin:0;">${icon('circle-check')} ไม่มีร้านใกล้หมดอายุในช่วงนี้</p>`;
+    return;
+  }
+  $('adminExpiringList').innerHTML = `
+    <table class="lst">
+      <thead><tr><th>ชื่อร้าน</th><th>รอบบิล</th><th>วันหมดอายุ</th><th class="r">เหลือ</th></tr></thead>
+      <tbody>
+        ${d.expiring.map(e => `
+          <tr>
+            <td><b>${e.name}</b></td>
+            <td>${e.cycle === 'year' ? 'รายปี' : 'รายเดือน'}</td>
+            <td>${new Date(e.end).toLocaleDateString('th-TH')}</td>
+            <td class="r"><span style="color:${e.daysLeft <= 3 ? '#ef4444' : '#b45309'}; font-weight:700;">${e.daysLeft} วัน</span></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function adminUpdateShopStatus(shopId, status) {
+  if (isMockMode) {
+    const shop = mockShops.find(s => s.id === shopId);
+    if (shop) {
+      shop.status = status;
+      localStorage.setItem('mj_shops', JSON.stringify(mockShops));
+      alert('แก้ไขสถานะร้านค้าจำลองเรียบร้อย!');
+      await boot();
+    }
+    return;
+  }
+
+  try {
+    await API.patch('/api/admin/shops/' + shopId, { status });
+    alert('แก้ไขสถานะร้านเรียบร้อย!');
+    await adminLoadShops();
+    await adminLoadDashboard();
+    if (shopId === CURRENT_SHOP) {
+      await boot();
+    }
+  } catch (e) {
+    alert('ไม่สามารถแก้ไขสถานะได้: ' + e.message);
+  }
+}
+
+async function adminCreateShop() {
+  const shopName = $('adminShopName').value.trim();
+  const ownerEmail = $('adminOwnerEmail').value.trim();
+  const ownerPassword = $('adminOwnerPassword').value;
+
+  if(!shopName || !ownerEmail || !ownerPassword) { alert('กรอกข้อมูลให้ครบถ้วน'); return; }
+
+  if (isMockMode) {
+    const newId = uid();
+    mockShops.push({
+      id: newId,
+      name: shopName,
+      status: 'trial'
+    });
+    localStorage.setItem('mj_shops', JSON.stringify(mockShops));
+    alert(`สร้างร้านค้าจำลองใหม่ "${shopName}" เรียบร้อยแล้ว!`);
+    $('adminShopName').value = '';
+    $('adminOwnerEmail').value = '';
+    $('adminOwnerPassword').value = '';
+    await boot();
+    return;
+  }
+
+  updateCloudStatus("กำลังส่งคำสั่งสร้างบัญชีผู้ใช้ใหม่...");
+
+  try {
+    await API.post('/api/admin/shops', { shopName, ownerEmail, ownerPassword });
+    alert(`สร้างร้านใหม่ "${shopName}" และบัญชีเจ้าของเรียบร้อยแล้ว!`);
+    $('adminShopName').value = '';
+    $('adminOwnerEmail').value = '';
+    $('adminOwnerPassword').value = '';
+    await adminLoadShops();
+    await adminLoadDashboard();
+  } catch (err) {
+    alert("เกิดข้อผิดพลาด: " + err.message);
+  } finally {
+    updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+  }
+}
+
+// ============================================================
+// 12. EXCEL/CSV IMPORTER (DYNAMIC SHEETJS INTEGRATION)
+// ============================================================
+function ensureXLSX() {
+  return new Promise((res, rej) => {
+    if (window.XLSX) return res();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => res();
+    s.onerror = () => rej(new Error('load sheetjs fail'));
+    document.head.appendChild(s);
+  });
+}
+
+async function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  updateCloudStatus("กำลังอ่านไฟล์จัดซื้อ...");
+  
+  try {
+    await ensureXLSX();
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      
+      let added = 0;
+      let startIdx = 0;
+      
+      if (rows.length && /ชื่อ|name/i.test(String(rows[0][0] || ''))) {
+        startIdx = 1;
+      }
+      
+      for (let i = startIdx; i < rows.length; i++) {
+        const c = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
+        if (!c[0]) continue;
+        
+        const name = c[0];
+        const qty = +c[1] || 1;
+        const unit = c[2] || 'กิโลกรัม';
+        const price = +c[3] || 0;
+        const supName = c[4] || '';
+        const orderUrl = c[5] || '';
+        
+        let supId = '';
+        if (supName) {
+          let sp = suppliers.find(s => s.name.trim() === supName);
+          if (!sp) {
+            sp = { id: uid(), name: supName, note: '' };
+            suppliers.push(sp);
+          }
+          supId = sp.id;
+        }
+        
+        materials.push({
+          id: uid(), name, qty, unit, price, supId, orderUrl, stock: 0, lowStock: 0
+        });
+        added++;
+      }
+      
+      saveAll();
+      render();
+      alert(`นำเข้าวัตถุดิบสำเร็จทั้งหมด ${added} รายการ!`);
+    };
+    reader.readAsArrayBuffer(file);
+  } catch (err) {
+    alert("ไม่สามารถนำเข้าข้อมูลได้: " + err.message);
+  } finally {
+    updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์" : "ซิงค์คลาวด์เรียบร้อย", isMockMode ? "wifi-off" : "circle-check");
+  }
+}
+
+// ============================================================
+// 13. RENDER ORCHESTRATOR
+// ============================================================
+function render() {
+  renderSup();
+  renderMatList();
+  renderRecipeList();
+  renderBillRows();
+  renderBillList();
+  renderDoc();
+  renderStockPage();
+  loadPlans();
+  renderIcons();   // ไฮเดรตไอคอน [data-icon] ที่เป็น static ให้ครบหลังรีเฟรช
+}
+
+// คืนค่าสถานะแถบเมนู (ย่อ/ขยาย) + ไฮเดรตไอคอนเริ่มต้นทันทีที่โหลด
+restoreSidebar();
+renderIcons();
+
+// เริ่มต้นโหลดหน้า
+switchTab('materials');
+
+if (isMockMode) {
+  // หากอยู่ในโหมดจำลอง ให้ข้ามไปขั้นตอนล็อกอินเสมือนทันทีเมื่อไม่ได้ตั้งเซสชันจริง
+  SESSION = { access_token: 'mock-token' };
+  CURRENT_USER = { id: 'mock-user-id', email: 'demo-owner@recipro.local' };
+  $('authScreen').classList.add('hidden');
+  $('appLayout').style.display = 'flex';
+  $('userEmailDisplay').textContent = CURRENT_USER.email;
+  boot();
+} else {
+  // โหมดคลาวด์: ถ้ามี token เดิมก็เข้าแอปต่อ ไม่งั้นโชว์หน้าล็อกอิน
+  initCloudSession();
+}
+</script>
+</body>
+</html>

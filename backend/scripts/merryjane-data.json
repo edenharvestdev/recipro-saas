@@ -1,0 +1,89 @@
+{
+  "suppliers": [
+    { "id": "mq26rtjarnyx", "name": "แม็คโคร", "note": "" },
+    { "id": "mq26rtjau3xy", "name": "KCC", "note": "" },
+    { "id": "mq3t7cdjm07e", "name": "Shopee", "note": "" },
+    { "id": "mq3udux0zofd", "name": "KCG", "note": "คุณแพร" },
+    { "id": "mq3uggxuy8z6", "name": "Taobao", "note": "เดียสั่ง" },
+    { "id": "mq3ujwdxza6c", "name": "China", "note": "Dear" },
+    { "id": "mq3us7dpk4sr", "name": "รถหน้าบ้าน", "note": "มีเฉพาะวันเสาร์ 0985952811" },
+    { "id": "mq3xhtj6ta0s", "name": "Hibi House", "note": "" },
+    { "id": "mq3yj1eqfs66", "name": "RAW Material", "note": "" }
+  ],
+  "materials": [
+    { "id": "mq3t7pkbrud1", "name": "แป้งญี่ปุ่น Nisshin Violet", "qty": 1000, "unit": "กรัม", "price": 53.5, "supId": "mq3t7cdjm07e", "orderUrl": "https://s.shopee.co.th/9pblSAwL4h?share_channel_code=6" },
+    { "id": "mq3u2y89tn9n", "name": "แป้งอัลมอนด์บด", "qty": 1, "unit": "กิโลกรัม", "price": 266, "supId": "mq3t7cdjm07e", "orderUrl": "https://s.shopee.co.th/1gG3knn3EK" },
+    { "id": "mq3u8ko1krb9", "name": "เกลือ Hakata Fleur De Sel", "qty": 1, "unit": "กิโลกรัม", "price": 398, "supId": "mq3t7cdjm07e", "orderUrl": "https://s.shopee.co.th/40dyXIu5h6?share_channel_code=6" },
+    { "id": "mq3uekbzo9k2", "name": "เนย Le Gall (จืด)", "qty": 1, "unit": "กิโลกรัม", "price": 475, "supId": "mq3udux0zofd", "orderUrl": "" },
+    { "id": "mq3ugvapm8v7", "name": "Maple Syrup", "qty": 1, "unit": "ลิตร", "price": 890, "supId": "mq3uggxuy8z6", "orderUrl": "เดียสั่ง" },
+    { "id": "mq3ukaop7200", "name": "น้ำผึ้ง Acacia", "qty": 1000, "unit": "กรัม", "price": 340, "supId": "mq3ujwdxza6c", "orderUrl": "Dear+Gam" },
+    { "id": "mq3umgx2tvib", "name": "น้ำตาลทรายวังขนาย Light Brown Sugar", "qty": 5, "unit": "กิโลกรัม", "price": 135, "supId": "mq26rtjarnyx", "orderUrl": "" },
+    { "id": "mq3upmaeo5ux", "name": "น้ำตาลอ้อยป่น", "qty": 1, "unit": "กิโลกรัม", "price": 125, "supId": "mq3t7cdjm07e", "orderUrl": "https://s.shopee.co.th/4VaF9HJCyr" },
+    { "id": "mq3usi8zmbrk", "name": "ไข่ไก่เบอร์ 0", "qty": 30, "unit": "ฟอง", "price": 145, "supId": "mq3us7dpk4sr", "orderUrl": "" },
+    { "id": "mq3uvxm1gtkg", "name": "Vanilla Paste (french vanilla)", "qty": 1.2, "unit": "กิโลกรัม", "price": 2222, "supId": "mq3uggxuy8z6", "orderUrl": "https://e.tb.cn/h.RjlvY1mY9u1E6bD?tk=xYCgg1yrHmh" },
+    { "id": "mq3v0cto1n4m", "name": "กล่องเค้ก Tiramisu", "qty": 1, "unit": "แพ็ค", "price": 262, "supId": "mq3uggxuy8z6", "orderUrl": "Dear" },
+    { "id": "mq3xbf02pru7", "name": "Rich Sun whip", "qty": 1, "unit": "ลิตร", "price": 130, "supId": "mq26rtjarnyx", "orderUrl": "" },
+    { "id": "mq3xdtlso8pf", "name": "Finger Lady", "qty": 55, "unit": "ชิ้น", "price": 192.5, "supId": "mq3ujwdxza6c", "orderUrl": "" },
+    { "id": "mq3xhzx6ja06", "name": "Matcha Noko", "qty": 1, "unit": "กิโลกรัม", "price": 2545, "supId": "mq3xhtj6ta0s", "orderUrl": "" },
+    { "id": "mq3xmmto6mk3", "name": "Pink Salt", "qty": 1, "unit": "กิโลกรัม", "price": 52, "supId": "mq3t7cdjm07e", "orderUrl": "https://www.makro.pro/p/izuUiVz-625863827465734" },
+    { "id": "mq3xr2jns57o", "name": "Mochi Powder", "qty": 1, "unit": "กิโลกรัม", "price": 120, "supId": "mq3xhtj6ta0s", "orderUrl": "สั่งผลิต" },
+    { "id": "mq3yjdm29lkh", "name": "Brown Butter", "qty": 800, "unit": "กรัม", "price": 480, "supId": "mq3yj1eqfs66", "orderUrl": "" },
+    { "id": "mq3yjy1r8f17", "name": "กาก Brown Butter", "qty": 30, "unit": "กรัม", "price": 10, "supId": "mq3yj1eqfs66", "orderUrl": "" },
+    { "id": "mq3yv555rbym", "name": "Hibi Maple Vanilla", "qty": 900, "unit": "กรัม", "price": 654, "supId": "mq3yj1eqfs66", "orderUrl": "" },
+    { "id": "mq3yxssw87pu", "name": "Mmilk", "qty": 2, "unit": "ลิตร", "price": 95, "supId": "mq26rtjarnyx", "orderUrl": "" },
+    { "id": "mq3yyju73kx0", "name": "เนยเค็ม Meal Mate", "qty": 1, "unit": "กิโลกรัม", "price": 153, "supId": "mq26rtjau3xy", "orderUrl": "" },
+    { "id": "mq3z0kjpdgfy", "name": "McCormick Imitation Vanilla Flavor", "qty": 473, "unit": "มิลลิลิตร", "price": 123, "supId": "mq26rtjau3xy", "orderUrl": "" },
+    { "id": "mq3z6g312hle", "name": "Mascarpone TaTua", "qty": 1, "unit": "กิโลกรัม", "price": 330, "supId": "mq26rtjau3xy", "orderUrl": "" },
+    { "id": "mq6duk5ntmgu", "name": "Brown Sugar", "qty": 1, "unit": "กิโลกรัม", "price": 50, "supId": "mq3t7cdjm07e", "orderUrl": "https://s.shopee.co.th/5ApyliRpFG" },
+    { "id": "mq7n03k2j4fr", "name": "วินเนอร์ กลิ่นนมเนยครีม", "qty": 454, "unit": "มิลลิลิตร", "price": 130, "supId": "mq26rtjau3xy", "orderUrl": "" },
+    { "id": "mqb3jf0e2s1o", "name": "Torched Caramel Mochi", "qty": 48, "unit": "ชิ้น", "price": 98, "supId": "", "orderUrl": "" },
+    { "id": "mqb3kx71eany", "name": "Torched Painl Mochi", "qty": 48, "unit": "ชิ้น", "price": 98, "supId": "mq3ujwdxza6c", "orderUrl": "" }
+  ],
+  "recipes": [
+    { "id": "mq3y7edd2bm5", "code": "HBD06M", "name": "Tiramisu Matcha", "sell": 25, "batchYield": 55, "items": [
+      { "matId": "mq3v0cto1n4m", "amount": 1 },
+      { "matId": "mq3xdtlso8pf", "amount": 1 },
+      { "matId": "mq3z6g312hle", "amount": 1000 },
+      { "matId": "mq3xbf02pru7", "amount": 1000 },
+      { "matId": "mq3uvxm1gtkg", "amount": 20 },
+      { "matId": "mq3xmmto6mk3", "amount": 5 },
+      { "matId": "mq3xhzx6ja06", "amount": 40 }
+    ] },
+    { "id": "mq3yr32yg66j", "code": "ฺBT01", "name": "RAW Hibi Maple Vanilla", "sell": 0, "batchYield": 1, "items": [
+      { "matId": "mq3ugvapm8v7", "amount": 600 },
+      { "matId": "mq3ukaop7200", "amount": 200 },
+      { "matId": "mq3yjy1r8f17", "amount": 30 },
+      { "matId": "mq3umgx2tvib", "amount": 120 },
+      { "matId": "mq3u8ko1krb9", "amount": 4 },
+      { "matId": "mq3uvxm1gtkg", "amount": 20 }
+    ] },
+    { "id": "mq6ee9tk3996", "code": "HBD19N00", "name": "Noisette Financier", "sell": 15, "batchYield": 56, "yieldUnit": "ชิ้น", "isRaw": false, "steps": "วิธีทำ\n1. เตรียมส่วนแห้ง — ร่อนรวม Almond Flour + แป้ง T45 + Fleur de Sel แล้วเติม Brown Sugar คนให้เข้ากัน\n2. ผสมไข่ขาวลงในส่วนแห้ง คนจนเข้ากัน (ไม่ต้องตีให้ขึ้นฟอง)\n3. Brown Butter อุ่น 45-50°C ผสม Hibi Maple Vanilla + Vanilla Paste\n4. ค่อย ๆ เทส่วน Brown Butter ลงในแป้ง คนเบา ๆ จนเนียน\n5. พักแบตเตอร์ในตู้เย็น 24-48 ชม.\n6. ทาเนยพิมพ์ เติมแบตเตอร์ 80-85% เคาะไล่ฟอง\n7. อบ 210°C 5-6 นาที แล้วลด 175-180°C อีก 8-10 นาที\n8. พักในพิมพ์ 5 นาที แล้วพักบนตะแกรงจนเย็น", "items": [
+      { "matId": "mq3u2y89tn9n", "amount": 300 },
+      { "matId": "mq3yjdm29lkh", "amount": 400 },
+      { "matId": "mq3usi8zmbrk", "amount": 11 },
+      { "matId": "mq3yv555rbym", "amount": 150 },
+      { "matId": "mq6duk5ntmgu", "amount": 320 },
+      { "matId": "mq3u8ko1krb9", "amount": 3 },
+      { "matId": "mq3uvxm1gtkg", "amount": 5 }
+    ] },
+    { "id": "mq7ng6f4w8vg", "code": "HBD11N00", "name": "Mochi Butter Bun", "sell": 15, "batchYield": 69, "yieldUnit": "ชิ้น", "isRaw": false, "steps": "Mochi Butter Bun (Brown Mochi Filling)\n\nส่วนแป้ง: Mochi Powder 1000g, เนยเค็ม Meal Mate 500g, นมสด 680ml, ไข่เบอร์0 4ฟอง, กลิ่นนมเนยครีม 10ml, Vanilla Flavor 15ml\nส่วนไส้: Brown Mochi 59 ก้อน\n\n1. ละลายเนยเค็ม พักไว้ 45-50°C\n2. ตีไข่+นม+กลิ่น+vanilla เข้ากัน\n3. ทยอยใส่ Mochi Powder คนจนเนียนไม่มีผงแห้ง\n4. เทเนยละลายคนจนเนียน พัก 5-10 นาที\nขึ้นรูป: ทาเนยพิมพ์ วอร์มเตา 170°C, หยอดแป้ง 30% วางโมจิ 1 ก้อน หยอดทับจน 80% เคาะไล่ฟอง\nอบ: ไฟบน-ล่าง 170°C 20 นาที / ลมร้อน 160°C 25 นาที\nหลังอบ: พักในพิมพ์ 3-5 นาที แล้วพักบนตะแกรงจนเย็น", "items": [
+      { "matId": "mq3xr2jns57o", "amount": 1000 },
+      { "matId": "mq3yyju73kx0", "amount": 500 },
+      { "matId": "mq3yxssw87pu", "amount": 680 },
+      { "matId": "mq3usi8zmbrk", "amount": 4 },
+      { "matId": "mq7n03k2j4fr", "amount": 10 },
+      { "matId": "mq3z0kjpdgfy", "amount": 15 },
+      { "matId": "mqb3jf0e2s1o", "amount": 69 }
+    ] }
+  ],
+  "settings": {
+    "shopName": "Merry Jane Bakery",
+    "phone": "081-234-5678",
+    "tax": "",
+    "addr": "",
+    "bank": "ธนาคารกสิกรไทย",
+    "acc": "xxx-x-xxxxx-x",
+    "holder": "น.ส. เมอรี่ เจน",
+    "pp": "081-234-5678"
+  }
+}

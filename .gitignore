@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# env / secrets — ห้าม commit เด็ดขาด (.env.example commit ได้)
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# misc
+*.tmp
