@@ -5,6 +5,10 @@ const { requireAuth, requireSuperadmin } = require('./auth/middleware');
 const { tenant } = require('./tenant');
 
 const app = express();
+
+// Stripe webhook ต้องใช้ raw body เพื่อตรวจลายเซ็น — ต้องมาก่อน express.json()
+app.use('/webhooks/stripe', express.raw({ type: '*/*' }));
+
 app.use(express.json({ limit: '6mb' }));
 
 // CORS — ใช้ Bearer token (ไม่ใช้ cookie) จึงเปิดกว้างได้ เผื่อ frontend คนละโดเมนกับ API
@@ -20,6 +24,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 // public
 app.use('/auth', require('./auth/routes'));
+app.use('/webhooks', require('./webhooks/stripe'));   // POST /webhooks/stripe (raw body)
 app.use('/webhooks', require('./webhooks/omise'));
 
 // /api/* — ต้องล็อกอิน + ผูกร้าน (tenant) ก่อนเสมอ

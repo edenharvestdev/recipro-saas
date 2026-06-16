@@ -9,8 +9,6 @@
 <script src="./icons.js"></script>
 <script src="./app-config.js"></script>
 <script src="./api.js"></script>
-<script src="https://cdn.omise.co/omise.js"></script>
-
 <!-- Google Fonts: IBM Plex Sans Thai (Thai-first) + Inter (Latin/numerals) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2574,48 +2572,24 @@ async function checkoutPlan(planId, billingCycle) {
     return;
   }
 
-  if (!CURRENT_SHOP) { alert('ไม่พบบัญชีร้านค้าสำหรับการชำระเงิน'); return; }
-  if (!cfg.OMISE_PUBLIC_KEY) { alert('ยังไม่ได้ตั้งค่า OMISE_PUBLIC_KEY ใน app-config.js'); return; }
-  if (typeof Omise === 'undefined') { alert('โหลด Omise.js ไม่สำเร็จ'); return; }
+  if (!CURRENT_SHOP) { ui.alert('ไม่พบบัญชีร้านค้าสำหรับการชำระเงิน'); return; }
 
-  // ขอเลขบัตรจากผู้ใช้ผ่านฟอร์มของ Omise (เลขบัตรไม่ผ่านเซิร์ฟเวอร์เรา)
-  const cardNumber = await ui.prompt('เลขบัตร (ทดสอบ: 4242424242424242)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' });
-  if (!cardNumber) return;
-  const exp = (await ui.prompt('วันหมดอายุบัตร MM/YY (เช่น 12/30)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' })) || '';
-  const cvc = (await ui.prompt('CVC (เช่น 123)', '', { title: 'ชำระเงินด้วยบัตร', icon: 'credit-card' })) || '';
-  const [em, ey] = exp.split('/').map(s => s.trim());
-
-  Omise.setPublicKey(cfg.OMISE_PUBLIC_KEY);
-  updateCloudStatus("กำลังเชื่อมต่อ Omise...");
-
-  Omise.createToken('card', {
-    name: CURRENT_USER?.email || 'Recipro',
-    number: cardNumber.replace(/\s/g, ''),
-    expiration_month: em,
-    expiration_year: ey && ey.length === 2 ? '20' + ey : ey,
-    security_code: cvc
-  }, async (statusCode, response) => {
-    if (statusCode !== 200) {
-      alert('สร้าง token บัตรไม่สำเร็จ: ' + (response.message || statusCode));
-      updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
-      return;
-    }
-    try {
-      const out = await API.post('/api/billing/checkout', {
-        planId, billingCycle, omiseToken: response.id
-      });
-      if (out.authorizeUri) {
-        window.location.href = out.authorizeUri;   // 3-D Secure
-      } else if (out.ok) {
-        alert('ชำระเงินสำเร็จ! สถานะร้านอัปเดตเป็น Active');
-        await boot();
-      }
-    } catch (err) {
-      alert('ชำระเงินไม่สำเร็จ: ' + err.message);
-    } finally {
-      updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
-    }
-  });
+  updateCloudStatus("กำลังเชื่อมต่อระบบชำระเงิน...");
+  try {
+    // Stripe: คืน { url } → redirect ไปหน้า Stripe Checkout (ปลอดภัย ไม่แตะเลขบัตรเอง)
+    // Omise:  คืน { authorizeUri } (3-D Secure) หรือ { ok }
+    const out = await API.post('/api/billing/checkout', { planId, billingCycle });
+    if (out.url) { window.location.href = out.url; return; }
+    if (out.authorizeUri) { window.location.href = out.authorizeUri; return; }
+    if (out.ok) { await ui.alert('ชำระเงินสำเร็จ! สถานะร้านอัปเดตเป็น Active', { title: 'สำเร็จ', icon: 'check-circle', variant: 'success' }); await boot(); }
+  } catch (err) {
+    const msg = err.status === 503
+      ? 'ระบบชำระเงินยังไม่พร้อม — ผู้ดูแลต้องตั้งค่าคีย์ Stripe ก่อน'
+      : 'ชำระเงินไม่สำเร็จ: ' + err.message;
+    ui.alert(msg, { title: 'ชำระเงิน', icon: 'credit-card' });
+  } finally {
+    updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+  }
 }
 
 function redirectToBillingPortal() {

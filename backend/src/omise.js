@@ -23,7 +23,7 @@ async function omiseRequest(method, path, params) {
 }
 
 module.exports = {
-  hasKeys: () => !!process.env.OMISE_SECRET_KEY,
+  hasKeys: () => /^skey_/.test(process.env.OMISE_SECRET_KEY || '') && !/x{3,}/i.test(process.env.OMISE_SECRET_KEY || ''),
   createCustomer: (email, card) => omiseRequest('POST', '/customers', { email, card }),
   createCharge: (params) => omiseRequest('POST', '/charges', params),
   retrieveCharge: (id) => omiseRequest('GET', `/charges/${id}`),
