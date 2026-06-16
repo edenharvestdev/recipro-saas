@@ -1,0 +1,21 @@
+{
+  "name": "recipro-saas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recipro — recipe-cost SaaS (Node/Express + Postgres + JWT + Omise). Deploy root for Railway.",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node backend/src/index.js",
+    "migrate": "node backend/src/migrate.js",
+    "bootstrap": "node backend/src/bootstrap.js",
+    "cron": "node backend/src/cron.js",
+    "test:int": "node backend/test/integration.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  }
+}

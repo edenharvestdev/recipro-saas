@@ -41,16 +41,23 @@ npm run test:int    # (ออปชัน) รันชุดทดสอบ end
 ตั้ง superadmin คนแรก: สมัครผู้ใช้ผ่านหน้าเว็บ/`/auth/register` แล้วผูก membership เป็น `superadmin`
 (ดูคอมเมนต์ท้าย `backend/db/schema.sql`)
 
-## ขึ้น Railway (production)
-repo: `github.com/edenharvestdev/recipro-saas`
+## ขึ้น Railway (production) — repo: `github.com/edenharvestdev/recipro-saas`
+deploy ทั้ง repo (root มี `package.json` + `railway.json` ให้แล้ว — **ไม่ต้องตั้ง Root Directory**)
 1. Railway → New Project → **Deploy from GitHub repo** → เลือก `recipro-saas`
-2. ตั้ง **Root Directory = `backend`** (มี `railway.json` กำหนด build/start ให้แล้ว — รัน migrate อัตโนมัติตอน deploy)
-3. เพิ่ม **PostgreSQL plugin** → ผูกตัวแปร `DATABASE_URL` ของ Postgres เข้ากับ service `backend`
-4. ตั้ง Variables ตาม `.env.example` (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `OMISE_SECRET_KEY`, `APP_URL`, `GRACE_DAYS`, `RESEND_API_KEY` ฯลฯ)
-5. deploy → ตาราง+seed จะถูกสร้างอัตโนมัติ (`node src/migrate.js`); ตั้ง superadmin คนแรกตามคอมเมนต์ท้าย `backend/db/schema.sql`
-6. ตั้ง Omise webhook → `https://<โดเมน>/webhooks/omise`
-7. ตั้ง Railway **Cron** ให้รัน `node src/cron.js` วันละครั้ง (พักร้านค้างชำระ + เตือนก่อนตัดบัตร)
-8. ใส่ค่าใน `frontend/app-config.js`: `API_BASE_URL: ""` (โดเมนเดียวกัน) + `OMISE_PUBLIC_KEY`
+2. กด **+ New → Database → PostgreSQL** → ที่ service ของแอป: Variables → Add **Reference** → `DATABASE_URL` (จาก Postgres)
+3. ตั้ง Variables (ดู `.env.example`):
+   - `JWT_SECRET`, `JWT_REFRESH_SECRET` — สุ่มยาว ๆ อย่างละชุด
+   - `APP_URL` — โดเมนที่ Railway ออกให้
+   - `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` (≥8 ตัว) — สร้างแอดมินหลักอัตโนมัติตอน deploy แรก
+   - (ออปชัน) `OMISE_SECRET_KEY`, `GRACE_DAYS=3`, `RESEND_API_KEY`
+4. **Deploy** — ตอนสตาร์ทจะทำให้อัตโนมัติ: `migrate` (สร้างตาราง+แพ็กเกจ) → `bootstrap` (ถ้า DB ว่าง: seed ข้อมูล Merry Jane + สร้าง superadmin) → เปิดเซิร์ฟเวอร์
+   เปิดโดเมน Railway แล้วล็อกอินได้ทันที:
+   - superadmin: `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD`
+   - เจ้าของร้าน Merry Jane: `merryjane@recipro.local` / `merryjane2026` (เปลี่ยนรหัสภายหลัง)
+5. (ออปชัน) Omise: ตั้ง webhook → `https://<โดเมน>/webhooks/omise` และใส่ `OMISE_PUBLIC_KEY` ใน `frontend/app-config.js`
+6. (ออปชัน) Railway **Cron** → รัน `npm run cron` วันละครั้ง (พักร้านค้างชำระ + เตือนก่อนตัดบัตร)
+
+> `frontend/app-config.js` ตั้ง `API_BASE_URL: ""` ไว้แล้ว (Node เสิร์ฟ frontend โดเมนเดียวกัน) — ไม่ต้องแก้
 
 > โหมดจำลอง (offline/mock): ตั้ง `API_BASE_URL: "MOCK"` ใน `app-config.js` แล้วเปิด `frontend/index.html`
 > ได้เลยโดยไม่ต้องมีหลังบ้าน (เก็บข้อมูลใน localStorage) — เหมาะกับเดโม/พัฒนา UI
