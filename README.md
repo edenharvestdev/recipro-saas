@@ -42,13 +42,15 @@ npm run test:int    # (ออปชัน) รันชุดทดสอบ end
 (ดูคอมเมนต์ท้าย `backend/db/schema.sql`)
 
 ## ขึ้น Railway (production)
-1. สร้างโปรเจกต์ + เพิ่ม **PostgreSQL plugin** (ได้ `DATABASE_URL` อัตโนมัติ)
-2. ตั้ง **Root Directory = `recipro-saas/backend`** (มี `railway.json` กำหนด start command ให้แล้ว)
-3. ตั้ง Variables ตาม `.env.example` (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `OMISE_SECRET_KEY`, `APP_URL`, ฯลฯ)
-4. รัน migrate ครั้งแรก: `npm run migrate` (จาก Railway shell หรือ one-off command)
-5. ตั้ง Omise webhook → `https://<โดเมน>/webhooks/omise`
-6. ตั้ง Railway **Cron** ให้รัน `node src/cron.js` วันละครั้ง (พักร้านค้างชำระ + เตือนก่อนตัดบัตร)
-7. ใส่ค่าใน `frontend/app-config.js`: `API_BASE_URL: ""` (โดเมนเดียวกัน) + `OMISE_PUBLIC_KEY`
+repo: `github.com/edenharvestdev/recipro-saas`
+1. Railway → New Project → **Deploy from GitHub repo** → เลือก `recipro-saas`
+2. ตั้ง **Root Directory = `backend`** (มี `railway.json` กำหนด build/start ให้แล้ว — รัน migrate อัตโนมัติตอน deploy)
+3. เพิ่ม **PostgreSQL plugin** → ผูกตัวแปร `DATABASE_URL` ของ Postgres เข้ากับ service `backend`
+4. ตั้ง Variables ตาม `.env.example` (`JWT_SECRET`, `JWT_REFRESH_SECRET`, `OMISE_SECRET_KEY`, `APP_URL`, `GRACE_DAYS`, `RESEND_API_KEY` ฯลฯ)
+5. deploy → ตาราง+seed จะถูกสร้างอัตโนมัติ (`node src/migrate.js`); ตั้ง superadmin คนแรกตามคอมเมนต์ท้าย `backend/db/schema.sql`
+6. ตั้ง Omise webhook → `https://<โดเมน>/webhooks/omise`
+7. ตั้ง Railway **Cron** ให้รัน `node src/cron.js` วันละครั้ง (พักร้านค้างชำระ + เตือนก่อนตัดบัตร)
+8. ใส่ค่าใน `frontend/app-config.js`: `API_BASE_URL: ""` (โดเมนเดียวกัน) + `OMISE_PUBLIC_KEY`
 
 > โหมดจำลอง (offline/mock): ตั้ง `API_BASE_URL: "MOCK"` ใน `app-config.js` แล้วเปิด `frontend/index.html`
 > ได้เลยโดยไม่ต้องมีหลังบ้าน (เก็บข้อมูลใน localStorage) — เหมาะกับเดโม/พัฒนา UI
