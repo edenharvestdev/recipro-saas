@@ -2,6 +2,7 @@
 // รับ payload ที่ frontend map เป็น snake_case แล้ว; server บังคับ shop_id = req.shopId เสมอ (กันเขียนข้ามร้าน)
 const express = require('express');
 const { tx } = require('../db');
+const { logEvent } = require('../logs');
 const router = express.Router();
 
 // upsert ช่วย: ระบุ table, คอลัมน์, แถว, และคีย์ conflict
@@ -32,7 +33,7 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'name', 'qty', 'unit', 'price', 'supplier_id', 'order_url', 'stock', 'low_stock'],
+        ['id', 'shop_id', 'name', 'qty', 'unit', 'price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category'],
         withShop(b.materials), 'id');
 
       await upsertRows(client, 'recipes',
@@ -56,14 +57,19 @@ router.post('/sync', async (req, res) => {
 
       if (b.shop_settings) {
         const s = { ...b.shop_settings, shop_id: shopId };
+        if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories'],
           [s], 'shop_id');
       }
 
       if (b.shop && b.shop.name) {
         await client.query('update shops set name = $1 where id = $2', [b.shop.name, shopId]);
       }
+    });
+    logEvent(shopId, req.userId, 'data.sync', {
+      suppliers: (b.suppliers || []).length, materials: (b.materials || []).length,
+      recipes: (b.recipes || []).length, bills: (b.bills || []).length,
     });
     res.json({ ok: true });
   } catch (e) {

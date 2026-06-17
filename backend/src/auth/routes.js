@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { query, tx } = require('../db');
 const { signAccess, signRefresh, verifyRefresh } = require('./tokens');
 const { requireAuth } = require('./middleware');
+const { logEvent } = require('../logs');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -44,6 +45,7 @@ router.post('/register', async (req, res) => {
       return { user, shopId: shop.id };
     });
 
+    logEvent(out.shopId, out.user.id, 'auth.register', { email, shop: shopName });
     res.json({
       user: out.user,
       memberships: [{ shop_id: out.shopId, role: 'owner' }],
@@ -64,9 +66,11 @@ router.post('/login', async (req, res) => {
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
     }
+    const mems = await membershipsOf(user.id);
+    logEvent(mems[0]?.shop_id || null, user.id, 'auth.login', { email: user.email });
     res.json({
       user: { id: user.id, email: user.email },
-      memberships: await membershipsOf(user.id),
+      memberships: mems,
       accessToken: signAccess(user.id),
       refreshToken: signRefresh(user.id),
     });

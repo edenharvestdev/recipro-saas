@@ -34,6 +34,7 @@ api.use(require('./api/bootstrap'));   // GET  /api/bootstrap
 api.use(require('./api/sync'));        // POST /api/sync
 api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recipes|bills}/:id
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout
+api.use(require('./api/logs'));        // GET  /api/logs
 api.use('/admin', requireSuperadmin, require('./api/admin')); // /api/admin/*
 app.use('/api', api);
 

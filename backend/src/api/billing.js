@@ -4,6 +4,7 @@ const { query } = require('../db');
 const omise = require('../omise');
 const stripe = require('../stripe');
 const { sendReceipt } = require('../email');
+const { logEvent } = require('../logs');
 const router = express.Router();
 
 const APP_URL = () => (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -74,6 +75,7 @@ router.post('/billing/checkout', async (req, res) => {
       });
       // บันทึก subscription ตั้งต้น (รอผลจริงจาก webhook)
       await upsertSubscription(req.shopId, planId, cycle, null, session.id, 'trialing', null, 'stripe');
+      logEvent(req.shopId, req.userId, 'billing.checkout', { provider: 'stripe', plan: plan.name, cycle, amount: amountThb });
       return res.json({ url: session.url });
     }
 

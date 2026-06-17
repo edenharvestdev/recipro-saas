@@ -2,6 +2,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { query, tx } = require('../db');
+const { logEvent } = require('../logs');
 const router = express.Router();
 
 // ดูร้านทั้งหมด
@@ -41,6 +42,7 @@ router.post('/shops', async (req, res) => {
       await client.query("insert into shop_settings (shop_id, theme) values ($1, 'recipro')", [shop.id]);
       return { shopId: shop.id, userId: user.id };
     });
+    logEvent(out.shopId, req.userId, 'admin.shop.create', { name: shopName, ownerEmail });
     res.json({ success: true, ...out });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -53,6 +55,7 @@ router.patch('/shops/:id', async (req, res) => {
       return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
     }
     await query('update shops set status = $1 where id = $2', [status, req.params.id]);
+    logEvent(req.params.id, req.userId, 'admin.shop.status', { status });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

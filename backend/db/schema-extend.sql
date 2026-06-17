@@ -3,6 +3,23 @@
 -- รันต่อจาก schema.sql (plain PostgreSQL — แยกข้อมูลร้านที่ชั้น API ด้วย shop_id)
 -- ============================================================
 
+-- หมวดหมู่ของวัตถุดิบ/ของในคลัง (วัตถุดิบ/บรรจุภัณฑ์/เครื่องใช้ไฟฟ้า/เพิ่มเองได้)
+alter table materials     add column if not exists category text;
+-- รายการหมวดของร้าน (เก็บไว้แม้ยังไม่มีของในหมวดนั้น)
+alter table shop_settings add column if not exists categories jsonb;
+
+-- บันทึกกิจกรรมทั้งระบบ (audit log)
+create table if not exists logs (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid references shops(id) on delete cascade,
+  user_id uuid references users(id) on delete set null,
+  action text not null,
+  detail jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists idx_logs_shop on logs(shop_id, created_at desc);
+create index if not exists idx_logs_created on logs(created_at desc);
+
 -- เลขรันเอกสารต่อเนื่อง กันซ้ำ (ต่อร้าน/ต่อปี/ต่อชนิดเอกสาร)
 -- ออกเลขแบบ atomic ในทรานแซกชัน:
 --   update doc_counters set last_no = last_no + 1

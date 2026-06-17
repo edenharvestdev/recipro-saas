@@ -265,11 +265,16 @@
           <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
         </div>
 
-        <div style="display:flex; gap:10px; margin-bottom:15px;">
-          <input id="matSearch" placeholder="ค้นหาวัตถุดิบ..." oninput="renderMatList()" style="padding:8px 12px;">
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('csvFile').click()" style="white-space:nowrap; padding:8px 12px;"><span class="ico" data-icon="download"></span> นำเข้า Excel/CSV</button>
-          <input id="csvFile" type="file" accept=".csv, .xlsx, .xls" style="display:none" onchange="importCSV(this)">
+        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+          <input id="matSearch" placeholder="ค้นหาวัตถุดิบ..." oninput="renderMatList()" style="padding:8px 12px; flex:1; min-width:160px;">
+          <button class="btn btn-ghost btn-sm" onclick="exportTemplate('xlsx')" style="white-space:nowrap; padding:8px 12px;" title="ดาวน์โหลดเทมเพลต Excel"><span class="ico" data-icon="file-text"></span> เทมเพลต .xlsx</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportTemplate('csv')" style="white-space:nowrap; padding:8px 12px;" title="ดาวน์โหลดเทมเพลต CSV"><span class="ico" data-icon="file-text"></span> .csv</button>
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('csvFile').click()" style="white-space:nowrap; padding:8px 12px;"><span class="ico" data-icon="upload"></span> นำเข้าไฟล์</button>
+          <input id="csvFile" type="file" accept=".csv, .xlsx, .xls, .pdf" style="display:none" onchange="importCSV(this)">
         </div>
+
+        <!-- ตัวกรองหมวดหมู่ -->
+        <div id="matCatChips" class="cat-chips" style="margin-bottom:14px;"></div>
 
         <div style="max-height: 540px; overflow-y: auto;">
           <table class="lst">
@@ -600,6 +605,15 @@
           </div>
         </div>
       </div>
+
+      <!-- บันทึกกิจกรรม (Activity Log) -->
+      <div class="glass-card" style="margin-top:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+          <h2 style="font-size:18px; margin:0;"><span class="ico" data-icon="file-text"></span> บันทึกกิจกรรม (Activity Log)</h2>
+          <button class="btn btn-ghost btn-sm" onclick="loadLogs()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรช</button>
+        </div>
+        <div id="logList" style="max-height:380px; overflow:auto;"><div style="color:var(--color-text-muted); font-size:13px;">กด "รีเฟรช" เพื่อโหลดบันทึกกิจกรรม</div></div>
+      </div>
     </section>
 
     <!-- 5. BILLING & SUBSCRIPTION PAGE -->
@@ -706,6 +720,11 @@
           <label>แหล่งซื้อ (Supplier)</label>
           <select id="mSup"></select>
         </div>
+      </div>
+      <div class="field" style="margin-bottom: 12px;">
+        <label>หมวดหมู่ (เลือกหรือพิมพ์เพิ่มเองได้)</label>
+        <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า">
+        <datalist id="catDatalist"></datalist>
       </div>
       <div class="grid-3" style="margin-bottom: 12px;">
         <div class="field">
@@ -902,6 +921,15 @@ const SYSTEMS = {
   dark:    { label: 'มืดอุ่น · Dark',  primary: '#F9943E', secondary: '#46C156', bg: '#1E1B17', text: '#F5EFE6' }
 };
 const DEFAULT_THEME = 'recipro';
+// หมวดหมู่เริ่มต้นของคลังของ (เพิ่มเองได้ — เก็บใน settings.categories)
+const DEFAULT_CATEGORIES = ['วัตถุดิบ', 'บรรจุภัณฑ์ (Package)', 'เครื่องใช้ไฟฟ้า', 'อุปกรณ์'];
+// รวมรายการหมวดที่ใช้ได้: ค่าเริ่มต้น ∪ ที่ร้านเพิ่ม ∪ ที่มีของอยู่จริง
+function getCategories() {
+  const set = new Set(DEFAULT_CATEGORIES);
+  (settings.categories || []).forEach(c => c && set.add(c));
+  (materials || []).forEach(m => m.category && set.add(m.category));
+  return [...set];
+}
 
 // ข้อมูลหลักในแอปรันแบบ Synchronous Memory
 let suppliers = [];
@@ -913,7 +941,7 @@ let settings = {
   shopName: 'ร้านเบเกอรี่ของคุณ',
   phone: '', tax: '', addr: '',
   bank: '', acc: '', holder: '', pp: '',
-  logoData: '', theme: 'recipro'
+  logoData: '', theme: 'recipro', categories: DEFAULT_CATEGORIES.slice()
 };
 
 // ตัวแปรเก็บข้อมูลร้านสำหรับโหมดจำลอง (Mock database)
@@ -1306,8 +1334,9 @@ async function boot() {
       shopName: 'ร้านเบเกอรี่โฮมเมด',
       phone: '081-234-5678', tax: '1234567890123', addr: '123 ถนนออโรร่า แขวงลาเวนเดอร์ เขตปทุมวัน กรุงเทพฯ',
       bank: 'กสิกรไทย', acc: '123-4-56789-0', holder: 'สมศรี มีดี', pp: '0812345678',
-      logoData: '', theme: 'recipro'
+      logoData: '', theme: 'recipro', categories: DEFAULT_CATEGORIES.slice()
     };
+    if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
 
     mockShops = localShops ? JSON.parse(localShops) : [
       { id: 'mock-shop-id', name: 'ร้านเบเกอรี่โฮมเมด', status: 'trial' },
@@ -1355,7 +1384,8 @@ async function boot() {
       suppliers = (data.suppliers || []).map(s => ({ id: s.id, name: s.name, note: s.note }));
       materials = (data.materials || []).map(m => ({
         id: m.id, name: m.name, qty: Number(m.qty), unit: m.unit, price: Number(m.price),
-        supId: m.supplier_id, orderUrl: m.order_url, stock: Number(m.stock), lowStock: Number(m.low_stock)
+        supId: m.supplier_id, orderUrl: m.order_url, stock: Number(m.stock), lowStock: Number(m.low_stock),
+        category: m.category || ''
       }));
 
       const itemsGroup = data.recipe_items || [];
@@ -1381,7 +1411,8 @@ async function boot() {
         shopName: data.shop?.name || 'ร้านของฉัน',
         phone: sRow?.phone || '', tax: sRow?.tax_id || '', addr: sRow?.address || '',
         bank: sRow?.bank || '', acc: sRow?.account || '', holder: sRow?.holder || '', pp: sRow?.promptpay || '',
-        logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro'
+        logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro',
+        categories: Array.isArray(sRow?.categories) ? sRow.categories : DEFAULT_CATEGORIES.slice()
       };
 
       $('sidebarShopName').textContent = settings.shopName;
@@ -1462,7 +1493,8 @@ async function syncToSupabase() {
     suppliers: suppliers.map(s => ({ id: s.id, name: s.name, note: s.note })),
     materials: materials.map(m => ({
       id: m.id, name: m.name, qty: m.qty, unit: m.unit, price: m.price,
-      supplier_id: m.supId || null, order_url: m.orderUrl, stock: m.stock, low_stock: m.lowStock
+      supplier_id: m.supId || null, order_url: m.orderUrl, stock: m.stock, low_stock: m.lowStock,
+      category: m.category || null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
@@ -1482,7 +1514,8 @@ async function syncToSupabase() {
     shop_settings: {
       phone: settings.phone, tax_id: settings.tax, address: settings.addr,
       bank: settings.bank, account: settings.acc, holder: settings.holder, promptpay: settings.pp,
-      logo_url: settings.logoData, theme: settings.theme
+      logo_url: settings.logoData, theme: settings.theme,
+      categories: settings.categories || DEFAULT_CATEGORIES.slice()
     },
     shop: { name: settings.shopName }
   };
@@ -1531,6 +1564,8 @@ function switchTab(t) {
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
   }
+  // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
+  if (t === 'set') loadLogs();
 
   // ปิดเมนูบัญชี/ลิ้นชักหลังเลือกหน้า
   if (typeof toggleAccountMenu === 'function') toggleAccountMenu(false);
@@ -1582,6 +1617,8 @@ function openMatForm() {
   $('mPrice').value = '';
   $('mUrl').value = '';
   $('mSup').value = '';
+  $('mCat').value = '';
+  renderCatDatalist();
   if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
   $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   openDrawer('matDrawer');
@@ -1757,15 +1794,20 @@ function saveMat() {
   const unit = $('mUnit').value;
   const supId = $('mSup').value;
   const orderUrl = $('mUrl').value.trim();
-  
+  const category = $('mCat').value.trim();
+
   if (!name) { alert('ระบุชื่อวัตถุดิบ'); return; }
 
+  // จำหมวดใหม่ไว้ในรายการของร้าน (ให้เลือกซ้ำได้แม้ยังไม่มีของในหมวดนั้น)
+  if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
+  if (category && !settings.categories.includes(category)) settings.categories.push(category);
+
   if (editMatId) {
-    Object.assign(matById(editMatId), { name, qty, unit, price, supId, orderUrl });
+    Object.assign(matById(editMatId), { name, qty, unit, price, supId, orderUrl, category });
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), name, qty, unit, price, supId, orderUrl, stock: 0, lowStock: 0 });
+    materials.push({ id: uid(), name, qty, unit, price, supId, orderUrl, category, stock: 0, lowStock: 0 });
   }
 
   saveAll();
@@ -1773,8 +1815,15 @@ function saveMat() {
   $('mQty').value = '';
   $('mPrice').value = '';
   $('mUrl').value = '';
+  $('mCat').value = '';
   render();
   closeDrawer();
+}
+
+// เติมรายการหมวดใน datalist ของฟอร์มวัตถุดิบ
+function renderCatDatalist() {
+  const dl = $('catDatalist');
+  if (dl) dl.innerHTML = getCategories().map(c => `<option value="${String(c).replace(/"/g, '&quot;')}"></option>`).join('');
 }
 
 function editMat(id) {
@@ -1786,6 +1835,8 @@ function editMat(id) {
   $('mPrice').value = m.price;
   $('mSup').value = m.supId || '';
   $('mUrl').value = m.orderUrl || '';
+  $('mCat').value = m.category || '';
+  renderCatDatalist();
   $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
   openDrawer('matDrawer');
 }
@@ -1800,14 +1851,31 @@ async function delMat(id) {
   render();
 }
 
+let matCatFilter = '';
+function setMatCatFilter(v) { matCatFilter = v; renderMatList(); }
+function renderMatCatChips() {
+  const el = $('matCatChips');
+  if (!el) return;
+  const chip = (label, val, count) =>
+    `<button class="cat-chip ${matCatFilter === val ? 'active' : ''}" data-cat="${String(val).replace(/"/g, '&quot;')}" onclick="setMatCatFilter(this.dataset.cat)">${esc(label)} <span class="cat-chip-n">${count}</span></button>`;
+  let html = chip('ทั้งหมด', '', materials.length);
+  getCategories().forEach(c => { html += chip(c, c, materials.filter(m => m.category === c).length); });
+  el.innerHTML = html;
+}
+
 function renderMatList() {
+  renderMatCatChips();
   const q = ($('matSearch').value || '').trim().toLowerCase();
-  const filtered = materials.filter(m => !q || m.name.toLowerCase().includes(q));
-  
+  const filtered = materials.filter(m =>
+    (!q || m.name.toLowerCase().includes(q)) &&
+    (!matCatFilter || m.category === matCatFilter)
+  );
+
   $('matList').innerHTML = filtered.map(m => {
     const sp = supById(m.supId);
+    const catBadge = m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '';
     return `<tr>
-      <td><b>${m.name}</b><br><span style="font-size:12px; color:var(--color-text-muted);">${sp ? sp.name : 'ไม่มีแหล่งจัดซื้อ'}</span></td>
+      <td><b>${esc(m.name)}</b> ${catBadge}<br><span style="font-size:12px; color:var(--color-text-muted);">${sp ? esc(sp.name) : 'ไม่มีแหล่งจัดซื้อ'}</span></td>
       <td>${money(m.price)} / ${m.qty} ${m.unit}</td>
       <td>${money(perBase(m))} / ${baseU(m)}</td>
       <td>
@@ -2814,78 +2882,300 @@ async function adminCreateShop() {
 }
 
 // ============================================================
-// 12. EXCEL/CSV IMPORTER (DYNAMIC SHEETJS INTEGRATION)
+// 12. เทมเพลต + นำเข้าคลังของ (xlsx / csv / pdf) แบบแก้ไขก่อนบันทึก
 // ============================================================
+const IMPORT_COLS = [
+  { key: 'name', label: 'ชื่อวัตถุดิบ', required: true, hint: 'เช่น แป้งสาลี' },
+  { key: 'category', label: 'หมวดหมู่', hint: 'วัตถุดิบ/บรรจุภัณฑ์/เครื่องใช้ไฟฟ้า' },
+  { key: 'qty', label: 'จำนวนบรรจุ', required: true, num: true, hint: '1' },
+  { key: 'unit', label: 'หน่วย', required: true, hint: 'กก./กรัม/ลิตร/มล./ชิ้น/แพ็ค/ขวด/ฟอง' },
+  { key: 'price', label: 'ราคาซื้อ(บาท)', required: true, num: true, hint: '0' },
+  { key: 'supplier', label: 'แหล่งซื้อ', hint: 'ชื่อร้าน' },
+  { key: 'orderUrl', label: 'ลิงก์สั่งซื้อ', hint: 'https://...' },
+];
+const VALID_UNITS = ['กิโลกรัม', 'กรัม', 'ลิตร', 'มิลลิลิตร', 'ฟอง', 'ชิ้น', 'แพ็ค', 'ขวด'];
+
 function ensureXLSX() {
   return new Promise((res, rej) => {
     if (window.XLSX) return res();
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
     s.onload = () => res();
-    s.onerror = () => rej(new Error('load sheetjs fail'));
+    s.onerror = () => rej(new Error('โหลด SheetJS ไม่สำเร็จ'));
     document.head.appendChild(s);
   });
+}
+function ensurePdfJs() {
+  return new Promise((res, rej) => {
+    if (window.pdfjsLib) return res();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => { try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {} res(); };
+    s.onerror = () => rej(new Error('โหลด pdf.js ไม่สำเร็จ'));
+    document.head.appendChild(s);
+  });
+}
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 150);
+}
+
+function templateAOA() {
+  const header = IMPORT_COLS.map(c => c.label + (c.required ? '*' : ''));
+  return [
+    header,
+    ['แป้งสาลี', 'วัตถุดิบ', 1, 'กิโลกรัม', 45, 'แม็คโคร', ''],
+    ['แก้วพลาสติก 16oz', 'บรรจุภัณฑ์ (Package)', 50, 'ชิ้น', 120, 'Shopee', 'https://...'],
+    ['เครื่องชงกาแฟ', 'เครื่องใช้ไฟฟ้า', 1, 'ชิ้น', 18900, '', ''],
+  ];
+}
+
+async function exportTemplate(format) {
+  const aoa = templateAOA();
+  const fname = 'recipro-template-วัตถุดิบ';
+  try {
+    if (format === 'csv') {
+      const csv = aoa.map(r => r.map(cell => {
+        const s = String(cell == null ? '' : cell);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',')).join('\r\n');
+      downloadBlob('﻿' + csv, fname + '.csv', 'text/csv;charset=utf-8;');
+      ui.toast('ดาวน์โหลดเทมเพลต CSV แล้ว');
+      return;
+    }
+    await ensureXLSX();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = IMPORT_COLS.map(() => ({ wch: 20 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'วัตถุดิบ');
+    XLSX.writeFile(wb, fname + '.xlsx');
+    ui.toast('ดาวน์โหลดเทมเพลต Excel แล้ว');
+  } catch (e) {
+    ui.alert('สร้างไฟล์เทมเพลตไม่สำเร็จ: ' + e.message);
+  }
+}
+
+// แปลงแถวดิบ -> records ตามคอลัมน์ (รองรับทั้งมีหัวตารางและเรียงตามตำแหน่ง)
+function rowsToRecords(rows) {
+  if (!rows || !rows.length) return [];
+  const first = (rows[0] || []).map(x => String(x == null ? '' : x).toLowerCase());
+  const looksHeader = first.some(c => /ชื่อ|name|วัตถุดิบ/.test(c));
+  let colOrder = IMPORT_COLS.map(c => c.key);  // ค่าเริ่มต้น: เรียงตามตำแหน่ง
+  let start = 0;
+  if (looksHeader) {
+    start = 1;
+    colOrder = first.map(h => {
+      if (/ชื่อ|name/.test(h)) return 'name';
+      if (/หมวด|category|ประเภท/.test(h)) return 'category';
+      if (/จำนวน|บรรจุ|qty|quantity/.test(h)) return 'qty';
+      if (/หน่วย|unit/.test(h)) return 'unit';
+      if (/ราคา|price|บาท|cost/.test(h)) return 'price';
+      if (/แหล่ง|supplier|ร้าน/.test(h)) return 'supplier';
+      if (/ลิงก์|ลิ้ง|link|url/.test(h)) return 'orderUrl';
+      return null;
+    });
+  }
+  const recs = [];
+  for (let i = start; i < rows.length; i++) {
+    const cells = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
+    if (!cells.some(c => c)) continue;
+    const rec = { name: '', category: '', qty: '', unit: '', price: '', supplier: '', orderUrl: '' };
+    cells.forEach((val, idx) => { const k = colOrder[idx]; if (k && !rec[k]) rec[k] = val; });
+    recs.push(rec);
+  }
+  return recs;
 }
 
 async function importCSV(input) {
   const file = input.files[0];
   if (!file) return;
-  updateCloudStatus("กำลังอ่านไฟล์จัดซื้อ...");
-  
+  input.value = '';
+  updateCloudStatus('กำลังอ่านไฟล์...');
   try {
-    await ensureXLSX();
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      
-      let added = 0;
-      let startIdx = 0;
-      
-      if (rows.length && /ชื่อ|name/i.test(String(rows[0][0] || ''))) {
-        startIdx = 1;
-      }
-      
-      for (let i = startIdx; i < rows.length; i++) {
-        const c = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
-        if (!c[0]) continue;
-        
-        const name = c[0];
-        const qty = +c[1] || 1;
-        const unit = c[2] || 'กิโลกรัม';
-        const price = +c[3] || 0;
-        const supName = c[4] || '';
-        const orderUrl = c[5] || '';
-        
-        let supId = '';
-        if (supName) {
-          let sp = suppliers.find(s => s.name.trim() === supName);
-          if (!sp) {
-            sp = { id: uid(), name: supName, note: '' };
-            suppliers.push(sp);
-          }
-          supId = sp.id;
-        }
-        
-        materials.push({
-          id: uid(), name, qty, unit, price, supId, orderUrl, stock: 0, lowStock: 0
-        });
-        added++;
-      }
-      
-      saveAll();
-      render();
-      alert(`นำเข้าวัตถุดิบสำเร็จทั้งหมด ${added} รายการ!`);
-    };
-    reader.readAsArrayBuffer(file);
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    let rows;
+    if (ext === 'pdf') {
+      rows = await parsePdfRows(file);
+    } else {
+      await ensureXLSX();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+    }
+    const recs = rowsToRecords(rows);
+    if (!recs.length) { ui.alert('ไม่พบข้อมูลในไฟล์ หรือรูปแบบไม่ตรงเทมเพลต — ลองดาวน์โหลดเทมเพลตเป็นตัวอย่าง'); return; }
+    openImportReview(recs, ext === 'pdf');
   } catch (err) {
-    alert("ไม่สามารถนำเข้าข้อมูลได้: " + err.message);
+    ui.alert('อ่านไฟล์ไม่สำเร็จ: ' + err.message);
   } finally {
-    updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์" : "ซิงค์คลาวด์เรียบร้อย", isMockMode ? "wifi-off" : "circle-check");
+    updateCloudStatus(isMockMode ? 'โหมดจำลองออฟไลน์' : 'ซิงค์คลาวด์เรียบร้อย', isMockMode ? 'wifi-off' : 'circle-check');
   }
+}
+
+// PDF: ดึงข้อความแบบ best-effort -> เดา "ชื่อ ... ราคา" (ผู้ใช้แก้ในตารางรีวิวได้)
+async function parsePdfRows(file) {
+  await ensurePdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const out = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const lines = {};
+    tc.items.forEach(it => { const y = Math.round(it.transform[5]); (lines[y] = lines[y] || []).push(it); });
+    Object.keys(lines).map(Number).sort((a, b) => b - a).forEach(y => {
+      const text = lines[y].sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      const m = text.match(/^(.+?)[\s.·:]+([\d,]+(?:\.\d+)?)\s*(?:บาท|฿|thb)?$/i);
+      if (m && m[1].length > 1) out.push([m[1].trim(), '', '', '', m[2].replace(/,/g, '')]);
+      else out.push([text, '', '', '', '']);
+    });
+  }
+  return out;
+}
+
+// ---- ตารางรีวิว/แก้ไขก่อนนำเข้า ----
+let importRecords = [];
+function cellHasError(r, c) {
+  const v = (r[c.key] || '').trim();
+  if (c.required && !v) return true;
+  if (c.num && v && isNaN(Number(v))) return true;
+  if (c.key === 'unit' && v && !VALID_UNITS.includes(v)) return true;
+  return false;
+}
+function rowHasError(r) { return IMPORT_COLS.some(c => cellHasError(r, c)); }
+
+function openImportReview(recs, fromPdf) {
+  importRecords = recs.map(r => ({ ...r }));
+  const ov = $('importModalOverlay'); if (ov) ov.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'import-modal-overlay'; overlay.id = 'importModalOverlay';
+  overlay.innerHTML = `
+    <div class="import-modal">
+      <div class="import-modal-head">
+        <h3 style="margin:0; font-size:17px;">${icon('upload')} ตรวจ/แก้ไขก่อนนำเข้า</h3>
+        <button class="drawer-close" onclick="closeImportReview()" aria-label="ปิด">${icon('x')}</button>
+      </div>
+      ${fromPdf ? '<div style="padding:8px 16px 0;" class="import-warn">' + icon('alert-triangle') + ' ไฟล์ PDF: ระบบเดาข้อมูลให้คร่าว ๆ โปรดตรวจ/แก้ไขช่องให้ครบก่อนนำเข้า</div>' : ''}
+      <div class="import-modal-body">
+        <table class="import-tbl">
+          <thead><tr>${IMPORT_COLS.map(c => `<th>${c.label}${c.required ? ' *' : ''}</th>`).join('')}<th></th></tr></thead>
+          <tbody id="importTbody"></tbody>
+        </table>
+      </div>
+      <div class="import-modal-foot">
+        <span class="import-warn" id="importWarn"></span>
+        <div style="display:flex; gap:10px; margin-left:auto;">
+          <button class="btn btn-ghost" onclick="addImportRow()">${icon('plus')} เพิ่มแถว</button>
+          <button class="btn btn-ghost" onclick="closeImportReview()">ยกเลิก</button>
+          <button class="btn btn-primary" onclick="commitImport()">${icon('save')} นำเข้า</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderImportRows();
+  renderIcons(overlay);
+}
+function renderImportRows() {
+  const tb = $('importTbody');
+  if (!tb) return;
+  tb.innerHTML = importRecords.map((r, i) => `<tr>
+    ${IMPORT_COLS.map(c => `<td><input class="${cellHasError(r, c) ? 'bad' : ''}" value="${esc(r[c.key])}" placeholder="${esc(c.hint || '')}" oninput="updateImportCell(${i}, '${c.key}', this)"></td>`).join('')}
+    <td><button class="import-row-del" onclick="removeImportRow(${i})" title="ลบแถว">${icon('trash-2')}</button></td>
+  </tr>`).join('');
+  renderIcons(tb);
+  updateImportWarn();
+}
+function updateImportCell(i, key, el) {
+  importRecords[i][key] = el.value;
+  const col = IMPORT_COLS.find(c => c.key === key);
+  el.classList.toggle('bad', cellHasError(importRecords[i], col));
+  updateImportWarn();
+}
+function updateImportWarn() {
+  const bad = importRecords.filter(rowHasError).length;
+  const w = $('importWarn'); if (!w) return;
+  w.innerHTML = bad
+    ? icon('alert-triangle') + ` มี ${bad}/${importRecords.length} แถวที่ยังไม่ครบ/ผิด (ช่องสีแดง)`
+    : icon('check-circle') + ` ข้อมูลครบ ${importRecords.length} รายการ พร้อมนำเข้า`;
+}
+function addImportRow() { importRecords.push({ name: '', category: '', qty: '', unit: '', price: '', supplier: '', orderUrl: '' }); renderImportRows(); }
+function removeImportRow(i) { importRecords.splice(i, 1); renderImportRows(); }
+function closeImportReview() { const ov = $('importModalOverlay'); if (ov) ov.remove(); }
+
+async function commitImport() {
+  const bad = importRecords.filter(rowHasError);
+  if (bad.length) {
+    const ok = await ui.confirm(`ยังมี ${bad.length} แถวที่ข้อมูลไม่ครบ/ผิด จะนำเข้าเฉพาะแถวที่ถูกต้องไหม?`, { okText: 'นำเข้าเฉพาะที่ถูก' });
+    if (!ok) return;
+  }
+  if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
+  let added = 0;
+  importRecords.forEach(r => {
+    if (rowHasError(r)) return;
+    let supId = '';
+    const supName = (r.supplier || '').trim();
+    if (supName) {
+      let sp = suppliers.find(s => s.name.trim() === supName);
+      if (!sp) { sp = { id: uid(), name: supName, note: '' }; suppliers.push(sp); }
+      supId = sp.id;
+    }
+    const category = (r.category || '').trim();
+    if (category && !settings.categories.includes(category)) settings.categories.push(category);
+    materials.push({
+      id: uid(), name: r.name.trim(), qty: Number(r.qty) || 1, unit: r.unit.trim(),
+      price: Number(r.price) || 0, supId, orderUrl: (r.orderUrl || '').trim(), category, stock: 0, lowStock: 0
+    });
+    added++;
+  });
+  closeImportReview();
+  saveAll();
+  render();
+  ui.alert(`นำเข้าสำเร็จ ${added} รายการ`, { title: 'นำเข้าเสร็จ', icon: 'check-circle', variant: 'success' });
+}
+
+// ============================================================
+// 12b. บันทึกกิจกรรม (Activity Log) viewer
+// ============================================================
+const LOG_LABELS = {
+  'auth.login': 'เข้าสู่ระบบ', 'auth.register': 'สมัคร/เปิดร้านใหม่',
+  'data.sync': 'บันทึกข้อมูล', 'billing.checkout': 'เริ่มชำระเงิน',
+  'admin.shop.create': 'สร้างร้านใหม่', 'admin.shop.status': 'เปลี่ยนสถานะร้าน',
+};
+async function loadLogs() {
+  const el = $('logList'); if (!el) return;
+  if (isMockMode) { el.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px;">โหมดจำลองยังไม่มีบันทึกกิจกรรม (ใช้งานบนระบบจริง)</div>'; return; }
+  el.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px;">กำลังโหลด...</div>';
+  try {
+    const out = await API.get('/api/logs');
+    renderLogs(out.logs || [], out.scope);
+  } catch (e) {
+    el.innerHTML = '<div class="import-warn">โหลดบันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>';
+  }
+}
+function renderLogs(logs, scope) {
+  const el = $('logList'); if (!el) return;
+  if (!logs.length) { el.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px;">ยังไม่มีบันทึกกิจกรรม</div>'; return; }
+  el.innerHTML = `<table class="lst"><thead><tr>
+      <th>เวลา</th><th>กิจกรรม</th><th>ผู้ใช้</th>${scope === 'all' ? '<th>ร้าน</th>' : ''}<th>รายละเอียด</th>
+    </tr></thead><tbody>${logs.map(l => {
+      const when = new Date(l.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+      const label = LOG_LABELS[l.action] || l.action;
+      const detail = l.detail ? esc(typeof l.detail === 'string' ? l.detail : JSON.stringify(l.detail)) : '';
+      return `<tr>
+        <td style="white-space:nowrap; font-size:12px;">${when}</td>
+        <td><b>${esc(label)}</b></td>
+        <td style="font-size:12px;">${esc(l.email || '-')}</td>
+        ${scope === 'all' ? `<td style="font-size:12px;">${esc(l.shop_name || '-')}</td>` : ''}
+        <td style="font-size:12px; color:var(--color-text-muted);">${detail}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
 }
 
 // ============================================================
