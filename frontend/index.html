@@ -2,9 +2,17 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Recipro — ระบบคิดต้นทุนจากสูตร (SaaS)</title>
 <link rel="icon" href="assets/recipro-icon.svg">
+<!-- PWA: ติดตั้งเป็นแอปได้ (iOS/Android/Win/Mac) + ไอคอนแครอท -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#F47A1F">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Recipro">
 <!-- Icon system (must load BEFORE the main inline script so icon()/renderIcons exist) -->
 <script src="./icons.js"></script>
 <script src="./app-config.js"></script>
@@ -211,6 +219,7 @@
 
         <button class="account-item" onclick="switchTab('set'); toggleAccountMenu(false);"><span class="ico" data-icon="settings"></span><span>ตั้งค่าบัญชี/ข้อมูลร้าน</span></button>
         <button class="account-item" onclick="switchTab('billing'); toggleAccountMenu(false);"><span class="ico" data-icon="credit-card"></span><span>การชำระเงิน &amp; ใบเสร็จ</span></button>
+        <button class="account-item hidden" id="accountAdmin" onclick="switchTab('admin'); toggleAccountMenu(false);"><span class="ico" data-icon="crown"></span><span>ควบคุมระบบ (แอดมิน)</span></button>
         <button class="account-item disabled" disabled title="เร็วๆ นี้"><span class="ico" data-icon="store"></span><span>สลับร้าน (เร็วๆ นี้)</span></button>
         <div class="account-menu-sep"></div>
         <button class="account-item danger" onclick="toggleAccountMenu(false); handleSignOut();"><span class="ico" data-icon="log-out"></span><span>ออกจากระบบ</span></button>
@@ -232,9 +241,7 @@
   <main class="main-container">
     <div class="top-bar">
       <div style="display:flex; align-items:center; gap:12px;">
-        <button class="sidebar-toggle" id="sidebarDrawerBtn" onclick="openSidebarDrawer()" title="เปิดเมนู" aria-label="เปิดเมนู" style="display:none;">
-          <span class="ico" data-icon="menu"></span>
-        </button>
+        <img class="mobile-topbar-logo" src="assets/recipro-icon.svg" alt="Recipro">
         <h2 id="currentPageTitle">คลังวัตถุดิบ &amp; แหล่งจัดซื้อ</h2>
       </div>
       <div class="topbar-right">
@@ -666,6 +673,17 @@
       </div>
     </section>
   </main>
+
+  <!-- ============================================================ -->
+  <!-- BOTTOM DOCK (มือถือเท่านั้น) — แทน sidebar ด้วยแถบไอคอนล่าง -->
+  <!-- ============================================================ -->
+  <nav class="bottom-dock" id="bottomDock" aria-label="เมนูล่าง">
+    <button class="dock-item active" id="dockMaterials" onclick="switchTab('materials')"><span class="ico" data-icon="carrot"></span><span>วัตถุดิบ</span></button>
+    <button class="dock-item" id="dockRecipes" onclick="switchTab('recipes')"><span class="ico" data-icon="utensils"></span><span>สูตร</span></button>
+    <button class="dock-item dock-sell" id="dockPos" onclick="switchTab('pos')"><span class="ico" data-icon="receipt"></span><span>ขาย</span></button>
+    <button class="dock-item" id="dockStock" onclick="switchTab('stock')"><span class="ico" data-icon="package"></span><span>สต๊อก</span></button>
+    <button class="dock-item" id="dockAccount" onclick="toggleAccountMenu()"><span class="avatar avatar-dock" id="dockAvatar">R</span><span>บัญชี</span></button>
+  </nav>
 
   <!-- ============================================================ -->
   <!-- SLIDE-IN DRAWERS (add/edit forms) + shared overlay -->
@@ -1265,6 +1283,7 @@ async function boot() {
     CURRENT_SHOP = 'mock-shop-id';
     USER_ROLE = 'superadmin'; // เปิดสิทธิ์ Admin ให้อัตโนมัติสำหรับทดสอบหน้าจอทั้งหมด
     $('menuAdmin').classList.remove('hidden');
+    $('accountAdmin').classList.remove('hidden');
 
     // โหลดข้อมูลออฟไลน์จาก localStorage
     const localSups = localStorage.getItem('mj_suppliers');
@@ -1330,7 +1349,7 @@ async function boot() {
 
     USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
     CURRENT_SHOP = data.shop ? data.shop.id : null;
-    if (data.isSuperadmin) $('menuAdmin').classList.remove('hidden');
+    if (data.isSuperadmin) { $('menuAdmin').classList.remove('hidden'); $('accountAdmin').classList.remove('hidden'); }
 
     if (CURRENT_SHOP) {
       suppliers = (data.suppliers || []).map(s => ({ id: s.id, name: s.name, note: s.note }));
@@ -1487,11 +1506,15 @@ function switchTab(t) {
         el.classList.add('hidden');
       }
     }
-    const menu = $('menu' + k.charAt(0).toUpperCase() + k.slice(1));
-    if (menu) {
-      menu.classList.toggle('active', k === t);
-    }
+    const cap = k.charAt(0).toUpperCase() + k.slice(1);
+    const menu = $('menu' + cap);
+    if (menu) menu.classList.toggle('active', k === t);
+    const dock = $('dock' + cap);   // dock มือถือ
+    if (dock) dock.classList.toggle('active', k === t);
   });
+  // ปุ่ม "บัญชี" ใน dock ไฮไลต์เมื่ออยู่หน้า ตั้งค่า/จ่ายเงิน/แอดมิน
+  const dockAcc = $('dockAccount');
+  if (dockAcc) dockAcc.classList.toggle('active', t === 'set' || t === 'billing' || t === 'admin');
 
   const titles = {
     materials: 'คลังวัตถุดิบ & แหล่งจัดซื้อ',
@@ -1509,7 +1532,8 @@ function switchTab(t) {
     adminLoadDashboard();
   }
 
-  // ปิดลิ้นชักเมนูบนมือถือหลังเลือกหน้า
+  // ปิดเมนูบัญชี/ลิ้นชักหลังเลือกหน้า
+  if (typeof toggleAccountMenu === 'function') toggleAccountMenu(false);
   if (typeof closeSidebarDrawer === 'function') closeSidebarDrawer();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1644,6 +1668,11 @@ function syncAccountUI() {
   if (accountAvatar) {
     accountAvatar.innerHTML = avatarHTML;
     accountAvatar.classList.toggle('has-logo', !!settings.logoData);
+  }
+  const dockAvatar = $('dockAvatar');   // avatar ปุ่มบัญชีใน dock มือถือ
+  if (dockAvatar) {
+    dockAvatar.innerHTML = avatarHTML;
+    dockAvatar.classList.toggle('has-logo', !!settings.logoData);
   }
 
   const accountShopName = $('accountShopName');
@@ -2877,6 +2906,11 @@ function render() {
 // คืนค่าสถานะแถบเมนู (ย่อ/ขยาย) + ไฮเดรตไอคอนเริ่มต้นทันทีที่โหลด
 restoreSidebar();
 renderIcons();
+
+// ลงทะเบียน service worker (ติดตั้งเป็นแอป PWA ได้)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+}
 
 // เริ่มต้นโหลดหน้า
 switchTab('materials');
