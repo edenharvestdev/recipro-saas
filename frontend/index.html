@@ -240,7 +240,7 @@
   <main class="main-container">
     <div class="top-bar">
       <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-        <button id="sidebarDrawerBtn" onclick="openSidebarDrawer()" style="display:none; background:none; border:none; padding:4px; font-size:22px; line-height:1; cursor:pointer; color:var(--color-text-main); border-radius:8px; flex-shrink:0;" aria-label="เมนู"><span class="ico" data-icon="menu"></span></button>
+        <button id="sidebarDrawerBtn" onclick="topLeftAction()" style="display:none; background:none; border:none; padding:6px; font-size:22px; line-height:1; cursor:pointer; color:var(--color-text-main); border-radius:8px; flex-shrink:0;" aria-label="เมนู"><span class="ico" data-icon="settings"></span></button>
         <img class="mobile-topbar-logo" src="assets/recipro-icon.svg" alt="Recipro" style="flex-shrink:0;">
         <h2 id="currentPageTitle" style="min-width:0; flex:1;">ภาพรวม</h2>
       </div>
@@ -927,6 +927,31 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== ACCOUNT PAGE (มือถือ — แทน popover เมนูบัญชี) ===== -->
+    <section id="accountPage" class="page-section hidden">
+      <div class="glass-card account-page-card">
+        <div class="account-page-head">
+          <span class="avatar avatar-lg" id="acctPageAvatar">R</span>
+          <div style="min-width:0; flex:1;">
+            <div class="account-page-name" id="acctPageShop">ร้านของฉัน</div>
+            <div class="account-page-email" id="acctPageEmail"></div>
+          </div>
+        </div>
+        <div class="account-page-plan">
+          <span id="acctPagePlan" class="shop-status-badge status-trial">Trial</span>
+          <button class="btn btn-primary btn-sm" onclick="switchTab('billing')"><span class="ico" data-icon="arrow-up"></span> อัปเกรด</button>
+        </div>
+      </div>
+
+      <div class="glass-card account-page-list">
+        <button class="account-page-item" onclick="switchTab('set')"><span class="ico" data-icon="settings"></span><span>ตั้งค่าบัญชี / ข้อมูลร้าน</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('billing')"><span class="ico" data-icon="credit-card"></span><span>การชำระเงิน &amp; ใบเสร็จ</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item hidden" id="acctPageAdmin" onclick="switchTab('admin')"><span class="ico" data-icon="crown"></span><span>ควบคุมระบบ (แอดมิน)</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item hidden" id="acctPageShopSwitch" onclick="openShopSwitcher()"><span class="ico" data-icon="store"></span><span>สลับร้านค้า</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item danger" onclick="handleSignOut()"><span class="ico" data-icon="log-out"></span><span>ออกจากระบบ</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+      </div>
+    </section>
   </main>
 
   <!-- ============================================================ -->
@@ -938,7 +963,7 @@
     <button class="dock-item dock-sell" id="dockPos" onclick="switchTab('pos')"><span class="ico" data-icon="receipt"></span><span>ขาย</span></button>
     <button class="dock-item" id="dockRecipes" onclick="switchTab('recipes')"><span class="ico" data-icon="utensils"></span><span>สูตร</span></button>
     <button class="dock-item" id="dockStock" onclick="switchTab('stock')"><span class="ico" data-icon="package"></span><span>สต๊อก</span></button>
-    <button class="dock-item" id="dockAccount" onclick="toggleAccountMenu()"><span class="avatar avatar-dock" id="dockAvatar">R</span><span>บัญชี</span></button>
+    <button class="dock-item" id="dockAccount" onclick="switchTab('account')"><span class="avatar avatar-dock" id="dockAvatar">R</span><span>บัญชี</span></button>
   </nav>
 
   <!-- ============================================================ -->
@@ -1622,10 +1647,29 @@ function restoreSidebar() {
   updateDrawerButton();
 }
 
-// ปุ่ม hamburger ในแถบบนจะโผล่เฉพาะจอ <=820px (ลิ้นชัก)
+// ปุ่มมุมซ้ายบน (มือถือ): ฉลาดตามหน้า — หน้าย่อย=ย้อนกลับ ←, หน้าหลัก=ตั้งค่า ⚙️
+const SUB_TABS = ['set', 'billing', 'admin'];
+let currentTab = 'dash';
+let lastMainTab = 'dash';
+
 function updateDrawerButton() {
-  const drawerBtn = $('sidebarDrawerBtn');
-  if (drawerBtn) drawerBtn.style.display = (window.innerWidth <= 820) ? 'inline-flex' : 'none';
+  const btn = $('sidebarDrawerBtn');
+  if (!btn) return;
+  btn.style.display = (window.innerWidth <= 820) ? 'inline-flex' : 'none';
+  const ico = btn.querySelector('.ico');
+  const onSub = SUB_TABS.includes(currentTab);
+  if (ico) { ico.setAttribute('data-icon', onSub ? 'arrow-left' : 'settings'); }
+  btn.setAttribute('aria-label', onSub ? 'ย้อนกลับ' : 'ตั้งค่า');
+  renderIcons(btn);
+}
+
+// กดปุ่มมุมซ้าย: หน้าย่อย→ย้อนกลับไปหน้าหลักก่อนหน้า, หน้าหลัก→เปิดตั้งค่า
+function topLeftAction() {
+  if (SUB_TABS.includes(currentTab)) {
+    switchTab(lastMainTab || 'dash');
+  } else {
+    switchTab('set');
+  }
 }
 window.addEventListener('resize', () => {
   updateDrawerButton();
@@ -1897,7 +1941,9 @@ async function syncToSupabase() {
 // 4. NAVIGATION & TAB SWITCHER
 // ============================================================
 function switchTab(t) {
-  const tabs = ['dash', 'materials', 'recipes', 'stock', 'report', 'pos', 'set', 'admin', 'billing'];
+  currentTab = t;
+  if (!SUB_TABS.includes(t)) lastMainTab = t;
+  const tabs = ['dash', 'materials', 'recipes', 'stock', 'report', 'pos', 'set', 'admin', 'billing', 'account'];
   tabs.forEach(k => {
     const el = $(k + 'Page');
     if (el) {
@@ -1916,7 +1962,7 @@ function switchTab(t) {
   });
   // ปุ่ม "บัญชี" ใน dock ไฮไลต์เมื่ออยู่หน้า ตั้งค่า/จ่ายเงิน/แอดมิน
   const dockAcc = $('dockAccount');
-  if (dockAcc) dockAcc.classList.toggle('active', t === 'set' || t === 'billing' || t === 'admin');
+  if (dockAcc) dockAcc.classList.toggle('active', t === 'set' || t === 'billing' || t === 'admin' || t === 'account');
 
   const titles = {
     dash: 'ภาพรวม',
@@ -1927,11 +1973,13 @@ function switchTab(t) {
     pos: 'ระบบหน้าร้าน & ออกเอกสารบิล',
     set: 'ตั้งค่าร้านค้า & บัญชีรับโอนเงิน',
     admin: 'แผงควบคุมหลัก Super Admin',
-    billing: 'จัดการสมาชิก & ชำระเงินรายปี'
+    billing: 'จัดการสมาชิก & ชำระเงินรายปี',
+    account: 'บัญชีของฉัน'
   };
   $('currentPageTitle').textContent = titles[t] || '';
 
   if (t === 'dash') renderDashboard();
+  if (t === 'account') renderAccountPage();
   // เปิดแท็บแอดมิน → รีเฟรชตัวเลขแดชบอร์ดให้ล่าสุดเสมอ
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
@@ -1946,6 +1994,7 @@ function switchTab(t) {
   // ปิดเมนูบัญชี/ลิ้นชักหลังเลือกหน้า
   if (typeof toggleAccountMenu === 'function') toggleAccountMenu(false);
   if (typeof closeSidebarDrawer === 'function') closeSidebarDrawer();
+  updateDrawerButton();   // อัปเดตไอคอนปุ่มมุมซ้าย (← / ⚙️) ตามหน้า
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2101,6 +2150,29 @@ function syncAccountUI() {
     const st = badge.textContent.trim().toLowerCase();
     planBadge.textContent = st === 'trial' ? 'ทดลองใช้ (Trial)' : badge.textContent;
   }
+}
+
+// หน้า "บัญชีของฉัน" (มือถือ) — เติมข้อมูล + เปิด/ปิดเมนูแอดมินตามสิทธิ์
+function renderAccountPage() {
+  const name = settings.shopName || 'ร้านของฉัน';
+  const avatarHTML = settings.logoData ? `<img src="${settings.logoData}" alt="">` : shopInitials(name);
+  const av = $('acctPageAvatar');
+  if (av) { av.innerHTML = avatarHTML; av.classList.toggle('has-logo', !!settings.logoData); }
+  if ($('acctPageShop')) $('acctPageShop').textContent = name + (window.RECIPRO_SHOP_OVERRIDE ? ' 👁' : '');
+  if ($('acctPageEmail')) $('acctPageEmail').textContent = (CURRENT_USER && CURRENT_USER.email) || '';
+
+  const badge = $('shopStatusBadge');
+  const plan = $('acctPagePlan');
+  if (badge && plan) {
+    plan.className = badge.className;
+    const st = badge.textContent.trim().toLowerCase();
+    plan.textContent = st === 'trial' ? 'ทดลองใช้ (Trial)' : badge.textContent;
+  }
+
+  const isSuper = USER_ROLE === 'superadmin';
+  if ($('acctPageAdmin')) $('acctPageAdmin').classList.toggle('hidden', !isSuper);
+  if ($('acctPageShopSwitch')) $('acctPageShopSwitch').classList.toggle('hidden', !isSuper);
+  renderIcons($('accountPage'));
 }
 
 // ============================================================
@@ -2761,12 +2833,18 @@ async function produce() {
   const rounds = Math.max(1, +$('prodRounds').value || 1);
   if (!r) { alert('กรุณาเลือกสูตรที่ต้องการผลิต'); return; }
 
+  if (!r.items || !r.items.length) {
+    await ui.alert('สูตรนี้ยังไม่มีส่วนผสม — เพิ่มวัตถุดิบในสูตรก่อนจึงจะผลิตได้', { title: 'ผลิตไม่ได้', icon: 'alert-triangle', variant: 'warning' });
+    return;
+  }
+
   const short = r.items.map(it => ({ m: matById(it.matId), need: it.amount * rounds }))
     .filter(x => x.m && matStockBase(x.m) < x.need);
 
   if (short.length) {
-    const msg = short.map(x => `• ${x.m.name} (ต้องการ ${x.need} มี ${matStockBase(x.m)} ${baseU(x.m)})`).join('\n');
-    if (!(await ui.confirm(`วัตถุดิบไม่เพียงพอ:\n${msg}\n\nต้องการผลิตต่อไปหรือไม่? (สต๊อกวัตถุดิบจะติดลบ)`, { title: 'สต๊อกวัตถุดิบไม่พอ', okText: 'ผลิตต่อไป', icon: 'alert-triangle' }))) return;
+    const msg = short.map(x => `• ${x.m.name} (ต้องการ ${x.need} ${baseU(x.m)} · มี ${matStockBase(x.m)})`).join('<br>');
+    await ui.alert(`ผลิตไม่ได้ — วัตถุดิบไม่เพียงพอ:<br><br>${msg}<br><br>กรุณาเติมสต๊อกวัตถุดิบก่อน`, { title: 'วัตถุดิบไม่พอ', icon: 'alert-triangle', variant: 'warning' });
+    return;
   }
 
   r.items.forEach(it => {

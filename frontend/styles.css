@@ -1867,3 +1867,31 @@ table.bd tfoot td.r { text-align: right; }
   .pos-receipt { box-shadow: none !important; border-radius: 0 !important; width: 80mm !important; }
   .no-print { display: none !important; }
 }
+
+/* ===== ACCOUNT PAGE (mobile) ===== */
+.account-page-card { margin-bottom: 14px; }
+.account-page-head { display: flex; align-items: center; gap: 14px; }
+.account-page-head .avatar-lg { width: 56px; height: 56px; font-size: 22px; flex-shrink: 0; }
+.account-page-name { font-size: 18px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-page-email { font-size: 13px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-page-plan { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+.account-page-list { padding: 6px !important; }
+.account-page-item {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; padding: 16px 14px; border: none; background: none;
+  font-size: 15px; font-weight: 600; color: var(--color-text-main);
+  cursor: pointer; text-align: left; border-radius: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.account-page-item:last-child { border-bottom: none; }
+.account-page-item:active { background: rgba(234,88,12,0.08); }
+.account-page-item .ico:first-child { color: var(--color-primary); flex-shrink: 0; }
+.account-page-item > span:nth-child(2) { flex: 1; min-width: 0; }
+.account-page-item .apg-chev { color: var(--color-text-muted); margin-left: auto; }
+.account-page-item.danger { color: #dc2626; }
+.account-page-item.danger .ico:first-child { color: #dc2626; }
+
+/* หน้า account แสดงเฉพาะมือถือ — เดสก์ท็อปใช้ popover จาก sidebar */
+@media (min-width: 821px) {
+  #accountPage { max-width: 520px; }
+}
