@@ -33,7 +33,7 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'name', 'qty', 'unit', 'price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category'],
+        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category'],
         withShop(b.materials), 'id');
 
       await upsertRows(client, 'recipes',

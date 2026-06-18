@@ -280,9 +280,13 @@
           <table class="lst">
             <thead>
               <tr>
-                <th>วัตถุดิบ</th>
-                <th>ราคา/หน่วยหลัก</th>
-                <th>ต้นทุน/หน่วยย่อย</th>
+                <th style="width:90px">รหัส (SKU)</th>
+                <th>ชื่อวัตถุดิบ / อุปกรณ์</th>
+                <th>หมวดหมู่</th>
+                <th class="r">ราคาซื้อ/หน่วย</th>
+                <th class="r">ราคาขาย/หน่วย</th>
+                <th class="r">ต้นทุน/หน่วยย่อย</th>
+                <th>แหล่งซื้อ</th>
                 <th>จัดการ</th>
               </tr>
             </thead>
@@ -398,6 +402,40 @@
 
     <!-- 3. POS PAGE -->
     <section id="posPage" class="page-section hidden">
+
+      <!-- Sub-tab: ขายด่วน / เอกสารบิล -->
+      <div class="pos-subtab-bar">
+        <button id="posTabQS" class="btn btn-primary" onclick="switchPosTab('quick')"><span class="ico" data-icon="zap"></span> ขายด่วน</button>
+        <button id="posTabBill" class="btn btn-ghost" onclick="switchPosTab('bill')"><span class="ico" data-icon="file-text"></span> เอกสารบิล</button>
+      </div>
+
+      <!-- ===== QUICK SELL PANEL ===== -->
+      <div id="posQuickSell">
+        <div class="pos-qs-layout">
+          <!-- product grid -->
+          <div id="posProductGrid" class="pos-product-grid">
+            <p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">กำลังโหลดสินค้า…</p>
+          </div>
+          <!-- cart -->
+          <div class="glass-card pos-cart-panel">
+            <h3 style="margin-bottom:12px;"><span class="ico" data-icon="shopping-cart"></span> ตะกร้าสินค้า</h3>
+            <div id="posCartItems">
+              <p style="color:var(--color-text-muted); text-align:center; padding:24px 0; font-size:13px;">ยังไม่มีสินค้าในตะกร้า</p>
+            </div>
+            <div id="posCartFooter" class="pos-cart-footer" style="display:none;">
+              <div class="pos-cart-grand">
+                <span class="label">ยอดรวม</span>
+                <span class="amount" id="posCartGrand">฿0.00</span>
+              </div>
+              <button class="btn btn-secondary" onclick="posClearCart()" style="width:100%; margin-bottom:8px; font-size:13px;"><span class="ico" data-icon="trash-2"></span> ล้างตะกร้า</button>
+              <button class="btn btn-primary" onclick="posCheckout()" style="width:100%;"><span class="ico" data-icon="banknote"></span> ชำระเงิน</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== BILLING PANEL (B2B document billing) ===== -->
+      <div id="posBillingPanel" class="hidden">
       <div class="grid-2" style="margin-bottom: 24px;">
         <!-- สร้าง/แก้ไขบิล -->
         <div class="glass-card">
@@ -520,6 +558,7 @@
           <div class="bill-document-preview" id="billDoc"></div>
         </div>
       </div>
+      </div><!-- /posBillingPanel -->
     </section>
 
     <!-- 4. SETTINGS PAGE -->
@@ -713,18 +752,24 @@
     <div class="drawer-body">
       <div class="grid-2" style="margin-bottom: 12px;">
         <div class="field">
-          <label>ชื่อวัตถุดิบ</label>
+          <label>รหัสสินค้า (SKU)</label>
+          <input id="mSku" placeholder="เช่น MA-001">
+        </div>
+        <div class="field">
+          <label>ชื่อวัตถุดิบ / อุปกรณ์</label>
           <input id="mName" placeholder="เช่น แป้งสาลี">
         </div>
+      </div>
+      <div class="grid-2" style="margin-bottom: 12px;">
         <div class="field">
           <label>แหล่งซื้อ (Supplier)</label>
           <select id="mSup"></select>
         </div>
-      </div>
-      <div class="field" style="margin-bottom: 12px;">
-        <label>หมวดหมู่ (เลือกหรือพิมพ์เพิ่มเองได้)</label>
-        <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า">
-        <datalist id="catDatalist"></datalist>
+        <div class="field">
+          <label>หมวดหมู่ (เลือกหรือพิมพ์เพิ่มเองได้)</label>
+          <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า">
+          <datalist id="catDatalist"></datalist>
+        </div>
       </div>
       <div class="grid-3" style="margin-bottom: 12px;">
         <div class="field">
@@ -749,9 +794,15 @@
           <input id="mPrice" type="number" step="any" placeholder="0">
         </div>
       </div>
-      <div class="field">
-        <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
-        <input id="mUrl" placeholder="https://...">
+      <div class="grid-2" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>ราคาขาย (฿) <span style="color:var(--color-text-muted); font-size:12px;">— ต่อหน่วย</span></label>
+          <input id="mSellPrice" type="number" step="any" placeholder="0">
+        </div>
+        <div class="field">
+          <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
+          <input id="mUrl" placeholder="https://...">
+        </div>
       </div>
     </div>
     <div class="drawer-footer">
@@ -1383,7 +1434,8 @@ async function boot() {
     if (CURRENT_SHOP) {
       suppliers = (data.suppliers || []).map(s => ({ id: s.id, name: s.name, note: s.note }));
       materials = (data.materials || []).map(m => ({
-        id: m.id, name: m.name, qty: Number(m.qty), unit: m.unit, price: Number(m.price),
+        id: m.id, sku: m.sku || '', name: m.name, qty: Number(m.qty), unit: m.unit,
+        price: Number(m.price), sellPrice: Number(m.sell_price) || 0,
         supId: m.supplier_id, orderUrl: m.order_url, stock: Number(m.stock), lowStock: Number(m.low_stock),
         category: m.category || ''
       }));
@@ -1492,7 +1544,8 @@ async function syncToSupabase() {
   const payload = {
     suppliers: suppliers.map(s => ({ id: s.id, name: s.name, note: s.note })),
     materials: materials.map(m => ({
-      id: m.id, name: m.name, qty: m.qty, unit: m.unit, price: m.price,
+      id: m.id, sku: m.sku || null, name: m.name, qty: m.qty, unit: m.unit,
+      price: m.price, sell_price: m.sellPrice || null,
       supplier_id: m.supId || null, order_url: m.orderUrl, stock: m.stock, low_stock: m.lowStock,
       category: m.category || null
     })),
@@ -1566,6 +1619,8 @@ function switchTab(t) {
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
   if (t === 'set') loadLogs();
+  // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
+  if (t === 'pos') switchPosTab('quick');
 
   // ปิดเมนูบัญชี/ลิ้นชักหลังเลือกหน้า
   if (typeof toggleAccountMenu === 'function') toggleAccountMenu(false);
@@ -1612,9 +1667,11 @@ function closeDrawer() {
 // เปิดฟอร์ม "เพิ่มวัตถุดิบ" แบบล้างค่าใหม่
 function openMatForm() {
   editMatId = null;
+  $('mSku').value = '';
   $('mName').value = '';
   $('mQty').value = '';
   $('mPrice').value = '';
+  $('mSellPrice').value = '';
   $('mUrl').value = '';
   $('mSup').value = '';
   $('mCat').value = '';
@@ -1788,9 +1845,11 @@ function renderSup() {
 
 let editMatId = null;
 function saveMat() {
+  const sku = $('mSku').value.trim();
   const name = $('mName').value.trim();
   const qty = +$('mQty').value || 1;
   const price = +$('mPrice').value || 0;
+  const sellPrice = +$('mSellPrice').value || 0;
   const unit = $('mUnit').value;
   const supId = $('mSup').value;
   const orderUrl = $('mUrl').value.trim();
@@ -1803,17 +1862,19 @@ function saveMat() {
   if (category && !settings.categories.includes(category)) settings.categories.push(category);
 
   if (editMatId) {
-    Object.assign(matById(editMatId), { name, qty, unit, price, supId, orderUrl, category });
+    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category });
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), name, qty, unit, price, supId, orderUrl, category, stock: 0, lowStock: 0 });
+    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, stock: 0, lowStock: 0 });
   }
 
   saveAll();
+  $('mSku').value = '';
   $('mName').value = '';
   $('mQty').value = '';
   $('mPrice').value = '';
+  $('mSellPrice').value = '';
   $('mUrl').value = '';
   $('mCat').value = '';
   render();
@@ -1829,10 +1890,12 @@ function renderCatDatalist() {
 function editMat(id) {
   const m = matById(id);
   editMatId = id;
+  $('mSku').value = m.sku || '';
   $('mName').value = m.name;
   $('mQty').value = m.qty;
   $('mUnit').value = m.unit;
   $('mPrice').value = m.price;
+  $('mSellPrice').value = m.sellPrice || '';
   $('mSup').value = m.supId || '';
   $('mUrl').value = m.orderUrl || '';
   $('mCat').value = m.category || '';
@@ -1873,18 +1936,21 @@ function renderMatList() {
 
   $('matList').innerHTML = filtered.map(m => {
     const sp = supById(m.supId);
-    const catBadge = m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '';
+    const costPerBase = money(perBase(m));
     return `<tr>
-      <td><b>${esc(m.name)}</b> ${catBadge}<br><span style="font-size:12px; color:var(--color-text-muted);">${sp ? esc(sp.name) : 'ไม่มีแหล่งจัดซื้อ'}</span></td>
-      <td>${money(m.price)} / ${m.qty} ${m.unit}</td>
-      <td>${money(perBase(m))} / ${baseU(m)}</td>
+      <td style="font-family:monospace; font-size:12px; color:var(--color-text-muted);">${esc(m.sku || '—')}</td>
+      <td><b>${esc(m.name)}</b><br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
+      <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
+      <td class="r">${money(m.price)}</td>
+      <td class="r" style="color:var(--green);">${m.sellPrice ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
+      <td class="r" style="font-size:12px; color:var(--color-text-muted);">${costPerBase} / ${baseU(m)}</td>
+      <td style="font-size:12px;">${sp ? esc(sp.name) : '<span style="color:var(--color-text-muted)">—</span>'}${m.orderUrl ? ` <a href="${m.orderUrl}" target="_blank" title="ลิงก์สั่งซื้อ" style="color:var(--brand);">${icon('external-link')}</a>` : ''}</td>
       <td>
-        ${m.orderUrl ? `<button class="btn btn-ghost btn-sm" onclick="window.open('${m.orderUrl}','_blank')" style="padding:6px 10px;" title="ลิงก์สั่งซื้อ">${icon('shopping-cart')} Link</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="padding:6px 10px;" title="แก้ไข">${icon('pencil')}</button>
         <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
 }
 
 // ============================================================
@@ -2412,6 +2478,145 @@ function renderBillList() {
   }).join('') || '<tr><td colspan="5" style="color:#999; text-align:center;">ยังไม่มีประวัติการขาย</td></tr>';
 }
 
+// ============================================================
+// 8b. POS QUICK SELL — ขายด่วน
+// ============================================================
+let posCart = []; // [{ recipeId, qty }]
+
+function switchPosTab(tab) {
+  const isQuick = tab === 'quick';
+  $('posQuickSell').classList.toggle('hidden', !isQuick);
+  $('posBillingPanel').classList.toggle('hidden', isQuick);
+  $('posTabQS').classList.toggle('btn-primary', isQuick);
+  $('posTabQS').classList.toggle('btn-ghost', !isQuick);
+  $('posTabBill').classList.toggle('btn-primary', !isQuick);
+  $('posTabBill').classList.toggle('btn-ghost', isQuick);
+  if (isQuick) renderPosGrid();
+}
+
+function renderPosGrid() {
+  const grid = $('posProductGrid');
+  if (!grid) return;
+  const sellable = recipes.filter(r => !r.isRaw);
+  if (!sellable.length) {
+    grid.innerHTML = '<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู</p>';
+    return;
+  }
+  grid.innerHTML = sellable.map(r => {
+    const stock = Number(r.fgStock) || 0;
+    const oos = stock <= 0;
+    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
+      <div class="ppc-name">${esc(r.name)}</div>
+      <div class="ppc-price">${money(r.sell)}</div>
+      <div class="ppc-stock">${oos ? 'หมดสต๊อก' : `สต๊อก ${stock} ${r.yieldUnit || 'ชิ้น'}`}</div>
+    </div>`;
+  }).join('');
+  renderIcons(grid);
+}
+
+function addToCart(recipeId) {
+  const r = recById(recipeId);
+  if (!r) return;
+  const maxQty = Number(r.fgStock) || 0;
+  const existing = posCart.find(it => it.recipeId === recipeId);
+  if (existing) {
+    if (existing.qty < maxQty) existing.qty++;
+  } else {
+    posCart.push({ recipeId, qty: 1 });
+  }
+  renderPosCart();
+}
+
+function posChangeQty(recipeId, delta) {
+  const idx = posCart.findIndex(it => it.recipeId === recipeId);
+  if (idx === -1) return;
+  const r = recById(recipeId);
+  const maxQty = Number(r?.fgStock) || 0;
+  posCart[idx].qty = Math.max(0, Math.min(maxQty, posCart[idx].qty + delta));
+  if (posCart[idx].qty === 0) posCart.splice(idx, 1);
+  renderPosCart();
+}
+
+function posClearCart() {
+  posCart = [];
+  renderPosCart();
+}
+
+function renderPosCart() {
+  const cartEl = $('posCartItems');
+  const footerEl = $('posCartFooter');
+  if (!cartEl) return;
+
+  if (!posCart.length) {
+    cartEl.innerHTML = '<p style="color:var(--color-text-muted); text-align:center; padding:24px 0; font-size:13px;">ยังไม่มีสินค้าในตะกร้า</p>';
+    if (footerEl) footerEl.style.display = 'none';
+    return;
+  }
+
+  let grand = 0;
+  cartEl.innerHTML = posCart.map(it => {
+    const r = recById(it.recipeId);
+    if (!r) return '';
+    const lineTotal = it.qty * r.sell;
+    grand += lineTotal;
+    return `<div class="pos-cart-item">
+      <div class="pci-name">${esc(r.name)}</div>
+      <div class="pci-qty">
+        <button onclick="posChangeQty('${r.id}',-1)">−</button>
+        <span>${it.qty}</span>
+        <button onclick="posChangeQty('${r.id}',1)">+</button>
+      </div>
+      <div class="pci-total">${money(lineTotal)}</div>
+    </div>`;
+  }).join('');
+
+  if (footerEl) {
+    footerEl.style.display = '';
+    $('posCartGrand').textContent = money(grand);
+  }
+}
+
+async function posCheckout() {
+  if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
+
+  const total = posCart.reduce((s, it) => {
+    const r = recById(it.recipeId);
+    return s + (r ? it.qty * r.sell : 0);
+  }, 0);
+
+  const confirmed = await ui.confirm(`ยืนยันการขาย ${money(total)}?`, { okText: 'ยืนยันชำระ', icon: 'banknote', variant: 'success' });
+  if (!confirmed) return;
+
+  const newBill = {
+    id: uid(),
+    billNo: 'QS-' + String(counter + 1).padStart(4, '0'),
+    status: 'paid',
+    date: new Date().toISOString().slice(0, 10),
+    cust: '',
+    sender: settings.shopName,
+    discV: 0, discT: '%',
+    taxV: 0, taxT: '%',
+    items: posCart.map(it => {
+      const r = recById(it.recipeId);
+      return { recipeId: it.recipeId, qty: it.qty, price: r ? r.sell : 0 };
+    })
+  };
+
+  newBill.items.forEach(it => {
+    const r = recById(it.recipeId);
+    if (r) r.fgStock = Math.max(0, (Number(r.fgStock) || 0) - it.qty);
+  });
+
+  bills.push(newBill);
+  counter++;
+  saveAll();
+  posCart = [];
+  renderPosGrid();
+  renderPosCart();
+  render();
+  await ui.alert(`ขายสำเร็จ! ${money(total)}`, { title: 'ขายเรียบร้อย', icon: 'circle-check', variant: 'success' });
+}
+
 function renderDoc() {
   const d = DOC[docType];
   const c = calcBill(currentBill);
@@ -2885,13 +3090,15 @@ async function adminCreateShop() {
 // 12. เทมเพลต + นำเข้าคลังของ (xlsx / csv / pdf) แบบแก้ไขก่อนบันทึก
 // ============================================================
 const IMPORT_COLS = [
-  { key: 'name', label: 'ชื่อวัตถุดิบ', required: true, hint: 'เช่น แป้งสาลี' },
-  { key: 'category', label: 'หมวดหมู่', hint: 'วัตถุดิบ/บรรจุภัณฑ์/เครื่องใช้ไฟฟ้า' },
-  { key: 'qty', label: 'จำนวนบรรจุ', required: true, num: true, hint: '1' },
-  { key: 'unit', label: 'หน่วย', required: true, hint: 'กก./กรัม/ลิตร/มล./ชิ้น/แพ็ค/ขวด/ฟอง' },
-  { key: 'price', label: 'ราคาซื้อ(บาท)', required: true, num: true, hint: '0' },
-  { key: 'supplier', label: 'แหล่งซื้อ', hint: 'ชื่อร้าน' },
-  { key: 'orderUrl', label: 'ลิงก์สั่งซื้อ', hint: 'https://...' },
+  { key: 'sku',       label: 'รหัสสินค้า',    hint: 'MA-001' },
+  { key: 'name',      label: 'ชื่อวัตถุดิบ',   required: true, hint: 'เช่น แป้งสาลี' },
+  { key: 'category',  label: 'หมวดหมู่',       hint: 'วัตถุดิบ/บรรจุภัณฑ์/เครื่องใช้ไฟฟ้า' },
+  { key: 'qty',       label: 'จำนวนบรรจุ',     num: true, hint: '1' },
+  { key: 'unit',      label: 'หน่วย',          required: true, hint: 'กก./กรัม/ลิตร/มล./ชิ้น/แพ็ค/ขวด/ฟอง' },
+  { key: 'price',     label: 'ราคาซื้อ(บาท)',  required: true, num: true, hint: '0' },
+  { key: 'sellPrice', label: 'ราคาขาย(บาท)',   num: true, hint: '0' },
+  { key: 'supplier',  label: 'แหล่งซื้อ',      hint: 'ชื่อร้าน' },
+  { key: 'orderUrl',  label: 'ลิงก์สั่งซื้อ',  hint: 'https://...' },
 ];
 const VALID_UNITS = ['กิโลกรัม', 'กรัม', 'ลิตร', 'มิลลิลิตร', 'ฟอง', 'ชิ้น', 'แพ็ค', 'ขวด'];
 
@@ -2929,9 +3136,9 @@ function templateAOA() {
   const header = IMPORT_COLS.map(c => c.label + (c.required ? '*' : ''));
   return [
     header,
-    ['แป้งสาลี', 'วัตถุดิบ', 1, 'กิโลกรัม', 45, 'แม็คโคร', ''],
-    ['แก้วพลาสติก 16oz', 'บรรจุภัณฑ์ (Package)', 50, 'ชิ้น', 120, 'Shopee', 'https://...'],
-    ['เครื่องชงกาแฟ', 'เครื่องใช้ไฟฟ้า', 1, 'ชิ้น', 18900, '', ''],
+    ['MA-001', 'ฝาแก้ว สีใส',        'สินค้าหมุนเวียน', 1, 'ชิ้น', 1.195, 1.396, 'Hibi Matcha House', ''],
+    ['MA-014', 'Hibi ถุงพลาสติกกลับบ้าน(ถุงเดี่ยว)', 'บรรจุภัณฑ์ (Package)', 1, 'ชิ้น', 0.569, 0.686, 'Hibi Matcha House', ''],
+    ['MA-018', 'ถ้วยมัทฉะ Hibi Tsuki 500ml', 'อุปกรณ์', 1, 'ชิ้น', 259.898, 313.648, 'Hibi Matcha House', ''],
   ];
 }
 
@@ -3129,8 +3336,9 @@ async function commitImport() {
     const category = (r.category || '').trim();
     if (category && !settings.categories.includes(category)) settings.categories.push(category);
     materials.push({
-      id: uid(), name: r.name.trim(), qty: Number(r.qty) || 1, unit: r.unit.trim(),
-      price: Number(r.price) || 0, supId, orderUrl: (r.orderUrl || '').trim(), category, stock: 0, lowStock: 0
+      id: uid(), sku: (r.sku || '').trim(), name: r.name.trim(), qty: Number(r.qty) || 1, unit: r.unit.trim(),
+      price: Number(r.price) || 0, sellPrice: Number(r.sellPrice) || 0,
+      supId, orderUrl: (r.orderUrl || '').trim(), category, stock: 0, lowStock: 0
     });
     added++;
   });

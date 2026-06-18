@@ -7,6 +7,9 @@
 alter table materials     add column if not exists category text;
 -- รายการหมวดของร้าน (เก็บไว้แม้ยังไม่มีของในหมวดนั้น)
 alter table shop_settings add column if not exists categories jsonb;
+-- รหัสสินค้า (SKU) และราคาขายต่อหน่วย
+alter table materials     add column if not exists sku text;
+alter table materials     add column if not exists sell_price numeric;
 
 -- บันทึกกิจกรรมทั้งระบบ (audit log)
 create table if not exists logs (
