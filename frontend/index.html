@@ -316,10 +316,17 @@
           <button class="btn btn-ghost btn-sm" onclick="manageCategoriesDialog()" title="จัดการหมวดหมู่" style="padding:7px 10px;"><span class="ico" data-icon="settings-2"></span></button>
         </div>
 
+        <!-- bulk action bar -->
+        <div id="matBulkBar" style="display:none; align-items:center; gap:10px; padding:8px 12px; background:var(--color-primary-light,rgba(234,88,12,0.08)); border-radius:10px; margin-bottom:10px; flex-wrap:wrap;">
+          <span id="matBulkCount" style="font-size:13px; font-weight:700; color:var(--color-primary);"></span>
+          <button class="btn btn-danger btn-sm" onclick="bulkDeleteMats()"><span class="ico" data-icon="trash-2"></span> ลบที่เลือก</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearMatSelection()">ยกเลิกการเลือก</button>
+        </div>
         <div style="max-height: 540px; overflow-y: auto;" class="lst-desktop-wrap">
           <table class="lst">
             <thead>
               <tr>
+                <th style="width:32px;"><input type="checkbox" id="matSelectAll" onchange="toggleSelectAllMats(this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></th>
                 <th style="width:90px">รหัส (SKU)</th>
                 <th>ชื่อวัตถุดิบ / อุปกรณ์</th>
                 <th>หมวดหมู่</th>
@@ -363,10 +370,17 @@
           <button class="btn btn-primary btn-sm" onclick="openRecipeForm()"><span class="ico" data-icon="plus"></span> สร้างสูตร</button>
         </div>
 
+        <!-- bulk action bar -->
+        <div id="recBulkBar" style="display:none; align-items:center; gap:10px; padding:8px 12px; background:var(--color-primary-light,rgba(234,88,12,0.08)); border-radius:10px; margin-bottom:10px; flex-wrap:wrap;">
+          <span id="recBulkCount" style="font-size:13px; font-weight:700; color:var(--color-primary);"></span>
+          <button class="btn btn-danger btn-sm" onclick="bulkDeleteRecs()"><span class="ico" data-icon="trash-2"></span> ลบที่เลือก</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearRecSelection()">ยกเลิกการเลือก</button>
+        </div>
         <div style="max-height: 560px; overflow-y: auto;" class="lst-desktop-wrap">
           <table class="lst">
             <thead>
               <tr>
+                <th style="width:32px;"><input type="checkbox" id="recSelectAll" onchange="toggleSelectAllRecs(this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></th>
                 <th>สูตร (ขนม/สินค้า)</th>
                 <th>ต้นทุน/หน่วย</th>
                 <th>ราคาขาย</th>
@@ -2219,6 +2233,80 @@ async function delMat(id) {
 }
 
 let matCatFilter = '';
+let selectedMats = new Set();
+let selectedRecs = new Set();
+
+// ---- Materials bulk select ----
+function toggleMatSelect(id, checked) {
+  if (checked) selectedMats.add(id); else selectedMats.delete(id);
+  updateMatBulkBar();
+  const all = $('matSelectAll');
+  if (all) all.indeterminate = selectedMats.size > 0 && selectedMats.size < materials.length;
+}
+function toggleSelectAllMats(checked) {
+  const q = ($('matSearch').value || '').trim().toLowerCase();
+  const filtered = materials.filter(m => (!q || m.name.toLowerCase().includes(q)) && (!matCatFilter || m.category === matCatFilter));
+  filtered.forEach(m => checked ? selectedMats.add(m.id) : selectedMats.delete(m.id));
+  renderMatList();
+}
+function updateMatBulkBar() {
+  const bar = $('matBulkBar');
+  const cnt = $('matBulkCount');
+  if (!bar) return;
+  if (selectedMats.size > 0) {
+    bar.style.display = 'flex';
+    if (cnt) cnt.textContent = `เลือก ${selectedMats.size} รายการ`;
+  } else {
+    bar.style.display = 'none';
+  }
+  const all = $('matSelectAll');
+  if (all) { all.checked = selectedMats.size > 0 && selectedMats.size === materials.length; all.indeterminate = selectedMats.size > 0 && selectedMats.size < materials.length; }
+}
+function clearMatSelection() { selectedMats.clear(); renderMatList(); }
+async function bulkDeleteMats() {
+  if (!selectedMats.size) return;
+  if (!(await ui.confirm(`ลบวัตถุดิบ ${selectedMats.size} รายการ?`, { okText: 'ลบทั้งหมด', danger: true }))) return;
+  if (!isMockMode) { for (const id of selectedMats) await API.del('/api/materials/' + id).catch(() => {}); }
+  materials = materials.filter(m => !selectedMats.has(m.id));
+  selectedMats.clear();
+  saveAll(); render();
+  ui.toast(`ลบเรียบร้อย`, 'success');
+}
+
+// ---- Recipes bulk select ----
+function toggleRecSelect(id, checked) {
+  if (checked) selectedRecs.add(id); else selectedRecs.delete(id);
+  updateRecBulkBar();
+  const all = $('recSelectAll');
+  if (all) all.indeterminate = selectedRecs.size > 0 && selectedRecs.size < recipes.length;
+}
+function toggleSelectAllRecs(checked) {
+  recipes.forEach(r => checked ? selectedRecs.add(r.id) : selectedRecs.delete(r.id));
+  renderRecipeList();
+}
+function updateRecBulkBar() {
+  const bar = $('recBulkBar');
+  const cnt = $('recBulkCount');
+  if (!bar) return;
+  if (selectedRecs.size > 0) {
+    bar.style.display = 'flex';
+    if (cnt) cnt.textContent = `เลือก ${selectedRecs.size} สูตร`;
+  } else {
+    bar.style.display = 'none';
+  }
+  const all = $('recSelectAll');
+  if (all) { all.checked = selectedRecs.size > 0 && selectedRecs.size === recipes.length; all.indeterminate = selectedRecs.size > 0 && selectedRecs.size < recipes.length; }
+}
+function clearRecSelection() { selectedRecs.clear(); renderRecipeList(); }
+async function bulkDeleteRecs() {
+  if (!selectedRecs.size) return;
+  if (!(await ui.confirm(`ลบสูตร ${selectedRecs.size} รายการ?`, { okText: 'ลบทั้งหมด', danger: true }))) return;
+  if (!isMockMode) { for (const id of selectedRecs) await API.del('/api/recipes/' + id).catch(() => {}); }
+  recipes = recipes.filter(r => !selectedRecs.has(r.id));
+  selectedRecs.clear();
+  saveAll(); render();
+  ui.toast(`ลบเรียบร้อย`, 'success');
+}
 function setMatCatFilter(v) { matCatFilter = v; renderMatList(); }
 function renderMatCatChips() {
   const sel = $('matCatSelect');
@@ -2283,7 +2371,9 @@ function renderMatList() {
   const matRows = filtered.map(m => {
     const sp = supById(m.supId);
     const costPerBase = money(perBase(m));
-    return `<tr>
+    const checked = selectedMats.has(m.id) ? 'checked' : '';
+    return `<tr class="${selectedMats.has(m.id) ? 'row-selected' : ''}">
+      <td><input type="checkbox" ${checked} onchange="toggleMatSelect('${m.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td style="font-family:monospace; font-size:12px; color:var(--color-text-muted);">${esc(m.sku || '—')}</td>
       <td><b>${esc(m.name)}</b><br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
       <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
@@ -2297,7 +2387,8 @@ function renderMatList() {
       </td>
     </tr>`;
   });
-  $('matList').innerHTML = matRows.join('') || '<tr><td colspan="8" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
+  $('matList').innerHTML = matRows.join('') || '<tr><td colspan="9" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
+  updateMatBulkBar();
 
   // Mobile card view
   const matCards = $('matListCards');
@@ -2305,13 +2396,15 @@ function renderMatList() {
     matCards.innerHTML = filtered.length ? filtered.map(m => {
       const sp = supById(m.supId);
       const costPerBase = money(perBase(m));
-      return `<div class="item-card">
-        <div class="item-card-row" onclick="editMat('${m.id}')">
-          <div style="flex:1; min-width:0;">
+      const chk = selectedMats.has(m.id);
+      return `<div class="item-card${chk ? ' card-selected' : ''}">
+        <div class="item-card-row">
+          <input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleMatSelect('${m.id}',this.checked)" style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0;margin-top:2px;" onclick="event.stopPropagation()">
+          <div style="flex:1; min-width:0;" onclick="editMat('${m.id}')">
             <div class="item-card-title">${esc(m.name)}</div>
             <div class="item-card-sub">${m.qty} ${m.unit}${m.sku ? ' · ' + esc(m.sku) : ''}${sp ? ' · ' + esc(sp.name) : ''}</div>
           </div>
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;" onclick="editMat('${m.id}')">
             ${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : ''}
             <span style="font-weight:700; font-size:14px;">${money(m.price)}</span>
           </div>
@@ -2510,10 +2603,12 @@ function cloneRecipe(id) {
 function renderRecipeList() {
   $('recipeList').innerHTML = recipes.map(r => {
     const cost = recipeCost(r.items) / (r.batchYield || 1);
-    return `<tr>
+    const chk = selectedRecs.has(r.id);
+    return `<tr class="${chk ? 'row-selected' : ''}">
+      <td><input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td>
         <b>[${r.code || '-'}] ${r.name}</b><br>
-        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'สูตรดิบกึ่งสำเร็จรูป' : 'สินค้าปกติ'}</span>
+        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'สูตรดิบกึ่งสำเร็จรูป' : 'สินค้าปกติ'}${r.category ? ' · ' + esc(r.category) : ''}</span>
       </td>
       <td>${money(cost)}</td>
       <td>${money(r.sell)}</td>
@@ -2526,7 +2621,8 @@ function renderRecipeList() {
         <button class="btn btn-danger btn-sm" onclick="delRecipe('${r.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" style="color:#999; text-align:center;">ยังไม่มีสูตรถูกสร้างขึ้น</td></tr>';
+  }).join('') || '<tr><td colspan="7" style="color:#999; text-align:center;">ยังไม่มีสูตรถูกสร้างขึ้น</td></tr>';
+  updateRecBulkBar();
 
   // Mobile card view
   const rcCards = $('recipeListCards');
@@ -2537,13 +2633,15 @@ function renderRecipeList() {
       const margin = r.sell > 0 ? Math.round(profit / r.sell * 100) : 0;
       const profitColor = profit >= 0 ? '#16a34a' : '#dc2626';
       const marginBg = profit >= 0 ? '#22c55e22' : '#e53e3e22';
-      return `<div class="item-card">
-        <div class="item-card-row" onclick="editRecipe('${r.id}')">
-          <div style="flex:1; min-width:0;">
+      const chk = selectedRecs.has(r.id);
+      return `<div class="item-card${chk ? ' card-selected' : ''}">
+        <div class="item-card-row">
+          <input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0;margin-top:2px;" onclick="event.stopPropagation()">
+          <div style="flex:1; min-width:0;" onclick="editRecipe('${r.id}')">
             <div class="item-card-title">[${esc(r.code || '-')}] ${esc(r.name)}</div>
             <div class="item-card-sub">${r.isRaw ? 'กึ่งสำเร็จรูป' : 'สินค้าปกติ'} · ผลิต ${r.batchYield || 1} ${r.yieldUnit || 'ชิ้น'}</div>
           </div>
-          ${r.sell > 0 ? `<span style="background:${marginBg};color:${profitColor};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:800;flex-shrink:0;">${margin}%</span>` : ''}
+          ${r.sell > 0 ? `<span style="background:${marginBg};color:${profitColor};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:800;flex-shrink:0;" onclick="editRecipe('${r.id}')">${margin}%</span>` : ''}
         </div>
         <div class="item-card-stats">
           <div class="item-card-stat"><span>ต้นทุน</span><b>${money(cost)}</b></div>
