@@ -522,21 +522,53 @@
         </div>
       </div>
 
+      <!-- 7-day bar chart -->
+      <div class="glass-card" style="margin-bottom:20px;">
+        <h2><span class="ico" data-icon="bar-chart-2"></span> ยอดขาย 7 วันล่าสุด</h2>
+        <div id="rptBarChart" style="display:flex; align-items:flex-end; gap:8px; height:140px; padding:0 4px;"></div>
+        <div id="rptBarLabels" style="display:flex; gap:8px; padding:4px 4px 0; font-size:10px; color:var(--color-text-muted);"></div>
+      </div>
+
+      <!-- ===== ตัวกรองช่วงเวลา (คุมตารางอันดับด้านล่าง) ===== -->
+      <div class="glass-card" style="margin-bottom:14px; padding:14px 16px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:13px; font-weight:700; color:var(--color-text-muted); margin-right:4px;"><span class="ico" data-icon="calendar-range"></span> ช่วงเวลาจัดอันดับ:</span>
+          <button class="rpt-period-chip active" data-period="today" onclick="setReportPeriod('today')">วันนี้</button>
+          <button class="rpt-period-chip" data-period="7d" onclick="setReportPeriod('7d')">7 วันที่ผ่านมา</button>
+          <button class="rpt-period-chip" data-period="30d" onclick="setReportPeriod('30d')">30 วันที่ผ่านมา</button>
+          <button class="rpt-period-chip" data-period="custom" onclick="setReportPeriod('custom')">เลือกวันที่</button>
+          <span id="rptRangeCustom" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
+            <input type="date" id="rptRangeFrom" onchange="renderReportRankings()" style="padding:5px 8px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--color-text-main); font-size:13px;">
+            <span style="color:var(--color-text-muted); font-size:13px;">ถึง</span>
+            <input type="date" id="rptRangeTo" onchange="renderReportRankings()" style="padding:5px 8px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--color-text-main); font-size:13px;">
+          </span>
+        </div>
+      </div>
+
       <div class="grid-2" style="margin-bottom:20px;">
-        <!-- 7-day bar chart -->
+        <!-- Best sellers (top 5 / all) -->
         <div class="glass-card">
-          <h2><span class="ico" data-icon="bar-chart-2"></span> ยอดขาย 7 วันล่าสุด</h2>
-          <div id="rptBarChart" style="display:flex; align-items:flex-end; gap:8px; height:140px; padding:0 4px;"></div>
-          <div id="rptBarLabels" style="display:flex; gap:8px; padding:4px 4px 0; font-size:10px; color:var(--color-text-muted);"></div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+            <h2 style="margin:0;"><span class="ico" data-icon="trophy"></span> สินค้าขายดี <span id="rptMenuCountLabel">5 อันดับ</span></h2>
+            <button class="btn btn-ghost btn-sm" id="rptToggleAllMenus" onclick="toggleAllMenus()"><span class="ico" data-icon="list"></span> ดูทุกเมนู</button>
+          </div>
+          <div style="max-height:340px; overflow-y:auto;">
+            <table class="lst">
+              <thead><tr><th>สินค้า</th><th class="r">จำนวน</th><th class="r">รายได้</th></tr></thead>
+              <tbody id="rptTop5"></tbody>
+            </table>
+          </div>
         </div>
 
-        <!-- Top 5 products -->
+        <!-- Options ranking -->
         <div class="glass-card">
-          <h2><span class="ico" data-icon="trophy"></span> สินค้าขายดี 5 อันดับ</h2>
-          <table class="lst">
-            <thead><tr><th>สินค้า</th><th class="r">จำนวน</th><th class="r">รายได้</th></tr></thead>
-            <tbody id="rptTop5"></tbody>
-          </table>
+          <h2 style="margin-bottom:6px;"><span class="ico" data-icon="sliders-horizontal"></span> อันดับตัวเลือกที่ขาย</h2>
+          <div style="max-height:340px; overflow-y:auto;">
+            <table class="lst">
+              <thead><tr><th>ตัวเลือก</th><th>ลูกค้าเลือก</th><th class="r">จำนวน</th><th class="r">รายได้</th></tr></thead>
+              <tbody id="rptOptions"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -3078,25 +3110,93 @@ function loadReport() {
   }).join('');
   $('rptBarLabels').innerHTML = dayTotals.map(d => `<div style="flex:1; text-align:center;">${d.label}</div>`).join('');
 
-  // Top 5 products
-  const productMap = {};
-  paidBills.forEach(b => (b.items || []).forEach(it => {
-    if (!it.recipeId) return;
-    if (!productMap[it.recipeId]) productMap[it.recipeId] = { qty: 0, revenue: 0 };
-    productMap[it.recipeId].qty     += it.qty || 1;
-    productMap[it.recipeId].revenue += (it.qty || 1) * (it.price || 0);
-  }));
-  const top5 = Object.entries(productMap)
-    .sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
-  $('rptTop5').innerHTML = top5.length ? top5.map(([rid, v]) => {
-    const r = recById(rid);
-    return `<tr><td>${esc(r ? r.name : rid)}</td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(v.revenue)}</td></tr>`;
-  }).join('') : '<tr><td colspan="3" style="text-align:center; color:#999;">ยังไม่มีข้อมูลยอดขาย</td></tr>';
+  // อันดับสินค้า + ตัวเลือก (ตามช่วงเวลาที่เลือก)
+  renderReportRankings();
 
   // Set default date range for history filter
   if ($('rptFrom') && !$('rptFrom').value) $('rptFrom').value = monthStart;
   if ($('rptTo') && !$('rptTo').value) $('rptTo').value = today;
   renderBillHistory();
+  renderIcons($('reportPage'));
+}
+
+// ===== รายงานอันดับ (สินค้า + ตัวเลือก) ตามช่วงเวลา =====
+let reportPeriod = 'today';
+let showAllMenus = false;
+
+function setReportPeriod(p) {
+  reportPeriod = p;
+  document.querySelectorAll('.rpt-period-chip').forEach(c => c.classList.toggle('active', c.dataset.period === p));
+  const cust = $('rptRangeCustom');
+  if (cust) cust.style.display = (p === 'custom') ? 'inline-flex' : 'none';
+  if (p === 'custom') {
+    const today = new Date().toISOString().slice(0, 10);
+    if ($('rptRangeFrom') && !$('rptRangeFrom').value) $('rptRangeFrom').value = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+    if ($('rptRangeTo') && !$('rptRangeTo').value) $('rptRangeTo').value = today;
+  }
+  renderReportRankings();
+}
+
+function getReportRange() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (reportPeriod === '7d')  return { from: new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10), to: today };
+  if (reportPeriod === '30d') return { from: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10), to: today };
+  if (reportPeriod === 'custom') return { from: $('rptRangeFrom')?.value || '0000-01-01', to: $('rptRangeTo')?.value || '9999-12-31' };
+  return { from: today, to: today }; // today
+}
+
+function toggleAllMenus() {
+  showAllMenus = !showAllMenus;
+  const btn = $('rptToggleAllMenus');
+  if (btn) btn.innerHTML = showAllMenus ? (icon('chevrons-up') + ' ดูเฉพาะ 5 อันดับ') : (icon('list') + ' ดูทุกเมนู');
+  if ($('rptMenuCountLabel')) $('rptMenuCountLabel').textContent = showAllMenus ? '(ทุกเมนู)' : '5 อันดับ';
+  renderReportRankings();
+}
+
+function renderReportRankings() {
+  const { from, to } = getReportRange();
+  const paid = bills.filter(b => b.status === 'paid' && (b.date || '') >= from && (b.date || '') <= to);
+
+  // --- สินค้าขายดี ---
+  const productMap = {};
+  paid.forEach(b => (b.items || []).forEach(it => {
+    if (!it.recipeId) return;
+    if (!productMap[it.recipeId]) productMap[it.recipeId] = { qty: 0, revenue: 0 };
+    productMap[it.recipeId].qty     += it.qty || 1;
+    productMap[it.recipeId].revenue += (it.qty || 1) * (it.price || 0);
+  }));
+  let ranked = Object.entries(productMap).sort((a, b) => b[1].revenue - a[1].revenue);
+  if (!showAllMenus) ranked = ranked.slice(0, 5);
+  $('rptTop5').innerHTML = ranked.length ? ranked.map(([rid, v], i) => {
+    const r = recById(rid);
+    const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    return `<tr><td>${rank} ${esc(r ? r.name : rid)}</td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(v.revenue)}</td></tr>`;
+  }).join('') : '<tr><td colspan="3" style="text-align:center; color:#999;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>';
+
+  // --- อันดับตัวเลือกที่ขาย (จาก options ใน bill items) ---
+  const optMap = {}; // group -> { choice -> {count, revenue} }
+  paid.forEach(b => (b.items || []).forEach(it => {
+    const opts = it.options || {};
+    Object.entries(opts).forEach(([group, choice]) => {
+      if (!group || choice == null || choice === '') return;
+      if (!optMap[group]) optMap[group] = {};
+      if (!optMap[group][choice]) optMap[group][choice] = { count: 0, revenue: 0 };
+      optMap[group][choice].count   += it.qty || 1;
+      optMap[group][choice].revenue += (it.qty || 1) * (it.price || 0);
+    });
+  }));
+  const rows = [];
+  Object.entries(optMap)
+    .sort((a, b) => Object.values(b[1]).reduce((s, x) => s + x.count, 0) - Object.values(a[1]).reduce((s, x) => s + x.count, 0))
+    .forEach(([group, choices]) => {
+      Object.entries(choices).sort((a, b) => b[1].count - a[1].count).forEach(([choice, v], idx) => {
+        rows.push({ group: idx === 0 ? group : '', choice, count: v.count, revenue: v.revenue, top: idx === 0 });
+      });
+    });
+  $('rptOptions').innerHTML = rows.length ? rows.map(r =>
+    `<tr${r.top ? ' style="border-top:1px solid var(--border-soft);"' : ''}><td style="font-weight:700; color:var(--color-primary);">${r.group ? esc(r.group) : ''}</td><td>${esc(r.choice)}</td><td class="r">${r.count}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(r.revenue)}</td></tr>`
+  ).join('') : '<tr><td colspan="4" style="text-align:center; color:#999;">ยังไม่มีตัวเลือกที่ขายในช่วงนี้</td></tr>';
+
   renderIcons($('reportPage'));
 }
 
