@@ -39,6 +39,7 @@
     const headers = { 'Content-Type': 'application/json' };
     const t = getAccess();
     if (t) headers.Authorization = 'Bearer ' + t;
+    if (window.RECIPRO_SHOP_OVERRIDE) headers['X-Shop-Id'] = window.RECIPRO_SHOP_OVERRIDE;
     const res = await fetch(BASE + path, {
       method,
       headers,

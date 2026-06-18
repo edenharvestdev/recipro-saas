@@ -1657,6 +1657,8 @@ function applyBootstrapData(data) {
       id: r.id, code: r.code, name: r.name, sell: Number(r.sell_price),
       batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
       steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
+      category: r.category || '',
+      optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
         matId: it.material_id, amount: Number(it.amount)
       }))
@@ -1856,7 +1858,8 @@ async function syncToSupabase() {
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
       batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
-      fg_stock: r.fgStock, fg_low: r.fgLow
+      fg_stock: r.fgStock, fg_low: r.fgLow,
+      category: r.category || null, opt_groups: r.optGroups || []
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
       recipe_id: r.id, material_id: it.matId || null, amount: it.amount

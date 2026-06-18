@@ -37,8 +37,11 @@ router.post('/sync', async (req, res) => {
         withShop(b.materials), 'id');
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low'],
-        withShop(b.recipes), 'id');
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups'],
+        withShop((b.recipes || []).map(r => ({
+          ...r,
+          opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))
+        }))), 'id');
 
       // recipe_items: ลบของสูตรในร้านนี้ทั้งหมดแล้วใส่ใหม่ (ตรงกับ logic เดิม)
       const recIds = (b.recipes || []).map((r) => r.id);
@@ -55,11 +58,22 @@ router.post('/sync', async (req, res) => {
       await upsertRows(client, 'bills',
         ['id', 'shop_id', 'number', 'status', 'items_json'], withShop(b.bills), 'id');
 
+      await upsertRows(client, 'prod_logs',
+        ['id', 'shop_id', 'recipe_id', 'recipe_name', 'rounds', 'made', 'log_date'],
+        withShop(b.prod_logs || []), 'id');
+
+      await upsertRows(client, 'stock_receives',
+        ['id', 'shop_id', 'received_at', 'note', 'lines'],
+        withShop((b.stock_receives || []).map(r => ({
+          ...r,
+          lines: typeof r.lines === 'string' ? r.lines : JSON.stringify(r.lines)
+        }))), 'id');
+
       if (b.shop_settings) {
         const s = { ...b.shop_settings, shop_id: shopId };
         if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order'],
           [s], 'shop_id');
       }
 

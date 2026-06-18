@@ -11,6 +11,25 @@ alter table shop_settings add column if not exists categories jsonb;
 alter table materials     add column if not exists sku text;
 alter table materials     add column if not exists sell_price numeric;
 
+-- หมวดหมู่เมนู (สำหรับกรองใน POS) + กลุ่มตัวเลือก (ความหวาน/ขนาด ฯลฯ)
+alter table recipes       add column if not exists category text;
+alter table recipes       add column if not exists opt_groups jsonb;
+
+-- โหมดสั่งทำ (Make-to-Order) ระดับร้าน
+alter table shop_settings add column if not exists make_to_order boolean default false;
+
+-- บันทึกการผลิต
+create table if not exists prod_logs (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references shops(id) on delete cascade,
+  recipe_id uuid references recipes(id) on delete set null,
+  recipe_name text,
+  rounds numeric not null default 1,
+  made numeric not null default 0,
+  log_date date not null default current_date
+);
+create index if not exists idx_prod_logs_shop on prod_logs(shop_id, log_date desc);
+
 -- บันทึกกิจกรรมทั้งระบบ (audit log)
 create table if not exists logs (
   id uuid primary key default gen_random_uuid(),
@@ -77,5 +96,15 @@ create table if not exists label_templates (
   layout_json jsonb
 );
 create index if not exists idx_label_templates_shop on label_templates(shop_id);
+
+-- ประวัติการรับวัตถุดิบเข้าสต๊อก (bulk receive log)
+create table if not exists stock_receives (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references shops(id) on delete cascade,
+  received_at timestamptz default now(),
+  note text,
+  lines jsonb not null default '[]'
+);
+create index if not exists idx_stock_receives_shop on stock_receives(shop_id, received_at desc);
 
 -- หมายเหตุ: ไม่มี RLS — ทุก endpoint ต้องกรองด้วย shop_id จาก JWT ที่ชั้น API
