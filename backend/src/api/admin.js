@@ -60,6 +60,78 @@ router.patch('/shops/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Clone shop — คัดลอก master data จากร้านต้นทางไปปลายทาง
+router.post('/clone-shop', async (req, res) => {
+  try {
+    const { srcShopId, dstShopId, what } = req.body;
+    if (!srcShopId || !dstShopId) return res.status(400).json({ error: 'ระบุ srcShopId และ dstShopId' });
+    if (srcShopId === dstShopId) return res.status(400).json({ error: 'ต้นทางและปลายทางต้องไม่ใช่ร้านเดียวกัน' });
+
+    const doMaterials = what === 'materials' || what === 'all';
+    const doRecipes   = what === 'recipes'   || what === 'all';
+
+    // ตรวจสอบว่าร้านมีอยู่จริง
+    const srcCheck = await query('select id from shops where id = $1', [srcShopId]);
+    const dstCheck = await query('select id from shops where id = $1', [dstShopId]);
+    if (!srcCheck.rowCount) return res.status(404).json({ error: 'ไม่พบร้านต้นทาง' });
+    if (!dstCheck.rowCount) return res.status(404).json({ error: 'ไม่พบร้านปลายทาง' });
+
+    let matCount = 0, recCount = 0;
+
+    await tx(async (client) => {
+      if (doMaterials) {
+        // โหลดวัตถุดิบจากต้นทาง (ยกเว้น stock — ตั้งต้นที่ 0)
+        const { rows: srcMats } = await client.query(
+          'select * from materials where shop_id = $1', [srcShopId]
+        );
+        // ลบของเดิมในปลายทาง
+        await client.query('delete from materials where shop_id = $1', [dstShopId]);
+        // แทรกใหม่ด้วย shop_id ปลายทาง (stock = 0)
+        for (const m of srcMats) {
+          await client.query(
+            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,null,$9,0,$10,$11,$12,$13)`,
+            [m.id, dstShopId, m.sku, m.name, m.qty, m.unit, m.price, m.sell_price, m.order_url || '', m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null]
+          );
+        }
+        matCount = srcMats.length;
+      }
+
+      if (doRecipes) {
+        // โหลดสูตรและ recipe_items จากต้นทาง
+        const { rows: srcRec } = await client.query('select * from recipes where shop_id = $1', [srcShopId]);
+        const { rows: srcItems } = await client.query(
+          'select ri.* from recipe_items ri join recipes r on r.id = ri.recipe_id where r.shop_id = $1', [srcShopId]
+        );
+        // ลบของเดิม
+        await client.query(
+          'delete from recipe_items where recipe_id in (select id from recipes where shop_id = $1)', [dstShopId]
+        );
+        await client.query('delete from recipes where shop_id = $1', [dstShopId]);
+        // แทรกสูตรใหม่
+        for (const r of srcRec) {
+          await client.query(
+            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, fg_stock, fg_low, category, opt_groups, img_data)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13)`,
+            [r.id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.fg_low||0, r.category||null, r.opt_groups||null, r.img_data||null]
+          );
+        }
+        // แทรก recipe_items (material_id อาจไม่ match ถ้าไม่ได้โคลนวัตถุดิบ)
+        for (const it of srcItems) {
+          await client.query(
+            'insert into recipe_items (recipe_id, material_id, amount) values ($1,$2,$3)',
+            [it.recipe_id, it.material_id, it.amount]
+          );
+        }
+        recCount = srcRec.length;
+      }
+    });
+
+    logEvent(dstShopId, req.userId, 'admin.clone-shop', { srcShopId, what, matCount, recCount });
+    res.json({ ok: true, materials: matCount, recipes: recCount });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ข้อมูลดิบสำหรับแดชบอร์ด (frontend คิดสถิติเอง เหมือนเดิม)
 router.get('/dashboard', async (req, res) => {
   try {
