@@ -194,6 +194,7 @@
         <a class="nav-item" id="menuRecipes" onclick="switchTab('recipes')" title="สูตร/เมนู"><span class="ico" data-icon="utensils"></span><span data-lang-key="nav_recipes">สูตร/เมนู</span></a>
         <a class="nav-item" id="menuStock" onclick="switchTab('stock')" title="สต๊อก/ผลิต"><span class="ico" data-icon="package"></span><span data-lang-key="nav_stock">สต๊อก/ผลิต</span></a>
         <a class="nav-item" id="menuReport" onclick="switchTab('report')" title="รายงานยอดขาย"><span class="ico" data-icon="bar-chart-2"></span><span data-lang-key="nav_report">รายงาน</span></a>
+        <a class="nav-item" id="menuExpense" onclick="switchTab('expense')" title="รายจ่าย/เงินสดย่อย"><span class="ico" data-icon="wallet"></span><span>รายจ่าย</span></a>
         <a class="nav-item" id="menuPos" onclick="switchTab('pos')" title="ขาย & ออกบิล"><span class="ico" data-icon="receipt"></span><span data-lang-key="nav_pos">ขาย &amp; ออกบิล</span></a>
         <a class="nav-item hidden" id="menuAdmin" onclick="switchTab('admin')" title="ควบคุมระบบ"><span class="ico" data-icon="crown"></span><span data-lang-key="nav_admin">ควบคุมระบบ</span></a>
       </nav>
@@ -984,6 +985,66 @@
         <button class="account-page-item danger" onclick="handleSignOut()"><span class="ico" data-icon="log-out"></span><span>ออกจากระบบ</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
       </div>
     </section>
+
+    <!-- EXPENSE PAGE -->
+    <section id="expensePage" class="page-section hidden">
+      <!-- Summary cards -->
+      <div class="grid-3" style="margin-bottom:16px;">
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="calendar"></span> เดือนนี้</div>
+          <div id="expMonthTotal" style="font-size:26px;font-weight:800;color:#dc2626;">฿0</div>
+          <div id="expMonthCount" style="font-size:12px;color:var(--color-text-muted);">0 รายการ</div>
+        </div>
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="banknote"></span> เงินสดย่อย</div>
+          <div id="expCashTotal" style="font-size:26px;font-weight:800;color:#d97706;">฿0</div>
+          <div style="font-size:12px;color:var(--color-text-muted);">เดือนนี้</div>
+        </div>
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="trending-down"></span> รายจ่ายปีนี้</div>
+          <div id="expYearTotal" style="font-size:26px;font-weight:800;color:#7c3aed;">฿0</div>
+          <div style="font-size:12px;color:var(--color-text-muted);">สะสม</div>
+        </div>
+      </div>
+
+      <!-- Filter bar + Add button -->
+      <div class="glass-card" style="padding:12px 16px; margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:var(--color-text-muted);">เดือน:</span>
+          <input type="month" id="expMonthPicker" onchange="renderExpensePage()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;font-weight:600;">
+          <select id="expCatFilter" onchange="renderExpensePage()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+            <option value="">ทุกหมวด</option>
+          </select>
+          <select id="expTypeFilter" onchange="renderExpensePage()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+            <option value="">ทุกประเภทชำระ</option>
+            <option value="cash">เงินสดย่อย</option>
+            <option value="transfer">โอนเงิน</option>
+            <option value="card">บัตรเครดิต/เดบิต</option>
+            <option value="other">อื่นๆ</option>
+          </select>
+          <div style="flex:1;"></div>
+          <button class="btn btn-primary btn-sm" onclick="openExpenseForm()"><span class="ico" data-icon="plus"></span> เพิ่มรายจ่าย</button>
+        </div>
+      </div>
+
+      <!-- Expense list -->
+      <div class="glass-card">
+        <table class="lst">
+          <thead>
+            <tr>
+              <th>วันที่</th>
+              <th>รายการ</th>
+              <th>หมวด</th>
+              <th>ชำระด้วย</th>
+              <th class="r">จำนวนเงิน</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="expenseList"></tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
 
   <!-- ============================================================ -->
@@ -1002,6 +1063,63 @@
   <!-- SLIDE-IN DRAWERS (add/edit forms) + shared overlay -->
   <!-- ============================================================ -->
   <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+  <!-- EXPENSE ADD/EDIT DRAWER -->
+  <aside class="drawer" id="expenseDrawer" role="dialog" aria-label="ฟอร์มรายจ่าย">
+    <div class="drawer-header">
+      <h3 class="drawer-title" id="expenseDrawerTitle"><span class="ico" data-icon="plus"></span> เพิ่มรายจ่าย</h3>
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <input type="hidden" id="expId">
+      <div class="field">
+        <label>วันที่</label>
+        <input type="date" id="expDate">
+      </div>
+      <div class="field">
+        <label>รายการ / คำอธิบาย <span style="color:#e53e3e">*</span></label>
+        <input id="expDesc" placeholder="เช่น ค่าน้ำ, ค่าวัตถุดิบเพิ่มเติม, ค่าแก๊ส">
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>จำนวนเงิน (฿) <span style="color:#e53e3e">*</span></label>
+          <input type="number" id="expAmount" step="0.01" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label>ชำระด้วย</label>
+          <select id="expPayType">
+            <option value="cash">💵 เงินสดย่อย</option>
+            <option value="transfer">📱 โอนเงิน</option>
+            <option value="card">💳 บัตรเครดิต/เดบิต</option>
+            <option value="other">อื่นๆ</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>หมวดหมู่</label>
+        <input id="expCategory" list="expCategoryList" placeholder="เช่น ค่าจ้าง, ค่าเช่า, ค่าสาธารณูปโภค">
+        <datalist id="expCategoryList">
+          <option value="วัตถุดิบ/สินค้า">
+          <option value="ค่าจ้าง/เงินเดือน">
+          <option value="ค่าเช่าสถานที่">
+          <option value="ค่าน้ำ/ไฟ/โทรศัพท์">
+          <option value="ค่าอุปกรณ์/ครุภัณฑ์">
+          <option value="ค่าขนส่ง/เดลิเวอรี่">
+          <option value="ค่าการตลาด/โฆษณา">
+          <option value="ค่าซ่อมบำรุง">
+          <option value="อื่นๆ">
+        </datalist>
+      </div>
+      <div class="field">
+        <label>หมายเหตุ</label>
+        <textarea id="expNote" rows="2" placeholder="รายละเอียดเพิ่มเติม..."></textarea>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveExpense()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div>
+  </aside>
 
   <!-- MATERIAL ADD/EDIT DRAWER -->
   <aside class="drawer" id="matDrawer" role="dialog" aria-label="ฟอร์มวัตถุดิบ">
@@ -1166,6 +1284,21 @@
         <input id="rCategory" placeholder="เช่น เครื่องดื่ม, อาหาร, ขนม">
       </div>
 
+      <div style="margin-top:16px;">
+        <label style="font-size:13px; font-weight:600; color:var(--color-text-soft); display:block; margin-bottom:8px;">ภาพสินค้า (แสดงใน POS)</label>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div id="rImgPreview" style="width:72px; height:72px; border-radius:12px; border:2px dashed var(--border-soft); background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="$('rImgInput').click()">
+            <span class="ico" data-icon="image" style="color:var(--color-text-muted); font-size:24px;"></span>
+          </div>
+          <div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="$('rImgInput').click()"><span class="ico" data-icon="upload"></span> อัปโหลดภาพ</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="rImgClearBtn" onclick="clearRecipeImg()" style="display:none; margin-left:4px; color:var(--color-danger,#e53e3e);">ลบภาพ</button>
+            <p style="font-size:11px; color:var(--color-text-muted); margin:4px 0 0;">JPG/PNG ไม่เกิน 2MB</p>
+          </div>
+        </div>
+        <input type="file" id="rImgInput" accept="image/*" style="display:none;" onchange="handleRecipeImgUpload(event)">
+      </div>
+
       <div style="margin-top:20px;">
         <h3 style="margin-bottom:10px;"><span class="ico" data-icon="sliders-horizontal"></span> กลุ่มตัวเลือก (ตัวเลือกเสริม)</h3>
         <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">เช่น ความหวาน, ขนาด, ความเย็น — จะแสดงให้เลือกเมื่อกดสั่งใน POS</p>
@@ -1311,6 +1444,7 @@ let recipes = [];
 let bills = [];
 let prodLogs = [];
 let stockReceiveLogs = [];
+let expenses = [];
 let allShops = [];
 let counter = 0;
 let settings = {
@@ -1735,6 +1869,7 @@ function applyBootstrapData(data) {
       steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
       category: r.category || '',
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
+      imgData: r.img_data || '',
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
         matId: it.material_id, amount: Number(it.amount)
       }))
@@ -1762,6 +1897,11 @@ function applyBootstrapData(data) {
     stockReceiveLogs = (data.stock_receives || []).map(r => ({
       id: r.id, receivedAt: r.received_at, note: r.note || '',
       lines: r.lines || []
+    }));
+    expenses = (data.expenses || []).map(e => ({
+      id: e.id, date: e.expense_date, category: e.category || '',
+      description: e.description, amount: Number(e.amount),
+      payType: e.payment_type || 'cash', note: e.note || ''
     }));
     const displayName = settings.shopName + (window.RECIPRO_SHOP_OVERRIDE ? ' 👁' : '');
     $('sidebarShopName').textContent = displayName;
@@ -1935,7 +2075,8 @@ async function syncToSupabase() {
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
       batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
       fg_stock: r.fgStock, fg_low: r.fgLow,
-      category: r.category || null, opt_groups: r.optGroups || []
+      category: r.category || null, opt_groups: r.optGroups || [],
+      img_data: r.imgData || null
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
       recipe_id: r.id, material_id: it.matId || null, amount: it.amount
@@ -1954,6 +2095,11 @@ async function syncToSupabase() {
     stock_receives: stockReceiveLogs.map(r => ({
       id: r.id, received_at: r.receivedAt, note: r.note || null,
       lines: JSON.stringify(r.lines)
+    })),
+    expenses: expenses.map(e => ({
+      id: e.id, expense_date: e.date, category: e.category || '',
+      description: e.description, amount: e.amount,
+      payment_type: e.payType || 'cash', note: e.note || ''
     })),
     shop_settings: {
       phone: settings.phone, tax_id: settings.tax, address: settings.addr,
@@ -1975,7 +2121,7 @@ async function syncToSupabase() {
 function switchTab(t) {
   currentTab = t;
   if (!SUB_TABS.includes(t)) lastMainTab = t;
-  const tabs = ['dash', 'materials', 'recipes', 'stock', 'report', 'pos', 'set', 'admin', 'billing', 'account'];
+  const tabs = ['dash', 'materials', 'recipes', 'stock', 'report', 'expense', 'pos', 'set', 'admin', 'billing', 'account'];
   tabs.forEach(k => {
     const el = $(k + 'Page');
     if (el) {
@@ -2002,6 +2148,7 @@ function switchTab(t) {
     recipes: 'สูตร & วิเคราะห์ต้นทุน',
     stock: 'สต๊อกวัตถุดิบ & สินค้า',
     report: 'รายงานยอดขาย',
+    expense: 'รายจ่าย & เงินสดย่อย',
     pos: 'ระบบหน้าร้าน & ออกเอกสารบิล',
     set: 'ตั้งค่าร้านค้า & บัญชีรับโอนเงิน',
     admin: 'แผงควบคุมหลัก Super Admin',
@@ -2012,6 +2159,7 @@ function switchTab(t) {
 
   if (t === 'dash') renderDashboard();
   if (t === 'account') renderAccountPage();
+  if (t === 'expense') renderExpensePage();
   // เปิดแท็บแอดมิน → รีเฟรชตัวเลขแดชบอร์ดให้ล่าสุดเสมอ
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
@@ -2630,6 +2778,7 @@ function saveRecipe() {
   const isRaw = $('rRaw').checked;
   const steps = $('rSteps').value;
   const category = ($('rCategory')?.value || '').trim();
+  const imgData = window._rImgData || '';
   const optGroups = recipeOptGroups.filter(g => g.label.trim()).map(g => ({
     label: g.label.trim(),
     choices: g.choices.split(',').map(s => s.trim()).filter(Boolean),
@@ -2642,12 +2791,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData });
   }
 
   saveAll();
@@ -2667,6 +2816,7 @@ function editRecipe(id) {
   $('rRaw').checked = !!r.isRaw;
   $('rSteps').value = r.steps || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
+  setRecipeImgPreview(r.imgData || '');
   recipeOptGroups = (r.optGroups || []).map(g => ({
     label: g.label,
     choices: (g.choices || []).join(', '),
@@ -2779,6 +2929,7 @@ function resetRecipeForm() {
   $('rRaw').checked = false;
   $('rSteps').value = '';
   if ($('rCategory')) $('rCategory').value = '';
+  setRecipeImgPreview('');
   recipeIng = [{ matId: '', amount: 0 }];
   recipeOptGroups = [];
   $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
@@ -3460,14 +3611,15 @@ function renderPosGrid() {
   }
   const hasOpts = r => (r.optGroups || []).length > 0;
   grid.innerHTML = sellable.map(r => {
+    const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
     if (settings.makeToOrder) {
       const canMake = (r.items || []).length === 0 || (r.items || []).every(ri => {
         const mat = materials.find(m => m.id === ri.matId);
         return mat && (Number(mat.stock) || 0) >= ri.amount;
       });
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
-      return `<div class="pos-product-card${!canMake ? ' out-of-stock' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
-        ${optsIcon}
+      return `<div class="pos-product-card${!canMake ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
+        ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         <div class="ppc-price">${money(r.sell)}</div>
         <div class="ppc-stock">${!canMake ? '<span style="color:var(--color-danger,#e53e3e)">⚠ วัตถุดิบไม่พอ</span>' : 'สั่งผลิต'}</div>
@@ -3477,8 +3629,8 @@ function renderPosGrid() {
     const oos = stock <= 0;
     const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
-    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
-      ${optsIcon}
+    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
+      ${imgHtml}${optsIcon}
       <div class="ppc-name">${esc(r.name)}</div>
       <div class="ppc-price">${money(r.sell)}</div>
       <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${r.yieldUnit || 'ชิ้น'}`}</div>
@@ -4836,6 +4988,141 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 // เริ่มต้นโหลดหน้า
 switchTab('dash');
+
+// ============================================================
+// RECIPE IMAGE HELPERS
+// ============================================================
+window._rImgData = '';
+
+function setRecipeImgPreview(data) {
+  window._rImgData = data || '';
+  const preview = $('rImgPreview');
+  const clearBtn = $('rImgClearBtn');
+  if (!preview) return;
+  if (data) {
+    preview.innerHTML = `<img src="${data}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    preview.innerHTML = `<span class="ico" data-icon="image" style="color:var(--color-text-muted);font-size:24px;"></span>`;
+    renderIcons(preview);
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function handleRecipeImgUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { ui.toast('ไฟล์ใหญ่เกิน 2MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = ev => setRecipeImgPreview(ev.target.result);
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function clearRecipeImg() {
+  setRecipeImgPreview('');
+}
+
+// ============================================================
+// EXPENSE MODULE
+// ============================================================
+const EXP_PAY_LABELS = { cash: '💵 เงินสดย่อย', transfer: '📱 โอนเงิน', card: '💳 บัตร', other: 'อื่นๆ' };
+let editExpenseId = null;
+
+function renderExpensePage() {
+  const today = new Date();
+  const ym = today.toISOString().slice(0, 7);
+  const picker = $('expMonthPicker');
+  if (picker && !picker.value) picker.value = ym;
+  const monthVal = picker ? picker.value : ym;
+  const catFilter = $('expCatFilter')?.value || '';
+  const typeFilter = $('expTypeFilter')?.value || '';
+
+  const monthExp = expenses.filter(e => (e.date || '').slice(0, 7) === monthVal);
+  const yearExp = expenses.filter(e => (e.date || '').slice(0, 4) === monthVal.slice(0, 4));
+
+  $('expMonthTotal').textContent = money(monthExp.reduce((s, e) => s + e.amount, 0));
+  $('expMonthCount').textContent = `${monthExp.length} รายการ`;
+  $('expCashTotal').textContent = money(monthExp.filter(e => e.payType === 'cash').reduce((s, e) => s + e.amount, 0));
+  $('expYearTotal').textContent = money(yearExp.reduce((s, e) => s + e.amount, 0));
+
+  // update category filter options
+  const cats = [...new Set(expenses.map(e => e.category).filter(Boolean))].sort();
+  const catSel = $('expCatFilter');
+  if (catSel) {
+    const prev = catSel.value;
+    catSel.innerHTML = '<option value="">ทุกหมวด</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    catSel.value = prev;
+  }
+
+  let filtered = monthExp;
+  if (catFilter) filtered = filtered.filter(e => e.category === catFilter);
+  if (typeFilter) filtered = filtered.filter(e => e.payType === typeFilter);
+  filtered.sort((a, b) => (b.date || '') < (a.date || '') ? -1 : 1);
+
+  $('expenseList').innerHTML = filtered.length ? filtered.map(e => `
+    <tr>
+      <td style="white-space:nowrap;">${e.date || ''}</td>
+      <td><span style="font-weight:600;">${esc(e.description)}</span>${e.note ? `<br><span style="font-size:11px;color:var(--color-text-muted);">${esc(e.note)}</span>` : ''}</td>
+      <td><span style="font-size:12px;background:var(--surface-2);padding:2px 8px;border-radius:20px;">${esc(e.category || '—')}</span></td>
+      <td style="font-size:12px;">${EXP_PAY_LABELS[e.payType] || e.payType}</td>
+      <td class="r" style="font-weight:700;color:#dc2626;">${money(e.amount)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" onclick="openExpenseForm('${e.id}')"><span class="ico" data-icon="pencil"></span></button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteExpense('${e.id}')" style="color:#e53e3e;"><span class="ico" data-icon="trash-2"></span></button>
+      </td>
+    </tr>`).join('') :
+    `<tr><td colspan="6" style="text-align:center;color:var(--color-text-muted);padding:32px 0;">ไม่มีรายจ่ายในเดือนนี้</td></tr>`;
+
+  renderIcons($('expensePage'));
+}
+
+function openExpenseForm(id) {
+  editExpenseId = id || null;
+  const e = id ? expenses.find(x => x.id === id) : null;
+  $('expenseDrawerTitle').innerHTML = icon(id ? 'pencil' : 'plus') + (id ? ' แก้ไขรายจ่าย' : ' เพิ่มรายจ่าย');
+  $('expId').value = id || '';
+  $('expDate').value = e ? e.date : new Date().toISOString().slice(0, 10);
+  $('expDesc').value = e ? e.description : '';
+  $('expAmount').value = e ? e.amount : '';
+  $('expPayType').value = e ? (e.payType || 'cash') : 'cash';
+  $('expCategory').value = e ? (e.category || '') : '';
+  $('expNote').value = e ? (e.note || '') : '';
+  openDrawer('expenseDrawer');
+}
+
+function saveExpense() {
+  const desc = $('expDesc').value.trim();
+  const amount = parseFloat($('expAmount').value);
+  if (!desc) { ui.toast('กรุณาระบุรายการ'); return; }
+  if (!amount || amount <= 0) { ui.toast('กรุณาระบุจำนวนเงิน'); return; }
+  const obj = {
+    id: editExpenseId || uid(),
+    date: $('expDate').value || new Date().toISOString().slice(0, 10),
+    description: desc,
+    amount,
+    payType: $('expPayType').value || 'cash',
+    category: $('expCategory').value.trim(),
+    note: $('expNote').value.trim()
+  };
+  if (editExpenseId) {
+    const idx = expenses.findIndex(e => e.id === editExpenseId);
+    if (idx >= 0) expenses[idx] = obj;
+  } else {
+    expenses.unshift(obj);
+  }
+  editExpenseId = null;
+  saveAll();
+  closeDrawer();
+  renderExpensePage();
+}
+
+async function deleteExpense(id) {
+  if (!(await ui.confirm('ลบรายจ่ายนี้?', { okText: 'ลบ', danger: true }))) return;
+  expenses = expenses.filter(e => e.id !== id);
+  saveAll();
+  renderExpensePage();
+}
 
 if (isMockMode) {
   // หากอยู่ในโหมดจำลอง ให้ข้ามไปขั้นตอนล็อกอินเสมือนทันทีเมื่อไม่ได้ตั้งเซสชันจริง

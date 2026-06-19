@@ -37,7 +37,7 @@ router.post('/sync', async (req, res) => {
         withShop(b.materials), 'id');
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data'],
         withShop((b.recipes || []).map(r => ({
           ...r,
           opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))
@@ -76,6 +76,10 @@ router.post('/sync', async (req, res) => {
           ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order'],
           [s], 'shop_id');
       }
+
+      await upsertRows(client, 'expenses',
+        ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note'],
+        withShop(b.expenses || []), 'id');
 
       if (b.shop && b.shop.name) {
         await client.query('update shops set name = $1 where id = $2', [b.shop.name, shopId]);

@@ -9,7 +9,7 @@ router.get('/bootstrap', async (req, res) => {
     const shopId = req.shopId;
     if (!shopId) return res.json({ shop: null, role: req.role, isSuperadmin: req.isSuperadmin });
 
-    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives] = await Promise.all([
+    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives, expenses] = await Promise.all([
       query('select * from shops where id = $1', [shopId]),
       query('select * from shop_settings where shop_id = $1', [shopId]),
       query('select * from suppliers where shop_id = $1', [shopId]),
@@ -25,6 +25,7 @@ router.get('/bootstrap', async (req, res) => {
       query('select * from subscriptions where shop_id = $1 limit 1', [shopId]),
       query('select * from prod_logs where shop_id = $1 order by log_date desc limit 200', [shopId]),
       query('select * from stock_receives where shop_id = $1 order by received_at desc limit 200', [shopId]),
+      query('select * from expenses where shop_id = $1 order by expense_date desc limit 500', [shopId]),
     ]);
 
     res.json({
@@ -40,6 +41,7 @@ router.get('/bootstrap', async (req, res) => {
       subscription: sub.rows[0] || null,
       prod_logs: prodLogs.rows,
       stock_receives: stockReceives.rows,
+      expenses: expenses.rows,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -1904,3 +1904,11 @@ table.bd tfoot td.r { text-align: right; }
 }
 .rpt-period-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .rpt-period-chip.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+/* ===== POS card product image ===== */
+.pos-product-card .ppc-img {
+  width: 100%; height: 90px; overflow: hidden; border-radius: 10px 10px 0 0;
+  margin: -10px -10px 8px; flex-shrink: 0; background: var(--surface-2);
+}
+.pos-product-card.has-img { padding-top: 0; }
+.pos-product-card .ppc-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
