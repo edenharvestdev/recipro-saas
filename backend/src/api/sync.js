@@ -34,11 +34,11 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2'],
+        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type'],
         withShop(b.materials), 'id', true);
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type'],
         withShop((b.recipes || []).map(r => ({
           ...r,
           opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))

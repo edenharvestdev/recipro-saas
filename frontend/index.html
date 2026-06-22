@@ -1436,6 +1436,13 @@
         </select>
         <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW จะไม่แสดงในหน้าขาย POS เด็ดขาด</p>
       </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label>หมวดสินค้า <span style="color:var(--color-text-muted);font-size:11px;">— มีผลต่อการตัดสต๊อก (เลือกภายหลังได้)</span></label>
+        <select id="mItemType" onchange="updateItemTypeHint()">
+          <option value="">— ยังไม่ระบุ —</option>
+        </select>
+        <p id="mItemTypeHint" style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;"></p>
+      </div>
       <div id="mSaleFields" style="display:none; background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px;">
         <div class="grid-2" style="margin-bottom:8px;">
           <div class="field" style="margin:0;">
@@ -2481,6 +2488,7 @@ function applyBootstrapData(data) {
     $('accountShopSwitch').classList.remove('hidden');
   }
   if (CURRENT_SHOP) {
+    window.ITEM_CATEGORIES = data.item_categories || [];
     suppliers = (data.suppliers || []).map(s => ({ id: s.id, name: s.name, note: s.note }));
     materials = (data.materials || []).map(m => ({
       id: m.id, sku: m.sku || '', name: m.name, qty: Number(m.qty), unit: m.unit,
@@ -2490,7 +2498,8 @@ function applyBootstrapData(data) {
       convQty: m.conv_qty ? Number(m.conv_qty) : null, stockUnit: m.stock_unit || null,
       isConsumable: !!m.is_consumable,
       saleType: m.sale_type || 'INGREDIENT_ONLY', showInPos: !!m.show_in_pos,
-      salePrice2: m.sale_price_2 != null ? Number(m.sale_price_2) : null
+      salePrice2: m.sale_price_2 != null ? Number(m.sale_price_2) : null,
+      itemType: m.item_type || ''
     }));
     const itemsGroup = data.recipe_items || [];
     recipes = (data.recipes || []).map(r => ({
@@ -2498,6 +2507,7 @@ function applyBootstrapData(data) {
       batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
       steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
       category: r.category || '', isSop: !!r.is_sop,
+      recipeType: r.recipe_type || '', outputItemType: r.output_item_type || '',
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
       imgData: r.img_data || '',
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
@@ -2728,14 +2738,16 @@ async function syncToSupabase() {
       category: m.category || null,
       conv_qty: m.convQty || null, stock_unit: m.stockUnit || null,
       is_consumable: m.isConsumable || false,
-      sale_type: m.saleType || 'INGREDIENT_ONLY', show_in_pos: m.showInPos || false, sale_price_2: m.salePrice2 || null
+      sale_type: m.saleType || 'INGREDIENT_ONLY', show_in_pos: m.showInPos || false, sale_price_2: m.salePrice2 || null,
+      item_type: m.itemType || null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
       batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
       fg_stock: r.fgStock, fg_low: r.fgLow,
       category: r.category || null, opt_groups: r.optGroups || [],
-      img_data: r.imgData || null, is_sop: r.isSop || false
+      img_data: r.imgData || null, is_sop: r.isSop || false,
+      recipe_type: r.recipeType || null, output_item_type: r.outputItemType || null
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
       recipe_id: r.id, material_id: it.matId || null, amount: it.amount, role: it.role || '', sub_recipe_id: it.subId || null
@@ -2914,6 +2926,7 @@ function openMatForm() {
   toggleSaleFields();
   if ($('matCostPreview')) $('matCostPreview').textContent = '';
   renderCatDatalist();
+  renderItemTypeOptions('');
   if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
   $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   openDrawer('matDrawer');
@@ -3127,6 +3140,7 @@ function saveMat() {
   const showInPos = isMain && $('mShowInPos').checked;   // RAW เข้า POS ไม่ได้เด็ดขาด
   const sp2 = $('mSalePrice2').value;
   const salePrice2 = (isMain && sp2 !== '') ? (+sp2 || 0) : null;
+  const itemType = $('mItemType') ? $('mItemType').value : '';
 
   if (!name) { alert('ระบุชื่อวัตถุดิบ'); return; }
 
@@ -3134,11 +3148,11 @@ function saveMat() {
   if (category && !settings.categories.includes(category)) settings.categories.push(category);
 
   if (editMatId) {
-    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2 });
+    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2, itemType });
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2 });
+    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2, itemType });
   }
 
   saveAll();
@@ -3162,6 +3176,39 @@ function renderCatDatalist() {
   if (dl) dl.innerHTML = getCategories().map(c => `<option value="${String(c).replace(/"/g, '&quot;')}"></option>`).join('');
 }
 
+// ---- หมวดสินค้ามาตรฐาน 8 หมวด (Item Master) — fallback เมื่อ offline/mock ----
+const DEFAULT_ITEM_CATEGORIES = [
+  { code:'RAW',       name_th:'วัตถุดิบ',          name_en:'Raw Material',          is_stock_deducted:true,  deduct_event:'recipe_use' },
+  { code:'COMPOUND',  name_th:'ของผสมเอง',         name_en:'Compound Ingredient',   is_stock_deducted:true,  deduct_event:'recipe_use' },
+  { code:'PREP',      name_th:'ของเตรียมไว้',      name_en:'Prep Item',             is_stock_deducted:true,  deduct_event:'recipe_use' },
+  { code:'SEMI',      name_th:'ของกึ่งสำเร็จ',     name_en:'Semi-Finished Product', is_stock_deducted:true,  deduct_event:'recipe_use' },
+  { code:'SALE',      name_th:'ของขาย/เมนู',       name_en:'Sale Product',          is_stock_deducted:false, deduct_event:'none' },
+  { code:'PACKAGING', name_th:'บรรจุภัณฑ์',        name_en:'Packaging Material',    is_stock_deducted:true,  deduct_event:'on_sale' },
+  { code:'SUPPLIES',  name_th:'ของใช้สิ้นเปลือง',  name_en:'Operational Supplies',  is_stock_deducted:true,  deduct_event:'daily_or_manual' },
+  { code:'ASSET',     name_th:'ของใช้ถาวร',        name_en:'Asset',                 is_stock_deducted:false, deduct_event:'none' },
+];
+function itemCategories() {
+  return (window.ITEM_CATEGORIES && window.ITEM_CATEGORIES.length) ? window.ITEM_CATEGORIES : DEFAULT_ITEM_CATEGORIES;
+}
+// เติม dropdown หมวดสินค้าในฟอร์ม + ตั้งค่าที่เลือก
+function renderItemTypeOptions(selected) {
+  const sel = $('mItemType');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— ยังไม่ระบุ —</option>' +
+    itemCategories().map(c => `<option value="${c.code}">${c.name_th} (${c.name_en})</option>`).join('');
+  sel.value = selected || '';
+  updateItemTypeHint();
+}
+// อธิบายพฤติกรรมตัดสต๊อกของหมวดที่เลือก (ภาษาคน)
+function updateItemTypeHint() {
+  const sel = $('mItemType'), hint = $('mItemTypeHint');
+  if (!sel || !hint) return;
+  const c = itemCategories().find(x => x.code === sel.value);
+  if (!c) { hint.textContent = 'เลือกหมวดเพื่อให้ระบบตัดสต๊อกถูกต้อง (ไม่บังคับตอนนี้ — เลือกภายหลังได้)'; return; }
+  const when = { recipe_use:'เมื่อใช้ในสูตร', on_sale:'เมื่อขาย', daily_or_manual:'รายวัน/เบิกมือ', none:'' }[c.deduct_event] || '';
+  hint.textContent = c.is_stock_deducted ? `ตัดสต๊อก${when ? ' ' + when : ''}` : 'ไม่ตัดสต๊อก';
+}
+
 function editMat(id) {
   const m = matById(id);
   editMatId = id;
@@ -3181,6 +3228,7 @@ function editMat(id) {
   $('mSalePrice2').value = m.salePrice2 != null ? m.salePrice2 : '';
   toggleSaleFields();
   renderCatDatalist();
+  renderItemTypeOptions(m.itemType || '');
   updateMatCostPreview();
   $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
   openDrawer('matDrawer');
