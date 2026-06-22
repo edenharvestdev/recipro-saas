@@ -780,6 +780,10 @@ table.lst td.c, table.lst th.c { text-align: center; }
 table.lst td .btn { display: inline-flex; vertical-align: middle; }
 table.lst td .btn + .btn { margin-left: 6px; }
 
+/* responsive: ตารางกว้างเกินจอ → เลื่อนแนวนอนในกล่องตัวเอง (กันหน้าล้น/เลื่อนแนวตั้งไม่ได้บนมือถือ) */
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll > table.lst { min-width: 460px; }
+
 /* ----------------------------------------------------------------------------
    16. SUB-TABS (inside cards)
    ---------------------------------------------------------------------------- */

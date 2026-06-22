@@ -89,9 +89,9 @@ router.post('/clone-shop', async (req, res) => {
         // แทรกใหม่ด้วย shop_id ปลายทาง (stock = 0)
         for (const m of srcMats) {
           await client.query(
-            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,null,$9,0,$10,$11,$12,$13)`,
-            [m.id, dstShopId, m.sku, m.name, m.qty, m.unit, m.price, m.sell_price, m.order_url || '', m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null]
+            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,null,$9,0,$10,$11,$12,$13,$14,$15,$16,$17)`,
+            [m.id, dstShopId, m.sku, m.name, m.qty, m.unit, m.price, m.sell_price, m.order_url || '', m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null, m.is_consumable ?? false, m.sale_type || 'INGREDIENT_ONLY', m.show_in_pos ?? false, m.sale_price_2 ?? null]
           );
         }
         matCount = srcMats.length;
@@ -111,16 +111,16 @@ router.post('/clone-shop', async (req, res) => {
         // แทรกสูตรใหม่
         for (const r of srcRec) {
           await client.query(
-            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, fg_stock, fg_low, category, opt_groups, img_data)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13)`,
-            [r.id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.fg_low||0, r.category||null, r.opt_groups||null, r.img_data||null]
+            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, fg_stock, fg_low, category, opt_groups, img_data, is_sop)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14)`,
+            [r.id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.fg_low||0, r.category||null, r.opt_groups||null, r.img_data||null, r.is_sop || false]
           );
         }
-        // แทรก recipe_items (material_id อาจไม่ match ถ้าไม่ได้โคลนวัตถุดิบ)
+        // แทรก recipe_items พร้อม role + sub_recipe_id (SOP) — id สูตรคงเดิมจึงอ้างถึงกันได้
         for (const it of srcItems) {
           await client.query(
-            'insert into recipe_items (recipe_id, material_id, amount) values ($1,$2,$3)',
-            [it.recipe_id, it.material_id, it.amount]
+            'insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1,$2,$3,$4,$5)',
+            [it.recipe_id, it.material_id, it.amount, it.role || '', it.sub_recipe_id || null]
           );
         }
         recCount = srcRec.length;

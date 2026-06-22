@@ -9,7 +9,7 @@ router.get('/bootstrap', async (req, res) => {
     const shopId = req.shopId;
     if (!shopId) return res.json({ shop: null, role: req.role, isSuperadmin: req.isSuperadmin });
 
-    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives, expenses] = await Promise.all([
+    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives, expenses, ogRows, ocRows, oclRows, rogRows, smRows] = await Promise.all([
       query('select * from shops where id = $1', [shopId]),
       query('select * from shop_settings where shop_id = $1', [shopId]),
       query('select * from suppliers where shop_id = $1', [shopId]),
@@ -26,9 +26,15 @@ router.get('/bootstrap', async (req, res) => {
       query('select * from prod_logs where shop_id = $1 order by log_date desc limit 200', [shopId]),
       query('select * from stock_receives where shop_id = $1 order by received_at desc limit 200', [shopId]),
       query('select * from expenses where shop_id = $1 order by expense_date desc limit 500', [shopId]),
+      query('select * from option_groups where shop_id = $1 order by sort', [shopId]),
+      query('select oc.* from option_choices oc join option_groups og on og.id = oc.group_id where og.shop_id = $1 order by oc.sort', [shopId]),
+      query('select ocl.* from option_choice_links ocl join option_choices oc on oc.id = ocl.choice_id join option_groups og on og.id = oc.group_id where og.shop_id = $1', [shopId]),
+      query('select * from recipe_option_groups where group_id in (select id from option_groups where shop_id = $1)', [shopId]),
+      query('select * from stock_movements where shop_id = $1 order by created_at desc limit 200', [shopId]),
     ]);
 
     res.json({
+      server_now: new Date().toISOString(),
       role: req.role,
       isSuperadmin: req.isSuperadmin,
       shop: shop.rows[0] || null,
@@ -42,6 +48,11 @@ router.get('/bootstrap', async (req, res) => {
       prod_logs: prodLogs.rows,
       stock_receives: stockReceives.rows,
       expenses: expenses.rows,
+      option_groups: ogRows.rows,
+      option_choices: ocRows.rows,
+      option_choice_links: oclRows.rows,
+      recipe_option_groups: rogRows.rows,
+      stock_movements: smRows.rows,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

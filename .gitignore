@@ -10,10 +10,11 @@ node_modules/
 *.log
 npm-debug.log*
 
-# OS / editor
+# OS / editor / tooling
 .DS_Store
 .vscode/
 .idea/
+.claude/
 
 # misc
 *.tmp

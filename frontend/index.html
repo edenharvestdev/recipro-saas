@@ -193,8 +193,10 @@
         <a class="nav-item active" id="menuMaterials" onclick="switchTab('materials')" title="วัตถุดิบ"><span class="ico" data-icon="carrot"></span><span data-lang-key="nav_materials">วัตถุดิบ</span></a>
         <a class="nav-item" id="menuRecipes" onclick="switchTab('recipes')" title="สูตร/เมนู"><span class="ico" data-icon="utensils"></span><span data-lang-key="nav_recipes">สูตร/เมนู</span></a>
         <a class="nav-item" id="menuStock" onclick="switchTab('stock')" title="สต๊อก/ผลิต"><span class="ico" data-icon="package"></span><span data-lang-key="nav_stock">สต๊อก/ผลิต</span></a>
+        <a class="nav-item" id="menuConsumables" onclick="switchTab('consumables')" title="ของใช้สิ้นเปลือง"><span class="ico" data-icon="package-plus"></span><span>สิ้นเปลือง</span></a>
         <a class="nav-item" id="menuReport" onclick="switchTab('report')" title="รายงานยอดขาย"><span class="ico" data-icon="bar-chart-2"></span><span data-lang-key="nav_report">รายงาน</span></a>
         <a class="nav-item" id="menuExpense" onclick="switchTab('expense')" title="รายจ่าย/เงินสดย่อย"><span class="ico" data-icon="wallet"></span><span>รายจ่าย</span></a>
+        <a class="nav-item" id="menuOptions" onclick="switchTab('options')" title="ตัวเลือกสินค้า & BOM"><span class="ico" data-icon="sliders-horizontal"></span><span>ตัวเลือก</span></a>
         <a class="nav-item" id="menuPos" onclick="switchTab('pos')" title="ขาย & ออกบิล"><span class="ico" data-icon="receipt"></span><span data-lang-key="nav_pos">ขาย &amp; ออกบิล</span></a>
         <a class="nav-item hidden" id="menuAdmin" onclick="switchTab('admin')" title="ควบคุมระบบ"><span class="ico" data-icon="crown"></span><span data-lang-key="nav_admin">ควบคุมระบบ</span></a>
       </nav>
@@ -270,8 +272,11 @@
       <!-- Bottom row -->
       <div class="grid-2" style="margin-bottom:20px;">
         <div class="glass-card">
-          <h2><span class="ico" data-icon="award"></span> เมนูขายดี Top 5</h2>
-          <div id="dashTopMenus"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <h2 style="margin:0;"><span class="ico" data-icon="award"></span> สินค้าขายดี Top 5</h2>
+            <button class="btn btn-ghost btn-sm" onclick="switchTab('report')"><span class="ico" data-icon="list"></span> ดูทั้งหมด</button>
+          </div>
+          <div id="dashTopMenus" style="margin-top:10px;"></div>
         </div>
         <div class="glass-card">
           <h2><span class="ico" data-icon="alert-triangle"></span> สต๊อกต้องสั่งเพิ่ม</h2>
@@ -313,8 +318,7 @@
         <!-- ตัวกรองหมวดหมู่ -->
         <div id="matCatFilter" style="display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
           <select id="matCatSelect" style="flex:1; max-width:240px; padding:7px 10px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--color-text-main); font-size:13px;" onchange="setMatCatFilter(this.value)"></select>
-          <button class="btn btn-ghost btn-sm" onclick="addCategoryDialog()" style="white-space:nowrap;"><span class="ico" data-icon="plus-circle"></span> <span data-lang-key="add_category">+ เพิ่มหมวดหมู่</span></button>
-          <button class="btn btn-ghost btn-sm" onclick="manageCategoriesDialog()" title="จัดการหมวดหมู่" style="padding:7px 10px;"><span class="ico" data-icon="settings-2"></span></button>
+          <button class="btn btn-ghost btn-sm" onclick="manageCategoriesDialog()" style="white-space:nowrap;"><span class="ico" data-icon="settings-2"></span> <span data-lang-key="add_category">จัดการหมวดหมู่</span></button>
         </div>
 
         <!-- bulk action bar -->
@@ -350,7 +354,7 @@
           <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="store"></span> แหล่งจัดซื้อวัตถุดิบ</h2>
           <button class="btn btn-primary btn-sm" onclick="openSupForm()"><span class="ico" data-icon="plus"></span> เพิ่มแหล่งซื้อ</button>
         </div>
-        <table class="lst">
+        <div class="table-scroll"><table class="lst">
           <thead>
             <tr>
               <th>ชื่อแหล่งซื้อ</th>
@@ -359,7 +363,7 @@
             </tr>
           </thead>
           <tbody id="supList"></tbody>
-        </table>
+        </table></div>
       </div>
     </section>
 
@@ -376,6 +380,14 @@
           <span id="recBulkCount" style="font-size:13px; font-weight:700; color:var(--color-primary);"></span>
           <button class="btn btn-danger btn-sm" onclick="bulkDeleteRecs()"><span class="ico" data-icon="trash-2"></span> ลบที่เลือก</button>
           <button class="btn btn-ghost btn-sm" onclick="clearRecSelection()">ยกเลิกการเลือก</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-ghost btn-sm" onclick="exportRecipesXLSX()" title="ส่งออกรายงานสูตรทั้งหมด (มีข้อมูลจริง 2 ชีต)"><span class="ico" data-icon="download"></span> Export Excel</button>
+          <span style="width:1px;height:22px;background:var(--border-soft);margin:0 2px;"></span>
+          <button class="btn btn-ghost btn-sm" onclick="exportRecipeTemplate('xlsx')" title="ดาวน์โหลดเทมเพลตสำหรับนำเข้าเมนู (Excel)"><span class="ico" data-icon="file-text"></span> เทมเพลต .xlsx</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportRecipeTemplate('csv')" title="ดาวน์โหลดเทมเพลตสำหรับนำเข้าเมนู (CSV)"><span class="ico" data-icon="file-text"></span> .csv</button>
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('recipeFile').click()" title="นำเข้าเมนูจากไฟล์ Excel/CSV"><span class="ico" data-icon="upload"></span> นำเข้าเมนู</button>
+          <input id="recipeFile" type="file" accept=".csv, .xlsx, .xls" style="display:none" onchange="importRecipeFile(this)">
         </div>
         <div style="max-height: 560px; overflow-y: auto;" class="lst-desktop-wrap">
           <table class="lst">
@@ -425,6 +437,7 @@
         <!-- สต๊อกสินค้าสำเร็จรูป -->
         <div class="glass-card">
           <h2><span class="ico" data-icon="package"></span> สต๊อกขนม / สินค้าพร้อมขาย</h2>
+          <div class="table-scroll">
           <table class="lst">
             <thead>
               <tr>
@@ -436,6 +449,7 @@
             </thead>
             <tbody id="fgList"></tbody>
           </table>
+          </div>
         </div>
 
         <!-- สต๊อกวัตถุดิบ -->
@@ -451,6 +465,7 @@
               <span class="ico" data-icon="package-plus"></span> รับเข้าที่เลือก
             </button>
           </div>
+          <div class="table-scroll">
           <table class="lst">
             <thead>
               <tr>
@@ -464,12 +479,14 @@
             </thead>
             <tbody id="stockList"></tbody>
           </table>
+          </div>
         </div>
       </div>
 
       <!-- ประวัติการปรับคลัง (ลบ/ปรับแก้ด้วยมือ) -->
       <div class="glass-card" style="margin-top:24px;">
         <h2><span class="ico" data-icon="pencil-ruler"></span> ประวัติการปรับคลัง</h2>
+        <div class="table-scroll">
         <table class="lst">
           <thead>
             <tr>
@@ -482,11 +499,13 @@
           </thead>
           <tbody id="adjLogList"></tbody>
         </table>
+        </div>
       </div>
 
       <!-- ประวัติการรับวัตถุดิบเข้าสต๊อก -->
       <div class="glass-card" style="margin-top:24px;">
         <h2><span class="ico" data-icon="arrow-down-to-line"></span> ประวัติการรับวัตถุดิบเข้าสต๊อก</h2>
+        <div class="table-scroll">
         <table class="lst">
           <thead>
             <tr>
@@ -497,11 +516,13 @@
           </thead>
           <tbody id="receiveLogList"></tbody>
         </table>
+        </div>
       </div>
 
       <!-- ประวัติการผลิต -->
       <div class="glass-card" style="margin-top:24px;">
         <h2><span class="ico" data-icon="clipboard-list"></span> ประวัติการผลิต</h2>
+        <div class="table-scroll">
         <table class="lst">
           <thead>
             <tr>
@@ -513,6 +534,7 @@
           </thead>
           <tbody id="prodLogList"></tbody>
         </table>
+        </div>
       </div>
     </section>
 
@@ -552,9 +574,10 @@
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span style="font-size:13px; font-weight:700; color:var(--color-text-muted); margin-right:4px;"><span class="ico" data-icon="calendar-range"></span> ช่วงเวลาจัดอันดับ:</span>
           <button class="rpt-period-chip active" data-period="today" onclick="setReportPeriod('today')">วันนี้</button>
-          <button class="rpt-period-chip" data-period="7d" onclick="setReportPeriod('7d')">7 วันที่ผ่านมา</button>
-          <button class="rpt-period-chip" data-period="30d" onclick="setReportPeriod('30d')">30 วันที่ผ่านมา</button>
-          <button class="rpt-period-chip" data-period="custom" onclick="setReportPeriod('custom')">เลือกวันที่</button>
+          <button class="rpt-period-chip" data-period="month" onclick="setReportPeriod('month')">เดือนนี้</button>
+          <button class="rpt-period-chip" data-period="year" onclick="setReportPeriod('year')">ปีนี้</button>
+          <button class="rpt-period-chip" data-period="all" onclick="setReportPeriod('all')">ทั้งหมด</button>
+          <button class="rpt-period-chip" data-period="custom" onclick="setReportPeriod('custom')">กำหนดเอง</button>
           <span id="rptRangeCustom" style="display:none; align-items:center; gap:6px; flex-wrap:wrap;">
             <input type="date" id="rptRangeFrom" onchange="renderReportRankings()" style="padding:5px 8px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--color-text-main); font-size:13px;">
             <span style="color:var(--color-text-muted); font-size:13px;">ถึง</span>
@@ -570,9 +593,9 @@
             <h2 style="margin:0;"><span class="ico" data-icon="trophy"></span> สินค้าขายดี <span id="rptMenuCountLabel">5 อันดับ</span></h2>
             <button class="btn btn-ghost btn-sm" id="rptToggleAllMenus" onclick="toggleAllMenus()"><span class="ico" data-icon="list"></span> ดูทุกเมนู</button>
           </div>
-          <div style="max-height:340px; overflow-y:auto;">
+          <div class="table-scroll" style="max-height:340px; overflow-y:auto;">
             <table class="lst">
-              <thead><tr><th>สินค้า</th><th class="r">จำนวน</th><th class="r">รายได้</th></tr></thead>
+              <thead><tr><th>สินค้า</th><th>หมวดหมู่</th><th class="r">จำนวน</th><th class="r">รายได้</th><th class="r">รายได้/วัน</th></tr></thead>
               <tbody id="rptTop5"></tbody>
             </table>
           </div>
@@ -582,10 +605,10 @@
         <div class="glass-card">
           <h2 style="margin-bottom:6px;"><span class="ico" data-icon="sliders-horizontal"></span> อันดับตัวเลือกที่ขาย</h2>
           <div style="max-height:340px; overflow-y:auto;">
-            <table class="lst">
+            <div class="table-scroll"><table class="lst">
               <thead><tr><th>ตัวเลือก</th><th>ลูกค้าเลือก</th><th class="r">จำนวน</th><th class="r">รายได้</th></tr></thead>
               <tbody id="rptOptions"></tbody>
-            </table>
+            </table></div>
           </div>
         </div>
       </div>
@@ -604,10 +627,10 @@
           <span style="color:var(--color-text-muted); font-size:13px;">ถึง</span>
           <input type="date" id="rptTo" onchange="renderBillHistory()" style="padding:6px 10px; border-radius:var(--r-small); border:1px solid var(--glass-border); background:var(--card,#fff);">
         </div>
-        <table class="lst">
+        <div class="table-scroll"><table class="lst">
           <thead><tr><th>เลขที่</th><th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th class="r">ยอดรวม</th></tr></thead>
           <tbody id="rptBillList"></tbody>
-        </table>
+        </table></div>
       </div>
     </section>
 
@@ -760,7 +783,7 @@
             </div>
           </div>
 
-          <table class="lst">
+          <div class="table-scroll"><table class="lst">
             <thead>
               <tr>
                 <th>เลขที่</th>
@@ -771,7 +794,7 @@
               </tr>
             </thead>
             <tbody id="billList"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
 
@@ -963,7 +986,7 @@
         <div class="glass-card">
           <h2><span class="ico" data-icon="chart-column"></span> ร้านค้าทั้งหมดในระบบ SaaS</h2>
           <div style="max-height: 450px; overflow-y:auto;">
-            <table class="lst">
+            <div class="table-scroll"><table class="lst">
               <thead>
                 <tr>
                   <th>ชื่อร้าน</th>
@@ -972,7 +995,7 @@
                 </tr>
               </thead>
               <tbody id="adminShopList"></tbody>
-            </table>
+            </table></div>
           </div>
         </div>
       </div>
@@ -1026,6 +1049,16 @@
       </div>
 
       <div class="glass-card account-page-list">
+        <div style="font-size:12px;font-weight:700;color:var(--color-text-muted);padding:6px 14px 4px;">เมนูทั้งหมด</div>
+        <button class="account-page-item" onclick="switchTab('recipes')"><span class="ico" data-icon="utensils"></span><span>สูตร / เมนู</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('report')"><span class="ico" data-icon="bar-chart-2"></span><span>รายงานยอดขาย</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('expense')"><span class="ico" data-icon="wallet"></span><span>รายรับ-รายจ่าย</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('consumables')"><span class="ico" data-icon="package-plus"></span><span>ของใช้สิ้นเปลือง</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('options')"><span class="ico" data-icon="sliders-horizontal"></span><span>ตัวเลือกสินค้า</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+      </div>
+
+      <div class="glass-card account-page-list">
+        <div style="font-size:12px;font-weight:700;color:var(--color-text-muted);padding:6px 14px 4px;">บัญชี &amp; ตั้งค่า</div>
         <button class="account-page-item" onclick="switchTab('set')"><span class="ico" data-icon="settings"></span><span>ตั้งค่าบัญชี / ข้อมูลร้าน</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
         <button class="account-page-item" onclick="switchTab('billing')"><span class="ico" data-icon="credit-card"></span><span>การชำระเงิน &amp; ใบเสร็จ</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
         <button class="account-page-item hidden" id="acctPageAdmin" onclick="switchTab('admin')"><span class="ico" data-icon="crown"></span><span>ควบคุมระบบ (แอดมิน)</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
@@ -1039,19 +1072,19 @@
       <!-- Summary cards -->
       <div class="grid-3" style="margin-bottom:16px;">
         <div class="glass-card" style="text-align:center;">
-          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="calendar"></span> <span id="expPeriodLabel">วันนี้</span></div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="trending-up"></span> รายรับ · <span id="expPeriodLabel">วันนี้</span></div>
+          <div id="expIncomeTotal" style="font-size:26px;font-weight:800;color:#16a34a;">฿0</div>
+          <div id="expIncomeCount" style="font-size:12px;color:var(--color-text-muted);">0 รายการ</div>
+        </div>
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="trending-down"></span> รายจ่าย · <span id="expCashLabel">วันนี้</span></div>
           <div id="expMonthTotal" style="font-size:26px;font-weight:800;color:#dc2626;">฿0</div>
           <div id="expMonthCount" style="font-size:12px;color:var(--color-text-muted);">0 รายการ</div>
         </div>
         <div class="glass-card" style="text-align:center;">
-          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="banknote"></span> เงินสดย่อย</div>
-          <div id="expCashTotal" style="font-size:26px;font-weight:800;color:#d97706;">฿0</div>
-          <div id="expCashLabel" style="font-size:12px;color:var(--color-text-muted);">วันนี้</div>
-        </div>
-        <div class="glass-card" style="text-align:center;">
-          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="trending-down"></span> รายจ่ายปีนี้</div>
-          <div id="expYearTotal" style="font-size:26px;font-weight:800;color:#7c3aed;">฿0</div>
-          <div style="font-size:12px;color:var(--color-text-muted);">สะสม</div>
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="banknote"></span> คงเหลือสุทธิ</div>
+          <div id="expNetTotal" style="font-size:26px;font-weight:800;color:#16a34a;">฿0</div>
+          <div style="font-size:12px;color:var(--color-text-muted);">รายรับ − รายจ่าย</div>
         </div>
       </div>
 
@@ -1083,13 +1116,14 @@
             <option value="other">อื่นๆ</option>
           </select>
           <div style="flex:1;"></div>
-          <button class="btn btn-primary btn-sm" onclick="openExpenseForm()"><span class="ico" data-icon="plus"></span> เพิ่มรายจ่าย</button>
+          <button class="btn btn-ghost btn-sm" onclick="openExpenseForm(null,'income')" style="color:#16a34a;border-color:#16a34a;"><span class="ico" data-icon="plus"></span> รายรับ</button>
+          <button class="btn btn-primary btn-sm" onclick="openExpenseForm(null,'expense')"><span class="ico" data-icon="plus"></span> รายจ่าย</button>
         </div>
       </div>
 
       <!-- Expense list -->
       <div class="glass-card">
-        <table class="lst">
+        <div class="table-scroll"><table class="lst">
           <thead>
             <tr>
               <th>วันที่</th>
@@ -1101,7 +1135,60 @@
             </tr>
           </thead>
           <tbody id="expenseList"></tbody>
-        </table>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- OPTIONS MANAGER PAGE -->
+    <section id="optionsPage" class="page-section hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+        <p style="color:var(--color-text-muted);font-size:13px;margin:0;">กลุ่มตัวเลือกสินค้า — เชื่อมวัตถุดิบเพื่อตัดสต๊อกอัตโนมัติตามที่ลูกค้าเลือก</p>
+        <button class="btn btn-primary btn-sm" onclick="openGroupForm()"><span class="ico" data-icon="plus"></span> สร้างกลุ่มตัวเลือก</button>
+      </div>
+      <div id="optGroupList"></div>
+    </section>
+
+    <!-- CONSUMABLES PAGE (ของใช้สิ้นเปลืองในร้าน) -->
+    <section id="consumablesPage" class="page-section hidden">
+      <div class="grid-3" style="margin-bottom:18px;">
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="package-plus"></span> รายการสิ้นเปลือง</div>
+          <div id="consCount" style="font-size:26px;font-weight:800;color:var(--color-primary);">0</div>
+        </div>
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="banknote"></span> มูลค่าคงคลัง</div>
+          <div id="consValue" style="font-size:26px;font-weight:800;color:var(--color-secondary);">฿0</div>
+        </div>
+        <div class="glass-card" style="text-align:center;">
+          <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;"><span class="ico" data-icon="trending-down"></span> เบิกใช้เดือนนี้</div>
+          <div id="consMonthOut" style="font-size:26px;font-weight:800;color:#dc2626;">฿0</div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap;">
+          <h2 style="margin:0;"><span class="ico" data-icon="package-plus"></span> ของใช้สิ้นเปลืองในร้าน</h2>
+          <button class="btn btn-primary btn-sm" onclick="openConsForm()"><span class="ico" data-icon="plus"></span> เพิ่มของสิ้นเปลือง</button>
+        </div>
+        <p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px;">ตัดเป็นแพ็ค/ขวด/ม้วน ทุกเช้า — ไม่ผูกในสูตรเมนู · คิดต้นทุนแยกตอนซื้อเข้า</p>
+        <div style="max-height:520px; overflow-y:auto;" class="lst-desktop-wrap">
+          <table class="lst">
+            <thead><tr>
+              <th>ชื่อ</th><th>หน่วย</th><th class="r">ต้นทุน/หน่วย</th><th class="r">คงเหลือ</th>
+              <th style="width:180px;">เบิกวันนี้</th><th style="width:120px;">รับเข้า</th><th></th>
+            </tr></thead>
+            <tbody id="consList"></tbody>
+          </table>
+        </div>
+        <div id="consListCards" class="item-cards-mobile"></div>
+      </div>
+
+      <div class="glass-card" style="margin-top:18px;">
+        <h2><span class="ico" data-icon="history"></span> ประวัติเบิก/รับเข้า สิ้นเปลือง</h2>
+        <div class="table-scroll"><table class="lst">
+          <thead><tr><th>วันที่/เวลา</th><th>รายการ</th><th>ประเภท</th><th class="r">ก่อน</th><th class="r">หลัง</th><th class="r">เปลี่ยน</th></tr></thead>
+          <tbody id="consLogList"></tbody>
+        </table></div>
       </div>
     </section>
 
@@ -1114,9 +1201,8 @@
     <button class="dock-item" id="dockDash" onclick="switchTab('dash')"><span class="ico" data-icon="layout-dashboard"></span><span>ภาพรวม</span></button>
     <button class="dock-item" id="dockMaterials" onclick="switchTab('materials')"><span class="ico" data-icon="carrot"></span><span>วัตถุดิบ</span></button>
     <button class="dock-item dock-sell" id="dockPos" onclick="switchTab('pos')"><span class="ico" data-icon="receipt"></span><span>ขาย</span></button>
-    <button class="dock-item" id="dockRecipes" onclick="switchTab('recipes')"><span class="ico" data-icon="utensils"></span><span>สูตร</span></button>
     <button class="dock-item" id="dockStock" onclick="switchTab('stock')"><span class="ico" data-icon="package"></span><span>สต๊อก</span></button>
-    <button class="dock-item" id="dockAccount" onclick="switchTab('account')"><span class="avatar avatar-dock" id="dockAvatar">R</span><span>บัญชี</span></button>
+    <button class="dock-item" id="dockAccount" onclick="switchTab('account')"><span class="ico" data-icon="menu"></span><span>เมนู</span></button>
   </nav>
 
   <!-- ============================================================ -->
@@ -1132,6 +1218,13 @@
     </div>
     <div class="drawer-body">
       <input type="hidden" id="expId">
+      <div class="field">
+        <label>ประเภทรายการ <span style="color:#e53e3e">*</span></label>
+        <select id="expKind" onchange="updateExpFormType()">
+          <option value="expense">🔴 รายจ่าย (เงินออก)</option>
+          <option value="income">🟢 รายรับ (เงินเข้า)</option>
+        </select>
+      </div>
       <div class="field">
         <label>วันที่</label>
         <input type="date" id="expDate">
@@ -1181,7 +1274,90 @@
     </div>
   </aside>
 
+  <!-- CONSUMABLE ADD/EDIT DRAWER -->
+  <aside class="drawer" id="consDrawer" role="dialog" aria-label="ฟอร์มของใช้สิ้นเปลือง">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="package-plus"></span> ของใช้สิ้นเปลือง</h3>
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label>ชื่อของใช้ *</label>
+        <input id="consName" placeholder="เช่น ถุงดำ, ทิชชู่, หลอด, น้ำยาล้างจาน">
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>หน่วยตัด (ตัดเป็น...)</label>
+          <input id="consUnit" list="consUnitList" placeholder="แพ็ค / ขวด / ม้วน / ลัง">
+          <datalist id="consUnitList">
+            <option value="แพ็ค"><option value="ขวด"><option value="ม้วน"><option value="ลัง"><option value="ถุง"><option value="กล่อง"><option value="ชิ้น">
+          </datalist>
+        </div>
+        <div class="field">
+          <label>ต้นทุน/หน่วย (฿)</label>
+          <input id="consPrice" type="number" step="any" placeholder="0">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>คงเหลือปัจจุบัน</label>
+          <input id="consStock" type="number" step="any" placeholder="0">
+        </div>
+        <div class="field">
+          <label>เกณฑ์เตือนของหมด</label>
+          <input id="consLow" type="number" step="any" placeholder="0">
+        </div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
+      <button class="btn btn-primary" id="consSaveBtn" onclick="saveCons()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div>
+  </aside>
+
   <!-- MATERIAL ADD/EDIT DRAWER -->
+  <!-- OPTION GROUP DRAWER -->
+  <aside class="drawer drawer-wide" id="optGroupDrawer" role="dialog" aria-label="ฟอร์มกลุ่มตัวเลือก">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="sliders-horizontal"></span> กลุ่มตัวเลือกสินค้า</h3>
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <div class="grid-2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>ชื่อกลุ่ม *</label>
+          <input id="ogLabel" placeholder="เช่น ประเภทน้ำ, ความหวาน, Topping">
+        </div>
+        <div class="field">
+          <label>รูปแบบการเลือก</label>
+          <select id="ogSelectType">
+            <option value="single">เลือกได้ 1 (Single)</option>
+            <option value="multi">เลือกได้หลาย (Multi)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="checkbox" id="ogRequired" style="width:auto;margin:0;"> บังคับเลือก</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="checkbox" id="ogEnabled" checked style="width:auto;margin:0;"> เปิดใช้งาน</label>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <label style="font-weight:700;font-size:13px;">ตัวเลือก</label>
+          <button class="btn btn-ghost btn-sm" onclick="addChoiceRow()"><span class="ico" data-icon="plus"></span> เพิ่มตัวเลือก</button>
+        </div>
+        <div id="ogChoiceList"></div>
+      </div>
+      <div style="background:var(--surface-2);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <label style="font-weight:700;font-size:13px;display:block;margin-bottom:8px;"><span class="ico" data-icon="utensils"></span> ใช้กับเมนู</label>
+        <div id="ogRecipePicker" style="max-height:160px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveGroupForm()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div>
+  </aside>
+
   <aside class="drawer" id="matDrawer" role="dialog" aria-label="ฟอร์มวัตถุดิบ">
     <div class="drawer-header">
       <h3 class="drawer-title"><span class="ico" data-icon="carrot"></span> ข้อมูลวัตถุดิบ</h3>
@@ -1252,15 +1428,32 @@
         </div>
         <div id="matCostPreview" style="font-size:12px;color:var(--color-secondary);min-height:16px;"></div>
       </div>
-      <div class="grid-2" style="margin-bottom: 12px;">
-        <div class="field">
-          <label>ราคาขาย (฿) <span style="color:var(--color-text-muted); font-size:12px;">— ต่อหน่วย</span></label>
-          <input id="mSellPrice" type="number" step="any" placeholder="0">
+      <div class="field" style="margin-bottom:12px;">
+        <label>ประเภทวัตถุดิบ</label>
+        <select id="mSaleType" onchange="toggleSaleFields()">
+          <option value="INGREDIENT_ONLY">RAW — วัตถุดิบล้วน (ใช้ในสูตร · ห้ามขาย)</option>
+          <option value="SELLABLE">Main — ขายได้ + เป็นวัตถุดิบ (เข้า POS ได้)</option>
+        </select>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW จะไม่แสดงในหน้าขาย POS เด็ดขาด</p>
+      </div>
+      <div id="mSaleFields" style="display:none; background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px;">
+        <div class="grid-2" style="margin-bottom:8px;">
+          <div class="field" style="margin:0;">
+            <label>ราคาขายหลัก (฿)</label>
+            <input id="mSellPrice" type="number" step="any" placeholder="0">
+          </div>
+          <div class="field" style="margin:0;">
+            <label>ราคาขายรอง (฿) <span style="color:var(--color-text-muted);font-size:11px;">— ราคาส่ง (ไม่บังคับ)</span></label>
+            <input id="mSalePrice2" type="number" step="any" placeholder="(เว้นว่างได้)">
+          </div>
         </div>
-        <div class="field">
-          <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
-          <input id="mUrl" placeholder="https://...">
-        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="mShowInPos" style="width:auto;margin:0;"> แสดงในหน้าขาย (POS)
+        </label>
+      </div>
+      <div class="field" style="margin-bottom: 12px;">
+        <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
+        <input id="mUrl" placeholder="https://...">
       </div>
     </div>
     <div class="drawer-footer">
@@ -1325,10 +1518,12 @@
       </div>
 
       <div class="field" style="margin-bottom: 15px;">
-        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
-          <input type="checkbox" id="rRaw" style="width:auto; margin:0;" onchange="updateRecipeTotals()">
-          เป็น "สูตรกึ่งสำเร็จรูป" (เพื่อใช้เป็นวัตถุดิบในสูตรอื่นอีกที)
-        </label>
+        <label>ผลลัพธ์การผลิต</label>
+        <select id="rOutputType" onchange="updateRecipeTotals()">
+          <option value="MAIN">Main — สินค้าขาย (เข้า POS ได้)</option>
+          <option value="RAW">RAW — ของกลาง/กึ่งสำเร็จรูป (ใช้เป็นส่วนผสม · ไม่ขาย)</option>
+        </select>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW ผลิตแล้วเข้า "สต๊อกกลาง" ไม่โผล่หน้าขาย · Main ผลิตแล้วเข้าหน้าขายได้เลย</p>
       </div>
 
       <h3><span class="ico" data-icon="soup"></span> ส่วนผสมในสูตร</h3>
@@ -1489,7 +1684,7 @@ function updateMatCostPreview() {
     costPer = price / ((qty * u.f) || 1);
     unitLabel = (UNITS[unit] || { base: unit }).base;
   }
-  el.textContent = `ต้นทุน: ฿${costPer.toFixed(4)} / ${unitLabel}`;
+  el.textContent = `ต้นทุน: ${money(costPer)} / ${unitLabel}`;
 }
 
 // ธีมระบบภาพสีที่แนะนำ
@@ -1546,8 +1741,35 @@ let recipes = [];
 let bills = [];
 let prodLogs = [];
 let stockReceiveLogs = [];
-let adjLogs = JSON.parse(localStorage.getItem('recipro_adj_logs') || '[]');
+let adjLogs = JSON.parse(localStorage.getItem('recipro_adj_logs') || '[]'); // โหมดจำลอง (localStorage)
+let stockMovements = []; // โหมดคลาวด์: ประวัติเคลื่อนไหวสต๊อกจาก DB (ใช้ร่วมทุกเครื่อง + audit รายตัว)
+let lastChangeCheck = null; // R2 realtime: เวลาเซิร์ฟเวอร์ล่าสุดที่ poll การเปลี่ยนแปลง
+
+// แหล่งประวัติ: คลาวด์ใช้ DB, จำลองใช้ localStorage
+function movementSource() { return isMockMode ? adjLogs : stockMovements; }
+
+// บันทึก movement หนึ่งครั้ง — โหมดคลาวด์ยิงเข้า DB (atomic + audit) / โหมดจำลองเก็บ localStorage
+function pushMovement(mv) {
+  const rec = {
+    id: uid(), at: new Date().toISOString(), kind: mv.kind, type: mv.refType === 'recipe' ? 'fg' : 'mat',
+    refType: mv.refType || 'material', refId: mv.refId, name: mv.name, unit: mv.unit || '',
+    old: Number(mv.old) || 0, newVal: Number(mv.newVal) || 0,
+    delta: (Number(mv.newVal) || 0) - (Number(mv.old) || 0), note: mv.note || '', price: Number(mv.price) || 0
+  };
+  if (isMockMode) {
+    adjLogs.unshift(rec);
+    localStorage.setItem('recipro_adj_logs', JSON.stringify(adjLogs.slice(0, 300)));
+  } else {
+    stockMovements.unshift(rec);
+    if (mv.refId) {
+      API.post('/api/stock/move', { ref_type: mv.refType || 'material', ref_id: mv.refId, mode: 'set', value: rec.newVal, kind: mv.kind, note: mv.note, unit: mv.unit })
+        .then(r => { if (r && r.movement_id) rec.id = r.movement_id; })  // จำ id จริงจาก server เพื่อกัน popup เด้งใส่ตัวเองตอน poll
+        .catch(() => {});
+    }
+  }
+}
 let expenses = [];
+let optionGroups = []; // [{id, label, selectType, required, minSelect, maxSelect, sort, enabled, recipeIds:[], choices:[...]}]
 let allShops = [];
 let counter = 0;
 let settings = {
@@ -1596,6 +1818,59 @@ function startRealtimeClock() {
   tick();
   setInterval(tick, 1000);
   setInterval(refreshDashIfVisible, 30000);
+  setInterval(pollChanges, 4000); // R2 realtime: ดึงการเปลี่ยนแปลงจากเครื่องอื่นทุก 4 วิ
+}
+
+const KIND_LABEL = { adjust: 'ปรับคลัง', receive: 'รับเข้า', produce: 'ผลิต', sale: 'ขาย', 'cons-out': 'เบิกสิ้นเปลือง', 'cons-in': 'รับสิ้นเปลือง' };
+
+// R2 realtime: ถามเซิร์ฟเวอร์ว่ามีอะไรเปลี่ยนตั้งแต่ครั้งก่อน → อัปเดตสต๊อก/ประวัติ + เด้ง popup ให้ทุกเครื่องเห็นพร้อมกัน
+async function pollChanges() {
+  if (isMockMode || !CURRENT_SHOP || !lastChangeCheck) return;
+  if (typeof API === 'undefined' || !API.getAccess || !API.getAccess()) return;
+  if (document.visibilityState && document.visibilityState !== 'visible') return;
+  let data;
+  try { data = await API.get('/api/changes?since=' + encodeURIComponent(lastChangeCheck)); }
+  catch (e) { return; }
+  if (!data) return;
+  lastChangeCheck = data.now || lastChangeCheck;
+  let touched = false;
+
+  (data.materials || []).forEach(row => {
+    const m = matById(row.id);
+    if (m && Number(m.stock) !== Number(row.stock)) { m.stock = Number(row.stock); touched = true; }
+  });
+  (data.recipes || []).forEach(row => {
+    const r = recById(row.id);
+    if (r && Number(r.fgStock) !== Number(row.fg_stock)) { r.fgStock = Number(row.fg_stock); touched = true; }
+  });
+
+  // movement ใหม่จากเครื่องอื่น (กรอง id ที่มีแล้ว + กัน race ของตัวเองที่ id ยังไม่ patch)
+  const fresh = (data.movements || []).filter(mv => {
+    if (stockMovements.some(s => s.id === mv.id)) return false;
+    const t = new Date(mv.created_at).getTime();
+    const ownRecent = stockMovements.some(s => s.refId === mv.ref_id && Number(s.newVal) === Number(mv.qty_after) && Math.abs(new Date(s.at).getTime() - t) < 15000);
+    return !ownRecent;
+  });
+  if (fresh.length) {
+    touched = true;
+    fresh.forEach(mv => stockMovements.unshift({
+      id: mv.id, at: mv.created_at, kind: mv.kind, type: mv.ref_type === 'recipe' ? 'fg' : 'mat',
+      refType: mv.ref_type, refId: mv.ref_id, name: mv.ref_name || '', unit: mv.unit || '',
+      old: Number(mv.qty_before) || 0, newVal: Number(mv.qty_after) || 0, delta: Number(mv.delta) || 0, note: mv.note || ''
+    }));
+    if (stockMovements.length > 400) stockMovements.length = 400;
+    const last = fresh[fresh.length - 1];
+    const sign = (Number(last.delta) || 0) >= 0 ? '+' : '';
+    const more = fresh.length > 1 ? ` (+${fresh.length - 1} รายการ)` : '';
+    ui.toast(`${KIND_LABEL[last.kind] || 'อัปเดต'}: ${last.ref_name} ${sign}${(Number(last.delta) || 0).toLocaleString()} ${last.unit || ''}${more}`, 'info');
+  }
+
+  if (touched) {
+    if (currentTab === 'stock' && typeof renderStockPage === 'function') renderStockPage();
+    else if (currentTab === 'consumables' && typeof renderConsumablesPage === 'function') renderConsumablesPage();
+    else if (currentTab === 'dash' && typeof renderDashboard === 'function') renderDashboard();
+    else if (currentTab === 'pos' && typeof renderPosGrid === 'function') renderPosGrid();
+  }
 }
 
 // ============================================================
@@ -1733,14 +2008,262 @@ function bahtText(a){
 function viewSteps(id) {
   const r = recById(id);
   if (!r) return;
-  const stepsText = r.steps || '(ยังไม่มีวิธีทำ)';
-  const w = window.open('', '_blank', 'width=520,height=640');
-  if (w) {
-    w.document.write(`<meta charset="utf-8"><title>วิธีทำ ${r.name}</title><body style="font-family:'IBM Plex Sans Thai', sans-serif; padding:22px; color:#1e1b4b; background:#F6F7FB;"><h2 style="color:#7C3AED;">วิธีทำ — ${r.name}</h2><div style="font-size:16px; white-space:pre-wrap; line-height:1.8;">${stepsText.replace(/</g, '&lt;')}</div></body>`);
-    w.document.close();
-  } else {
-    alert(`วิธีทำ — ${r.name}\n\n${stepsText}`);
+
+  // ---- derived values ----
+  const items = Array.isArray(r.items) ? r.items : [];
+  const batchYieldRaw = Number(r.batchYield) || 1;
+  const batchYield = Math.max(0.0001, batchYieldRaw);
+  const batchCost = recipeCost(items);
+  const costPerUnit = batchCost / batchYield;
+  const sell = Number(r.sell) || 0;
+  const profit = sell - costPerUnit;
+  const margin = sell > 0 ? Math.round((profit / sell) * 100) : 0;
+  const isRaw = !!r.isRaw;
+  const showSell = !isRaw && sell > 0;
+  const yieldUnit = r.yieldUnit || 'หน่วย';
+
+  // ---- margin tone: green >=40, amber 15-39, red <15 or loss ----
+  let marginTone = 'good';
+  if (profit < 0 || margin < 15) marginTone = 'bad';
+  else if (margin < 40) marginTone = 'warn';
+
+  // ---- ingredients (skip missing materials) ----
+  const ingRows = items.map(function (it) {
+    const m = matById(it.matId);
+    if (!m) return null;
+    const amt = Number(it.amount) || 0;
+    const amtStr = amt.toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    return { name: m.name || '-', amt: amtStr, unit: baseU(m) || '', role: it.role || '' };
+  }).filter(Boolean);
+
+  // ---- steps parsing ----
+  const rawSteps = (r.steps || '').replace(/\r\n/g, '\n').trim();
+  let stepList = [];
+  if (rawSteps) {
+    const lines = rawSteps.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    stepList = lines.length > 1
+      ? lines.map(function (l) { return l.replace(/^\s*\d+\s*[.)\-]\s*/, '').trim(); }).filter(Boolean)
+      : [rawSteps];
   }
+  const multiStep = stepList.length > 1;
+
+  // ---- plain-text fallback (popup blocked) ----
+  const plainText = 'วิธีทำ — ' + (r.name || '') + '\n\n' + (rawSteps || '(ยังไม่มีวิธีทำ)');
+
+  // ---- shop + meta ----
+  const shopName = settings.shopName || 'Recipro';
+  const logo = settings.logoData || '';
+  const monogram = (shopName.trim().slice(0, 1) || 'R');
+  const now = new Date();
+  const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  const printDate = pad(now.getDate()) + '/' + pad(now.getMonth() + 1) + '/' + (now.getFullYear() + 543) +
+    ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+
+  // ---- open popup / fallback BEFORE any document.write ----
+  const w = window.open('', '_blank', 'width=880,height=940');
+  if (!w) { alert(plainText); return; }
+
+  // ---- badges ----
+  const codeBadge = r.code ? '<span class="badge badge-code">' + esc(r.code) + '</span>' : '';
+  const catBadge = r.category ? '<span class="badge badge-cat">' + esc(r.category) + '</span>' : '';
+  const typeBadge = isRaw
+    ? '<span class="badge badge-raw">สูตรกึ่งสำเร็จรูป</span>'
+    : '<span class="badge badge-product">สินค้าปกติ</span>';
+
+  // ---- logo (monogram fallback) ----
+  const logoHTML = logo
+    ? '<img class="shop-logo" src="' + esc(logo) + '" alt="">'
+    : '<div class="shop-logo shop-logo-fb">' + esc(monogram) + '</div>';
+
+  // ---- product image (placeholder fallback) ----
+  const imgHTML = r.imgData
+    ? '<div class="hero-img"><img src="' + esc(r.imgData) + '" alt=""></div>'
+    : '<div class="hero-img hero-img-empty">ไม่มีรูปสินค้า</div>';
+
+  // ---- stats strip ----
+  let statsInner =
+    '<div class="stat"><div class="stat-label">ต้นทุน / หน่วย</div><div class="stat-val">' + esc(money(costPerUnit)) + '</div></div>' +
+    '<div class="stat"><div class="stat-label">ต้นทุนต่อรอบ</div><div class="stat-val">' + esc(money(batchCost)) + '</div></div>';
+  if (showSell) {
+    const profitClass = profit >= 0 ? 'pos' : 'neg';
+    statsInner +=
+      '<div class="stat"><div class="stat-label">ราคาขาย</div><div class="stat-val">' + esc(money(sell)) + '</div></div>' +
+      '<div class="stat"><div class="stat-label">กำไร / หน่วย</div><div class="stat-val ' + profitClass + '">' + esc(money(profit)) + '</div></div>' +
+      '<div class="stat stat-margin tone-' + marginTone + '"><div class="stat-label">% กำไร</div><div class="stat-val">' + margin + '%</div></div>';
+  }
+  statsInner +=
+    '<div class="stat"><div class="stat-label">ผลิตได้ / รอบ</div><div class="stat-val">' +
+    esc(batchYieldRaw.toLocaleString('th-TH', { maximumFractionDigits: 2 })) +
+    ' <span class="stat-unit">' + esc(yieldUnit) + '</span></div></div>';
+
+  // ---- ingredients HTML (zebra rows + tick box + role) ----
+  let ingHTML;
+  if (ingRows.length) {
+    ingHTML = '<ul class="ing-list">' + ingRows.map(function (g) {
+      const roleHTML = g.role ? '<span class="ing-role">' + esc(g.role) + '</span>' : '';
+      return '<li class="ing-item">' +
+        '<span class="ing-box"></span>' +
+        '<span class="ing-name">' + esc(g.name) + roleHTML + '</span>' +
+        '<span class="ing-dots"></span>' +
+        '<span class="ing-amt">' + esc(g.amt) + ' <span class="ing-unit">' + esc(g.unit) + '</span></span>' +
+        '</li>';
+    }).join('') + '</ul>';
+  } else {
+    ingHTML = '<p class="empty-note">ไม่มีวัตถุดิบในสูตร</p>';
+  }
+
+  // ---- steps HTML (escape BEFORE \n -> <br>) ----
+  let stepsHTML;
+  if (!stepList.length) {
+    stepsHTML = '<p class="empty-note">(ยังไม่มีวิธีทำ)</p>';
+  } else if (stepList.length === 1) {
+    stepsHTML = '<p class="step-para">' + esc(stepList[0]).replace(/\n/g, '<br>') + '</p>';
+  } else {
+    stepsHTML = '<ol class="step-list">' + stepList.map(function (s, i) {
+      return '<li class="step-item">' +
+        '<span class="step-num">' + (i + 1) + '</span>' +
+        '<span class="step-text">' + esc(s) + '</span>' +
+        '</li>';
+    }).join('') + '</ol>';
+  }
+
+  // ---- section count pills ----
+  const ingCountPill = ingRows.length ? '<span class="sec-count">' + ingRows.length + ' รายการ</span>' : '';
+  const stepCountPill = multiStep ? '<span class="sec-count">' + stepList.length + ' ขั้นตอน</span>' : '';
+
+  // ---- CSS (string concat: no template-literal interpolation inside) ----
+  const css =
+    '*{margin:0;padding:0;box-sizing:border-box;}' +
+    'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+    "body{font-family:'IBM Plex Sans Thai','Inter',sans-serif;background:#FBF7EE;color:#2A2520;line-height:1.65;padding:32px 18px 88px;-webkit-font-smoothing:antialiased;}" +
+    '.sheet{max-width:760px;margin:0 auto;background:#FFFFFF;border:1px solid #ECE4D6;border-radius:22px;overflow:hidden;box-shadow:0 24px 60px -28px rgba(42,37,32,.28);}' +
+    // header band
+    '.head{position:relative;padding:34px 40px 30px;background:linear-gradient(135deg,#F47A1F 0%,#FBB36B 46%,#FBF7EE 100%);}' +
+    '.head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:rgba(255,255,255,.45);}' +
+    '.head-top{display:flex;align-items:center;gap:12px;margin-bottom:20px;}' +
+    '.shop-logo{width:38px;height:38px;border-radius:10px;object-fit:cover;background:#fff;border:1px solid rgba(255,255,255,.6);box-shadow:0 4px 12px -4px rgba(42,37,32,.35);flex:none;}' +
+    ".shop-logo-fb{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#D9650F,#F47A1F);color:#fff;font-family:'Inter',sans-serif;font-weight:700;font-size:18px;border:1px solid rgba(255,255,255,.5);}" +
+    '.shop-name{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px rgba(217,101,15,.35);}' +
+    '.eyebrow{font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.92);margin-bottom:8px;}' +
+    ".title{font-family:'IBM Plex Sans Thai','Inter',sans-serif;font-size:38px;font-weight:700;line-height:1.18;color:#2A2520;letter-spacing:-.01em;max-width:90%;}" +
+    '.badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}' +
+    '.badge{display:inline-flex;align-items:center;font-size:11.5px;font-weight:600;letter-spacing:.02em;padding:5px 12px;border-radius:999px;line-height:1;}' +
+    ".badge-code{font-family:'Inter',sans-serif;letter-spacing:.06em;background:#2A2520;color:#fff;}" +
+    '.badge-cat{background:rgba(255,255,255,.78);color:#D9650F;border:1px solid rgba(217,101,15,.25);}' +
+    '.badge-product{background:#39A845;color:#fff;}' +
+    '.badge-raw{background:rgba(57,168,69,.14);color:#2C8C38;border:1px solid rgba(57,168,69,.3);}' +
+    // body
+    '.body{padding:34px 40px 8px;}' +
+    '.hero-img{margin:0 0 28px;border-radius:18px;overflow:hidden;border:1px solid #ECE4D6;box-shadow:0 16px 40px -22px rgba(42,37,32,.4);background:#FBF7EE;}' +
+    '.hero-img img{display:block;width:100%;max-height:340px;object-fit:cover;}' +
+    '.hero-img-empty{display:flex;align-items:center;justify-content:center;height:130px;color:#A89F94;font-size:14px;font-style:italic;box-shadow:none;border-style:dashed;}' +
+    // stats
+    '.stats{display:flex;flex-wrap:wrap;gap:0;border:1px solid #ECE4D6;border-radius:16px;overflow:hidden;background:#FBF7EE;margin-bottom:34px;}' +
+    '.stat{flex:1 1 120px;min-width:110px;padding:16px 18px;border-right:1px solid #ECE4D6;border-bottom:1px solid #ECE4D6;}' +
+    '.stat-label{font-size:11px;font-weight:600;letter-spacing:.04em;color:#8A8178;margin-bottom:6px;}' +
+    ".stat-val{font-family:'Inter','IBM Plex Sans Thai',sans-serif;font-size:21px;font-weight:700;color:#2A2520;letter-spacing:-.01em;font-variant-numeric:tabular-nums;}" +
+    '.stat-val.pos{color:#2C8C38;}' +
+    '.stat-val.neg{color:#DC2626;}' +
+    '.stat-unit{font-size:13px;font-weight:500;color:#8A8178;}' +
+    '.stat-margin{color:#fff;border:none;}' +
+    '.stat-margin .stat-label{color:rgba(255,255,255,.88);}' +
+    '.stat-margin .stat-val{color:#fff;}' +
+    '.stat-margin.tone-good{background:linear-gradient(135deg,#39A845,#2C8C38);}' +
+    '.stat-margin.tone-warn{background:linear-gradient(135deg,#F5A623,#E5891A);}' +
+    '.stat-margin.tone-bad{background:linear-gradient(135deg,#EF4444,#DC2626);}' +
+    // section
+    '.section{margin-bottom:34px;}' +
+    '.sec-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;}' +
+    '.sec-ico{font-size:17px;line-height:1;}' +
+    '.sec-title{font-size:13px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#D9650F;white-space:nowrap;}' +
+    '.sec-count{font-family:\'Inter\',sans-serif;font-size:11.5px;font-weight:600;color:#D9650F;background:#FEF1E4;padding:2px 9px;border-radius:999px;white-space:nowrap;}' +
+    '.sec-rule{flex:1;height:1px;background:linear-gradient(90deg,#ECE4D6,rgba(236,228,214,0));}' +
+    // ingredients
+    '.ing-list{list-style:none;}' +
+    '.ing-item{display:flex;align-items:baseline;break-inside:avoid;padding:9px 12px;font-size:14.5px;border-radius:8px;}' +
+    '.ing-item:nth-child(even){background:#FCF9F2;}' +
+    '.ing-box{flex:none;width:15px;height:15px;border:1.6px solid #C9BCA6;border-radius:4px;align-self:center;margin-right:11px;}' +
+    '.ing-name{color:#2A2520;font-weight:500;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}' +
+    ".ing-role{font-size:11px;font-weight:500;color:#8A8178;background:#F1EDE4;padding:1px 8px;border-radius:999px;}" +
+    '.ing-dots{flex:1;margin:0 8px;border-bottom:1.5px dotted #D6CBB8;transform:translateY(-3px);min-width:18px;}' +
+    ".ing-amt{font-family:'Inter','IBM Plex Sans Thai',sans-serif;font-weight:600;color:#2A2520;white-space:nowrap;font-variant-numeric:tabular-nums;}" +
+    '.ing-unit{font-weight:500;color:#8A8178;font-size:12.5px;}' +
+    // steps
+    '.step-list{list-style:none;}' +
+    '.step-item{position:relative;display:flex;gap:16px;padding:14px 0 16px 0;border-top:1px solid #F0E9DC;break-inside:avoid;}' +
+    '.step-item:first-child{border-top:none;}' +
+    ".step-num{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;color:#fff;background:linear-gradient(135deg,#F47A1F,#D9650F);box-shadow:0 4px 10px -4px rgba(217,101,15,.6);font-variant-numeric:tabular-nums;}" +
+    '.step-text{flex:1;font-size:15px;line-height:1.7;color:#2A2520;padding-top:3px;}' +
+    '.step-para{font-size:15px;line-height:1.85;color:#2A2520;white-space:pre-wrap;}' +
+    '.empty-note{font-size:14px;color:#8A8178;font-style:italic;}' +
+    // footer
+    '.foot{padding:20px 40px 30px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #ECE4D6;flex-wrap:wrap;}' +
+    '.foot-brand{font-size:12px;color:#8A8178;}' +
+    '.foot-brand b{color:#D9650F;font-weight:700;}' +
+    ".foot-date{font-family:'Inter','IBM Plex Sans Thai',sans-serif;font-size:11.5px;color:#8A8178;font-variant-numeric:tabular-nums;}" +
+    // action bar
+    '.actions{position:fixed;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:12px;z-index:20;}' +
+    ".btn{font-family:'IBM Plex Sans Thai','Inter',sans-serif;font-size:14px;font-weight:600;padding:12px 22px;border-radius:999px;border:none;cursor:pointer;box-shadow:0 10px 28px -10px rgba(42,37,32,.45);transition:transform .12s ease;}" +
+    '.btn:hover{transform:translateY(-1px);}' +
+    '.btn-print{background:#F47A1F;color:#fff;}' +
+    '.btn-print:hover{background:#D9650F;}' +
+    '.btn-close{background:#fff;color:#2A2520;border:1px solid #ECE4D6;}' +
+    // print
+    '@media print{' +
+    'body{background:#fff;padding:0;font-size:12pt;}' +
+    '.sheet{max-width:100%;border:none;border-radius:0;box-shadow:none;}' +
+    '.head{background:linear-gradient(135deg,#F47A1F 0%,#FBB36B 46%,#FBF7EE 100%) !important;}' +
+    '.actions{display:none !important;}' +
+    '.hero-img-empty{display:none !important;}' +
+    '.section,.step-item,.ing-item,.hero-img,.stats,.stat{break-inside:avoid;page-break-inside:avoid;}' +
+    '.hero-img img{max-height:260px;}' +
+    '.badge,.step-num,.sec-count,.stat-margin,.shop-logo-fb{-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+    '@page{size:A4;margin:14mm;}' +
+    '}' +
+    '@media(max-width:560px){.head,.body,.foot{padding-left:20px;padding-right:20px;}.title{font-size:30px;}}';
+
+  // ---- assemble document ----
+  const html =
+    '<!DOCTYPE html><html lang="th"><head>' +
+    '<meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>สูตร — ' + esc(r.name || 'ไม่ระบุชื่อ') + '</title>' +
+    '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+    '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">' +
+    '<style>' + css + '</style></head><body>' +
+    '<div class="sheet">' +
+    '<header class="head">' +
+    '<div class="head-top">' + logoHTML + '<span class="shop-name">' + esc(shopName) + '</span></div>' +
+    '<div class="eyebrow">การ์ดสูตร · RECIPE CARD</div>' +
+    '<h1 class="title">' + esc(r.name || 'ไม่ระบุชื่อ') + '</h1>' +
+    '<div class="badges">' + codeBadge + catBadge + typeBadge + '</div>' +
+    '</header>' +
+    '<div class="body">' +
+    imgHTML +
+    '<div class="stats">' + statsInner + '</div>' +
+    '<section class="section">' +
+    '<div class="sec-head"><span class="sec-ico">🧺</span><span class="sec-title">วัตถุดิบ</span>' + ingCountPill + '<span class="sec-rule"></span></div>' +
+    ingHTML +
+    '</section>' +
+    '<section class="section">' +
+    '<div class="sec-head"><span class="sec-ico">👩‍🍳</span><span class="sec-title">วิธีทำ</span>' + stepCountPill + '<span class="sec-rule"></span></div>' +
+    stepsHTML +
+    '</section>' +
+    '</div>' +
+    '<footer class="foot">' +
+    '<span class="foot-brand">สร้างโดย <b>Recipro</b></span>' +
+    '<span class="foot-date">พิมพ์เมื่อ ' + esc(printDate) + '</span>' +
+    '</footer>' +
+    '</div>' +
+    '<div class="actions">' +
+    '<button class="btn btn-print" onclick="window.print()">🖨 พิมพ์การ์ดสูตร</button>' +
+    '<button class="btn btn-close" onclick="window.close()">ปิด</button>' +
+    '</div>' +
+    '</body></html>';
+
+  w.document.write(html);
+  w.document.close();
 }
 
 // ข้อมูลสำหรับออกเอกสารบิลพิมพ์
@@ -1964,18 +2487,21 @@ function applyBootstrapData(data) {
       price: Number(m.price), sellPrice: Number(m.sell_price) || 0,
       supId: m.supplier_id, orderUrl: m.order_url, stock: Number(m.stock), lowStock: Number(m.low_stock),
       category: m.category || '',
-      convQty: m.conv_qty ? Number(m.conv_qty) : null, stockUnit: m.stock_unit || null
+      convQty: m.conv_qty ? Number(m.conv_qty) : null, stockUnit: m.stock_unit || null,
+      isConsumable: !!m.is_consumable,
+      saleType: m.sale_type || 'INGREDIENT_ONLY', showInPos: !!m.show_in_pos,
+      salePrice2: m.sale_price_2 != null ? Number(m.sale_price_2) : null
     }));
     const itemsGroup = data.recipe_items || [];
     recipes = (data.recipes || []).map(r => ({
       id: r.id, code: r.code, name: r.name, sell: Number(r.sell_price),
       batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
       steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
-      category: r.category || '',
+      category: r.category || '', isSop: !!r.is_sop,
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
       imgData: r.img_data || '',
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
-        matId: it.material_id, amount: Number(it.amount)
+        matId: it.material_id, subId: it.sub_recipe_id || null, amount: Number(it.amount), role: it.role || ''
       }))
     }));
     bills = (data.bills || []).map(b => ({
@@ -2005,8 +2531,34 @@ function applyBootstrapData(data) {
     expenses = (data.expenses || []).map(e => ({
       id: e.id, date: (e.expense_date || '').slice(0, 10), category: e.category || '',
       description: e.description, amount: Number(e.amount),
-      payType: e.payment_type || 'cash', note: e.note || ''
+      payType: e.payment_type || 'cash', note: e.note || '', kind: e.kind || 'expense'
     }));
+    const ogData = data.option_groups || [];
+    const ocData = data.option_choices || [];
+    const oclData = data.option_choice_links || [];
+    const rogData = data.recipe_option_groups || [];
+    optionGroups = ogData.map(g => ({
+      id: g.id, label: g.label, selectType: g.select_type || 'single',
+      required: !!g.required, minSelect: g.min_select || 0, maxSelect: g.max_select || 1,
+      sort: g.sort || 0, enabled: g.enabled !== false,
+      recipeIds: rogData.filter(rg => rg.group_id === g.id).map(rg => rg.recipe_id),
+      choices: ocData.filter(c => c.group_id === g.id).map(c => ({
+        id: c.id, groupId: c.group_id, label: c.label, priceAdd: Number(c.price_add) || 0,
+        effectType: c.effect_type || 'NONE', enabled: c.enabled !== false,
+        isDefault: !!c.is_default, sort: c.sort || 0, maxQty: c.max_qty || 1,
+        targetRole: c.target_role || '', variantRecipeId: c.variant_recipe_id || null,
+        links: oclData.filter(l => l.choice_id === c.id).map(l => ({
+          id: l.id, matId: l.material_id, amount: Number(l.amount)
+        }))
+      })).sort((a, b) => a.sort - b.sort)
+    })).sort((a, b) => a.sort - b.sort);
+    stockMovements = (data.stock_movements || []).map(s => ({
+      id: s.id, at: s.created_at, kind: s.kind, type: s.ref_type === 'recipe' ? 'fg' : 'mat',
+      refType: s.ref_type, refId: s.ref_id, name: s.ref_name || '', unit: s.unit || '',
+      old: Number(s.qty_before) || 0, newVal: Number(s.qty_after) || 0,
+      delta: Number(s.delta) || 0, note: s.note || ''
+    }));
+    lastChangeCheck = data.server_now || new Date().toISOString(); // R2: เริ่มนับ realtime จากเวลาเซิร์ฟเวอร์
     const displayName = settings.shopName + (window.RECIPRO_SHOP_OVERRIDE ? ' 👁' : '');
     $('sidebarShopName').textContent = displayName;
     applyTheme(settings.theme);
@@ -2174,17 +2726,19 @@ async function syncToSupabase() {
       price: m.price, sell_price: m.sellPrice || null,
       supplier_id: m.supId || null, order_url: m.orderUrl, stock: m.stock, low_stock: m.lowStock,
       category: m.category || null,
-      conv_qty: m.convQty || null, stock_unit: m.stockUnit || null
+      conv_qty: m.convQty || null, stock_unit: m.stockUnit || null,
+      is_consumable: m.isConsumable || false,
+      sale_type: m.saleType || 'INGREDIENT_ONLY', show_in_pos: m.showInPos || false, sale_price_2: m.salePrice2 || null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
       batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
       fg_stock: r.fgStock, fg_low: r.fgLow,
       category: r.category || null, opt_groups: r.optGroups || [],
-      img_data: r.imgData || null
+      img_data: r.imgData || null, is_sop: r.isSop || false
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
-      recipe_id: r.id, material_id: it.matId || null, amount: it.amount
+      recipe_id: r.id, material_id: it.matId || null, amount: it.amount, role: it.role || '', sub_recipe_id: it.subId || null
     }))),
     bills: bills.map(b => ({
       id: b.id, number: b.billNo, status: b.status,
@@ -2204,8 +2758,24 @@ async function syncToSupabase() {
     expenses: expenses.map(e => ({
       id: e.id, expense_date: e.date, category: e.category || '',
       description: e.description, amount: e.amount,
-      payment_type: e.payType || 'cash', note: e.note || ''
+      payment_type: e.payType || 'cash', note: e.note || '', kind: e.kind || 'expense'
     })),
+    option_groups: optionGroups.map((g, gi) => ({
+      id: g.id, label: g.label, select_type: g.selectType, required: g.required,
+      min_select: g.minSelect, max_select: g.maxSelect, sort: gi, enabled: g.enabled
+    })),
+    option_choices: optionGroups.flatMap(g => (g.choices || []).map((c, ci) => ({
+      id: c.id, group_id: g.id, label: c.label, price_add: c.priceAdd || 0,
+      effect_type: c.effectType || 'NONE', enabled: c.enabled !== false,
+      is_default: c.isDefault || false, sort: ci, max_qty: c.maxQty || 1,
+      target_role: c.targetRole || '', variant_recipe_id: c.variantRecipeId || null
+    }))),
+    option_choice_links: optionGroups.flatMap(g => (g.choices || []).flatMap(c =>
+      (c.links || []).map(l => ({ id: l.id, choice_id: c.id, material_id: l.matId, amount: l.amount }))
+    )),
+    recipe_option_groups: optionGroups.flatMap(g => (g.recipeIds || []).map(rId => ({
+      recipe_id: rId, group_id: g.id, sort: 0
+    }))),
     shop_settings: {
       phone: settings.phone, tax_id: settings.tax, address: settings.addr,
       bank: settings.bank, account: settings.acc, holder: settings.holder, promptpay: settings.pp,
@@ -2226,7 +2796,7 @@ async function syncToSupabase() {
 function switchTab(t) {
   currentTab = t;
   if (!SUB_TABS.includes(t)) lastMainTab = t;
-  const tabs = ['dash', 'materials', 'recipes', 'stock', 'report', 'expense', 'pos', 'set', 'admin', 'billing', 'account'];
+  const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account'];
   tabs.forEach(k => {
     const el = $(k + 'Page');
     if (el) {
@@ -2245,7 +2815,8 @@ function switchTab(t) {
   });
   // ปุ่ม "บัญชี" ใน dock ไฮไลต์เมื่ออยู่หน้า ตั้งค่า/จ่ายเงิน/แอดมิน
   const dockAcc = $('dockAccount');
-  if (dockAcc) dockAcc.classList.toggle('active', t === 'set' || t === 'billing' || t === 'admin' || t === 'account');
+  // "เมนู" hub ครอบคลุมทุกหน้าที่ไม่ได้อยู่บน dock หลัก (dash/materials/pos/stock)
+  if (dockAcc) dockAcc.classList.toggle('active', !['dash', 'materials', 'pos', 'stock'].includes(t));
 
   const titles = {
     dash: 'ภาพรวม',
@@ -2253,7 +2824,9 @@ function switchTab(t) {
     recipes: 'สูตร & วิเคราะห์ต้นทุน',
     stock: 'สต๊อกวัตถุดิบ & สินค้า',
     report: 'รายงานยอดขาย',
-    expense: 'รายจ่าย & เงินสดย่อย',
+    expense: 'รายรับ-รายจ่าย',
+    consumables: 'ของใช้สิ้นเปลืองในร้าน',
+    options: 'ตัวเลือกสินค้า & กลุ่มตัวเลือก',
     pos: 'ระบบหน้าร้าน & ออกเอกสารบิล',
     set: 'ตั้งค่าร้านค้า & บัญชีรับโอนเงิน',
     admin: 'แผงควบคุมหลัก Super Admin',
@@ -2265,6 +2838,8 @@ function switchTab(t) {
   if (t === 'dash') renderDashboard();
   if (t === 'account') renderAccountPage();
   if (t === 'expense') renderExpensePage();
+  if (t === 'consumables') renderConsumablesPage();
+  if (t === 'options') renderOptionsPage();
   // เปิดแท็บแอดมิน → รีเฟรชตัวเลขแดชบอร์ดให้ล่าสุดเสมอ
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
@@ -2313,7 +2888,7 @@ function openDrawer(id) {
 
 // ปิดลิ้นชักทุกตัว + overlay
 function closeDrawer() {
-  ['matDrawer', 'supDrawer', 'recipeDrawer'].forEach(id => {
+  ['matDrawer', 'supDrawer', 'recipeDrawer', 'optGroupDrawer', 'consDrawer'].forEach(id => {
     const d = $(id);
     if (d) d.classList.remove('open');
   });
@@ -2333,11 +2908,20 @@ function openMatForm() {
   $('mUrl').value = '';
   $('mSup').value = '';
   $('mCat').value = '';
+  $('mSaleType').value = 'INGREDIENT_ONLY';
+  $('mShowInPos').checked = false;
+  $('mSalePrice2').value = '';
+  toggleSaleFields();
   if ($('matCostPreview')) $('matCostPreview').textContent = '';
   renderCatDatalist();
   if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
   $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   openDrawer('matDrawer');
+}
+
+function toggleSaleFields() {
+  const sellable = $('mSaleType') && $('mSaleType').value === 'SELLABLE';
+  if ($('mSaleFields')) $('mSaleFields').style.display = sellable ? 'block' : 'none';
 }
 
 // เปิดฟอร์ม "เพิ่มแหล่งซื้อ" แบบล้างค่าใหม่
@@ -2531,13 +3115,18 @@ function saveMat() {
   const name = $('mName').value.trim();
   const qty = +$('mQty').value || 1;
   const price = +$('mPrice').value || 0;
-  const sellPrice = +$('mSellPrice').value || 0;
   const unit = $('mUnit').value;
   const convQty = +$('mConvQty').value || null;
   const stockUnit = $('mStockUnit').value.trim() || null;
   const supId = $('mSup').value;
   const orderUrl = $('mUrl').value.trim();
   const category = $('mCat').value.trim();
+  const saleType = $('mSaleType').value || 'INGREDIENT_ONLY';
+  const isMain = saleType === 'SELLABLE';
+  const sellPrice = isMain ? (+$('mSellPrice').value || 0) : 0;   // RAW ไม่มีราคาขาย
+  const showInPos = isMain && $('mShowInPos').checked;   // RAW เข้า POS ไม่ได้เด็ดขาด
+  const sp2 = $('mSalePrice2').value;
+  const salePrice2 = (isMain && sp2 !== '') ? (+sp2 || 0) : null;
 
   if (!name) { alert('ระบุชื่อวัตถุดิบ'); return; }
 
@@ -2545,11 +3134,11 @@ function saveMat() {
   if (category && !settings.categories.includes(category)) settings.categories.push(category);
 
   if (editMatId) {
-    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit });
+    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2 });
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0 });
+    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2 });
   }
 
   saveAll();
@@ -2587,6 +3176,10 @@ function editMat(id) {
   $('mSup').value = m.supId || '';
   $('mUrl').value = m.orderUrl || '';
   $('mCat').value = m.category || '';
+  $('mSaleType').value = m.saleType || 'INGREDIENT_ONLY';
+  $('mShowInPos').checked = !!m.showInPos;
+  $('mSalePrice2').value = m.salePrice2 != null ? m.salePrice2 : '';
+  toggleSaleFields();
   renderCatDatalist();
   updateMatCostPreview();
   $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
@@ -2612,11 +3205,12 @@ function toggleMatSelect(id, checked) {
   if (checked) selectedMats.add(id); else selectedMats.delete(id);
   updateMatBulkBar();
   const all = $('matSelectAll');
-  if (all) all.indeterminate = selectedMats.size > 0 && selectedMats.size < materials.length;
+  const total = materials.filter(m => !m.isConsumable).length;
+  if (all) all.indeterminate = selectedMats.size > 0 && selectedMats.size < total;
 }
 function toggleSelectAllMats(checked) {
   const q = ($('matSearch').value || '').trim().toLowerCase();
-  const filtered = materials.filter(m => (!q || m.name.toLowerCase().includes(q)) && (!matCatFilter || m.category === matCatFilter));
+  const filtered = materials.filter(m => !m.isConsumable && (!q || m.name.toLowerCase().includes(q)) && (!matCatFilter || m.category === matCatFilter));
   filtered.forEach(m => checked ? selectedMats.add(m.id) : selectedMats.delete(m.id));
   renderMatList();
 }
@@ -2631,7 +3225,8 @@ function updateMatBulkBar() {
     bar.style.display = 'none';
   }
   const all = $('matSelectAll');
-  if (all) { all.checked = selectedMats.size > 0 && selectedMats.size === materials.length; all.indeterminate = selectedMats.size > 0 && selectedMats.size < materials.length; }
+  const total = materials.filter(m => !m.isConsumable).length;
+  if (all) { all.checked = selectedMats.size > 0 && selectedMats.size === total; all.indeterminate = selectedMats.size > 0 && selectedMats.size < total; }
 }
 function clearMatSelection() { selectedMats.clear(); renderMatList(); }
 async function bulkDeleteMats() {
@@ -2682,9 +3277,10 @@ function setMatCatFilter(v) { matCatFilter = v; renderMatList(); }
 function renderMatCatChips() {
   const sel = $('matCatSelect');
   if (!sel) return;
-  let html = `<option value="">${t('all_categories')} (${materials.length})</option>`;
+  const matsForCat = materials.filter(m => !m.isConsumable);
+  let html = `<option value="">${t('all_categories')} (${matsForCat.length})</option>`;
   getCategories().forEach(c => {
-    const count = materials.filter(m => m.category === c).length;
+    const count = matsForCat.filter(m => m.category === c).length;
     html += `<option value="${String(c).replace(/"/g, '&quot;')}" ${matCatFilter === c ? 'selected' : ''}>${esc(c)} (${count})</option>`;
   });
   sel.innerHTML = html;
@@ -2701,33 +3297,82 @@ async function addCategoryDialog() {
     ui.toast('เพิ่มหมวดหมู่ "' + cat + '" แล้ว');
   }
 }
+let _catMgr = []; // รายการหมวดหมู่ปัจจุบันในกล่องจัดการ (อ้างด้วย index กันปัญหาอักขระพิเศษ)
 function manageCategoriesDialog() {
-  const cats = getCategories();
+  _catMgr = getCategories();
   const defSet = new Set(DEFAULT_CATEGORIES);
-  const used = new Set(materials.map(m => m.category).filter(Boolean));
-  const rows = cats.map(c => {
+  const used = new Set([...materials.map(m => m.category), ...recipes.map(r => r.category)].filter(Boolean));
+  document.querySelector('#catMgrModal')?.remove();
+  const rows = _catMgr.map((c, i) => {
     const isDef = defSet.has(c);
-    const isUsed = used.has(c);
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-soft);">
-      <span style="font-size:13px;">${esc(c)}${isUsed ? ' <span style="color:var(--color-text-muted);font-size:11px;">(ใช้งาน)</span>' : ''}</span>
-      ${!isDef ? `<button class="btn btn-ghost btn-sm" onclick="deleteCategory('${esc(c).replace(/'/g,"\\'")}');this.closest('.modal-overlay').remove();" style="color:#e53e3e;padding:3px 8px;">ลบ</button>` : '<span style="font-size:11px;color:var(--color-text-muted);">ค่าเริ่มต้น</span>'}
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);">
+      <span style="font-size:13px;flex:1;min-width:0;word-break:break-word;">${esc(c)}${used.has(c) ? ' <span style="color:var(--color-text-muted);font-size:11px;">(ใช้งาน)</span>' : ''}${isDef ? ' <span style="color:var(--color-text-muted);font-size:11px;">·ค่าเริ่มต้น</span>' : ''}</span>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" onclick="renameCategory(${i})" style="padding:3px 9px;">${icon('pencil')} แก้ไข</button>
+        ${!isDef ? `<button class="btn btn-ghost btn-sm" onclick="deleteCategoryIdx(${i})" style="color:#e53e3e;padding:3px 8px;">${icon('trash-2')}</button>` : ''}
+      </div>
     </div>`;
   }).join('');
   const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
+  overlay.className = 'modal-overlay'; overlay.id = 'catMgrModal';
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-  overlay.innerHTML = `<div class="modal" style="max-width:360px;width:95vw;">
+  overlay.innerHTML = `<div class="modal" style="max-width:380px;width:95vw;">
     <div class="modal-header"><h3>จัดการหมวดหมู่</h3><button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button></div>
-    <div class="modal-body" style="padding:16px;">${rows || '<p style="color:var(--color-text-muted);">ไม่มีหมวดหมู่</p>'}</div>
-    <div class="modal-footer"><button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove();addCategoryDialog();">+ เพิ่มหมวดหมู่</button></div>
+    <div class="modal-body" style="padding:16px;max-height:60vh;overflow-y:auto;">${rows || '<p style="color:var(--color-text-muted);">ไม่มีหมวดหมู่</p>'}</div>
+    <div class="modal-footer" style="gap:8px; align-items:stretch;">
+      <input id="catNewInput" placeholder="พิมพ์ชื่อหมวดใหม่..." onkeydown="if(event.key==='Enter')addCategoryInline()" style="flex:1 1 auto;min-width:0;padding:10px 12px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;">
+      <button class="btn btn-primary" onclick="addCategoryInline()" style="flex:0 0 auto;width:auto;white-space:nowrap;"><span class="ico" data-icon="plus"></span> เพิ่ม</button>
+    </div>
   </div>`;
   document.body.appendChild(overlay);
+  renderIcons(overlay);
+  setTimeout(() => $('catNewInput')?.focus(), 50);
 }
-function deleteCategory(cat) {
-  if (!Array.isArray(settings.categories)) return;
-  settings.categories = settings.categories.filter(c => c !== cat);
-  if (matCatFilter === cat) matCatFilter = '';
+
+function addCategoryInline() {
+  const el = $('catNewInput'); if (!el) return;
+  const cat = el.value.trim();
+  if (!cat) return;
+  if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
+  if (settings.categories.includes(cat) || DEFAULT_CATEGORIES.includes(cat)) { ui.toast('มีหมวดนี้แล้ว', 'warning'); return; }
+  settings.categories.push(cat);
   saveAll(); renderMatList();
+  manageCategoriesDialog(); // เปิดใหม่ให้เห็นรายการอัปเดต
+  ui.toast('เพิ่มหมวด "' + cat + '" แล้ว');
+}
+
+// แก้ไข (เปลี่ยนชื่อ) หมวดหมู่ → ย้ายวัตถุดิบ+สูตรที่ใช้หมวดนี้ตามไปด้วย (ล็อกกับวัตถุดิบ)
+async function renameCategory(i) {
+  const oldName = _catMgr[i];
+  if (oldName == null) return;
+  const v = await ui.prompt('แก้ไขชื่อหมวดหมู่', oldName, { title: 'แก้ไขหมวดหมู่' });
+  if (v == null) return;
+  const newName = String(v).trim();
+  if (!newName || newName === oldName) return;
+  if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
+  let n = 0;
+  materials.forEach(m => { if (m.category === oldName) { m.category = newName; n++; } });
+  recipes.forEach(r => { if (r.category === oldName) { r.category = newName; n++; } });
+  const idx = settings.categories.indexOf(oldName);
+  if (idx >= 0) settings.categories[idx] = newName;
+  else if (!settings.categories.includes(newName) && !DEFAULT_CATEGORIES.includes(newName)) settings.categories.push(newName);
+  if (matCatFilter === oldName) matCatFilter = newName;
+  saveAll(); render();
+  manageCategoriesDialog(); // เปิดใหม่ให้เห็นผล
+  ui.toast(`แก้ไขเป็น "${newName}" แล้ว — ย้าย ${n} รายการ`);
+}
+
+async function deleteCategoryIdx(i) { await deleteCategory(_catMgr[i]); manageCategoriesDialog(); }
+
+async function deleteCategory(cat) {
+  if (cat == null) return;
+  const inUse = materials.filter(m => m.category === cat).length + recipes.filter(r => r.category === cat).length;
+  if (inUse > 0 && !(await ui.confirm(`หมวด "${cat}" มี ${inUse} รายการใช้อยู่ — ลบแล้วรายการเหล่านั้นจะไม่มีหมวด ยืนยันไหม?`, { okText: 'ลบ', danger: true }))) return;
+  if (Array.isArray(settings.categories)) settings.categories = settings.categories.filter(c => c !== cat);
+  materials.forEach(m => { if (m.category === cat) m.category = ''; });
+  recipes.forEach(r => { if (r.category === cat) r.category = ''; });
+  if (matCatFilter === cat) matCatFilter = '';
+  saveAll(); render();
   ui.toast('ลบหมวดหมู่ "' + cat + '" แล้ว');
 }
 
@@ -2735,6 +3380,7 @@ function renderMatList() {
   renderMatCatChips();
   const q = ($('matSearch').value || '').trim().toLowerCase();
   const filtered = materials.filter(m =>
+    !m.isConsumable &&
     (!q || m.name.toLowerCase().includes(q)) &&
     (!matCatFilter || m.category === matCatFilter)
   );
@@ -2799,32 +3445,68 @@ function renderMatList() {
 // 6. RECIPE & INGREDIENT FORM
 // ============================================================
 const recById = id => recipes.find(r => r.id === id);
-let recipeIng = [{ matId: '', amount: 0 }];
+let recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
 let editRecipeId = null;
 let recipeOptGroups = []; // [{ label, choices: string, required }]
 
 function addRecipeIng() {
-  recipeIng.push({ matId: materials[0]?.id || '', amount: 0 });
+  recipeIng.push({ matId: materials[0]?.id || '', subId: null, amount: 0, role: '' });
   renderRecipeForm();
 }
 
 function delRecipeIng(i) {
   recipeIng.splice(i, 1);
-  if (!recipeIng.length) recipeIng.push({ matId: '', amount: 0 });
+  if (!recipeIng.length) recipeIng.push({ matId: '', subId: null, amount: 0, role: '' });
+  renderRecipeForm();
+}
+
+// สูตรที่ใช้เป็น SOP ได้ (กึ่งสำเร็จรูป/ของกลาง) ตัดตัวเอง + ตัวที่จะเกิดลูป
+function recipeDependsOn(rid, targetId, path) {
+  path = path || new Set();
+  if (rid === targetId) return true;
+  if (path.has(rid)) return false;
+  const r = recById(rid); if (!r) return false;
+  const next = new Set(path); next.add(rid);
+  return (r.items || []).some(it => it.subId && recipeDependsOn(it.subId, targetId, next));
+}
+function sopCandidates() {
+  return recipes.filter(r => (r.isRaw || r.isSop) && r.id !== editRecipeId && !(editRecipeId && recipeDependsOn(r.id, editRecipeId)));
+}
+function setIngKind(i, kind) {
+  if (kind === 'sop') { recipeIng[i].subId = recipeIng[i].subId || ''; recipeIng[i].matId = null; }
+  else { recipeIng[i].matId = recipeIng[i].matId || ''; recipeIng[i].subId = null; }
   renderRecipeForm();
 }
 
 function renderRecipeForm() {
+  const sops = sopCandidates();
   $('recipeIngRows').innerHTML = recipeIng.map((it, i) => {
+    const isSop = !!it.subId || it.subId === '';
+    const sub = it.subId ? recById(it.subId) : null;
     const m = matById(it.matId);
-    const unitName = m ? baseU(m) : 'หน่วย';
+    const unitName = isSop ? (sub ? (sub.yieldUnit || 'หน่วย') : 'หน่วย') : (m ? baseU(m) : 'หน่วย');
+    const picker = isSop
+      ? `<select onchange="recipeIng[${i}].subId=this.value; recipeIng[${i}].matId=null; renderRecipeForm();" style="flex:1;min-width:0;">
+           <option value="">— เลือก SOP —</option>
+           ${sops.map(r => `<option value="${r.id}"${r.id === it.subId ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}
+         </select>`
+      : `<select onchange="recipeIng[${i}].matId=this.value; recipeIng[${i}].subId=null; renderRecipeForm();" style="flex:1;min-width:0;">
+           <option value="">— เลือกวัตถุดิบ —</option>
+           ${materials.filter(mat => !mat.isConsumable).map(mat => `<option value="${mat.id}"${mat.id === it.matId ? ' selected' : ''}>${esc(mat.name)}</option>`).join('')}
+         </select>`;
     return `<div class="recipe-row">
-      <select onchange="recipeIng[${i}].matId=this.value; renderRecipeForm();">
-        <option value="">— เลือกวัตถุดิบ —</option>
-        ${materials.map(mat => `<option value="${mat.id}" ${mat.id === it.matId ? 'selected' : ''}>${mat.name}</option>`).join('')}
-      </select>
+      <div style="display:flex; gap:5px; align-items:center; min-width:0;">
+        <select onchange="setIngKind(${i}, this.value)" style="flex:0 0 auto; width:80px; font-size:12px; padding:6px 4px;">
+          <option value="mat"${!isSop ? ' selected' : ''}>วัตถุดิบ</option>
+          <option value="sop"${isSop ? ' selected' : ''}>SOP</option>
+        </select>
+        ${picker}
+      </div>
       <input type="number" step="any" value="${it.amount || 0}" oninput="recipeIng[${i}].amount=+this.value; updateRecipeTotals();" placeholder="จำนวน">
-      <span style="font-size:14px; font-weight:600; color:var(--color-text-muted);">${unitName}</span>
+      <div style="display:flex; gap:5px; align-items:center; min-width:0;">
+        <span style="font-size:13px; font-weight:600; color:var(--color-text-muted); white-space:nowrap;">${unitName}</span>
+        ${!isSop ? `<input value="${it.role || ''}" oninput="recipeIng[${i}].role=this.value" placeholder="role" title="Role ใช้กับ REPLACE/QUANTITY" style="width:64px;font-size:12px;padding:5px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-2);color:var(--color-text-muted);">` : ''}
+      </div>
       <button class="btn btn-danger" onclick="delRecipeIng(${i})" style="padding:8px 10px;" title="ลบ">${icon('trash-2')}</button>
     </div>`;
   }).join('');
@@ -2865,11 +3547,47 @@ function renderOptGroupRows() {
   renderIcons(el);
 }
 
-function recipeCost(items) {
-  return items.reduce((sum, it) => {
+// ต้นทุนสูตร — รองรับ SOP (ส่วนผสมที่เป็นสูตรอื่น) แบบ recursive + กันวนลูป (path-based)
+function recipeCost(items, path) {
+  path = path || new Set();
+  return (items || []).reduce((sum, it) => {
+    if (it.subId) {
+      return sum + sopUnitCost(it.subId, path) * (Number(it.amount) || 0);
+    }
     const m = matById(it.matId);
-    return sum + (m ? perBase(m) * it.amount : 0);
+    return sum + (m && !m.isConsumable ? perBase(m) * (Number(it.amount) || 0) : 0);
   }, 0);
+}
+
+// ต้นทุนต่อ 1 หน่วย yield ของ SOP (เรียกตัวเองซ้ำเมื่อ SOP ซ้อน SOP) — กันวนลูป
+function sopUnitCost(recipeId, path) {
+  path = path || new Set();
+  if (path.has(recipeId)) return 0;       // เจอลูป → หยุด
+  const r = recById(recipeId);
+  if (!r) return 0;
+  const next = new Set(path); next.add(recipeId);
+  const batch = recipeCost(r.items, next);
+  return batch / Math.max(0.0001, Number(r.batchYield) || 1);
+}
+
+// กระจาย BOM ลงถึงวัตถุดิบจริง (สำหรับรายงาน/ตรวจสอบ) — SOP จะถูกกระจายตามสัดส่วน yield
+function explodeBOM(items, mult, path) {
+  mult = mult || 1; path = path || new Set();
+  const out = [];
+  (items || []).forEach(it => {
+    const amt = (Number(it.amount) || 0) * mult;
+    if (it.subId) {
+      if (path.has(it.subId)) return;
+      const r = recById(it.subId);
+      if (!r) return;
+      const next = new Set(path); next.add(it.subId);
+      const perUnit = 1 / Math.max(0.0001, Number(r.batchYield) || 1);
+      explodeBOM(r.items, amt * perUnit, next).forEach(e => out.push(e));
+    } else if (it.matId) {
+      out.push({ matId: it.matId, amount: amt });
+    }
+  });
+  return out;
 }
 
 function updateRecipeTotals() {
@@ -2891,7 +3609,7 @@ function saveRecipe() {
   const sell = +$('rSell').value || 0;
   const batchYield = Math.max(0.0001, +$('rYield').value || 1);
   const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
-  const isRaw = $('rRaw').checked;
+  const isRaw = $('rOutputType').value === 'RAW';
   const steps = $('rSteps').value;
   const category = ($('rCategory')?.value || '').trim();
   const imgData = window._rImgData || '';
@@ -2903,7 +3621,7 @@ function saveRecipe() {
 
   if (!name) { alert('ระบุชื่อสูตรการผลิต'); return; }
 
-  const items = recipeIng.filter(it => it.matId && it.amount > 0);
+  const items = recipeIng.filter(it => (it.matId || it.subId) && it.amount > 0);
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
@@ -2929,7 +3647,7 @@ function editRecipe(id) {
   $('rSell').value = r.sell;
   $('rYield').value = r.batchYield || 1;
   $('rYieldUnit').value = r.yieldUnit || 'ชิ้น';
-  $('rRaw').checked = !!r.isRaw;
+  $('rOutputType').value = r.isRaw ? 'RAW' : 'MAIN';
   $('rSteps').value = r.steps || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
   setRecipeImgPreview(r.imgData || '');
@@ -2939,7 +3657,7 @@ function editRecipe(id) {
     required: !!g.required
   }));
 
-  recipeIng = r.items && r.items.length ? r.items.map(x => ({ ...x })) : [{ matId: '', amount: 0 }];
+  recipeIng = r.items && r.items.length ? r.items.map(x => ({ ...x })) : [{ matId: '', subId: null, amount: 0, role: '' }];
   $('rSaveBtn').innerHTML = icon('pencil') + ' อัปเดตสูตรการผลิต';
   $('recipeFormTitle').innerHTML = icon('pencil') + ' แก้ไขข้อมูลสูตร';
   renderRecipeForm();
@@ -2981,7 +3699,7 @@ function renderRecipeList() {
       <td><input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td>
         <b>[${r.code || '-'}] ${r.name}</b><br>
-        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'สูตรดิบกึ่งสำเร็จรูป' : 'สินค้าปกติ'}${r.category ? ' · ' + esc(r.category) : ''}</span>
+        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'RAW · ของกลาง' : 'Main · สินค้าขาย'}${r.category ? ' · ' + esc(r.category) : ''}</span>
       </td>
       <td>${money(cost)}</td>
       <td>${money(r.sell)}</td>
@@ -3012,7 +3730,7 @@ function renderRecipeList() {
           <input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0;margin-top:2px;" onclick="event.stopPropagation()">
           <div style="flex:1; min-width:0;" onclick="editRecipe('${r.id}')">
             <div class="item-card-title">[${esc(r.code || '-')}] ${esc(r.name)}</div>
-            <div class="item-card-sub">${r.isRaw ? 'กึ่งสำเร็จรูป' : 'สินค้าปกติ'} · ผลิต ${r.batchYield || 1} ${r.yieldUnit || 'ชิ้น'}</div>
+            <div class="item-card-sub">${r.isRaw ? 'RAW' : 'Main'} · ผลิต ${r.batchYield || 1} ${r.yieldUnit || 'ชิ้น'}</div>
           </div>
           ${r.sell > 0 ? `<span style="background:${marginBg};color:${profitColor};padding:3px 10px;border-radius:20px;font-size:13px;font-weight:800;flex-shrink:0;" onclick="editRecipe('${r.id}')">${margin}%</span>` : ''}
         </div>
@@ -3032,7 +3750,10 @@ function renderRecipeList() {
     renderIcons(rcCards);
   }
 
-  $('prodRecipe').innerHTML = recipes.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+  const _rawRecs = recipes.filter(r => r.isRaw), _mainRecs = recipes.filter(r => !r.isRaw);
+  $('prodRecipe').innerHTML =
+    (_rawRecs.length ? `<optgroup label="ผลิตของกลาง (RAW)">${_rawRecs.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>` : '') +
+    (_mainRecs.length ? `<optgroup label="ผลิตสินค้าขาย (Main)">${_mainRecs.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>` : '');
 }
 
 function resetRecipeForm() {
@@ -3042,11 +3763,11 @@ function resetRecipeForm() {
   $('rSell').value = '';
   $('rYield').value = 1;
   $('rYieldUnit').value = 'ชิ้น';
-  $('rRaw').checked = false;
+  $('rOutputType').value = 'MAIN';
   $('rSteps').value = '';
   if ($('rCategory')) $('rCategory').value = '';
   setRecipeImgPreview('');
-  recipeIng = [{ matId: '', amount: 0 }];
+  recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
   recipeOptGroups = [];
   $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
   $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
@@ -3062,7 +3783,7 @@ const matLowBase = m => Number(m.lowStock) || 0;
 
 function lowAlerts() {
   const alerts = [];
-  materials.forEach(m => {
+  materials.filter(m => !m.isConsumable).forEach(m => {
     if (matLowBase(m) > 0 && matStockBase(m) <= matLowBase(m)) {
       alerts.push(`${icon('milk')} ${m.name} เหลือเพียง ${matStockBase(m)} ${baseU(m)} (เกณฑ์เตือน: ${matLowBase(m)})`);
     }
@@ -3114,7 +3835,7 @@ function renderProdPreview() {
   }).join('');
 
   const made = (r.batchYield || 1) * rounds;
-  $('prodPreview').innerHTML = `<table class="lst">
+  $('prodPreview').innerHTML = `<div class="table-scroll"><table class="lst">
     <thead>
       <tr>
         <th>วัตถุดิบ</th>
@@ -3123,7 +3844,7 @@ function renderProdPreview() {
       </tr>
     </thead>
     <tbody>${rows}</tbody>
-  </table>
+  </table></div>
   <p style="margin-top:10px; font-weight:600;">ผลผลิตที่จะได้: <span style="color:var(--color-primary);">${made} ${r.yieldUnit}</span></p>`;
 }
 
@@ -3137,22 +3858,40 @@ async function produce() {
     return;
   }
 
-  const short = r.items.map(it => ({ m: matById(it.matId), need: it.amount * rounds }))
-    .filter(x => x.m && matStockBase(x.m) < x.need);
-
+  // ตรวจของไม่พอ — รองรับทั้งวัตถุดิบ และ SOP (ตัดจากสต๊อกของกลาง fgStock)
+  const short = [];
+  r.items.forEach(it => {
+    const need = (Number(it.amount) || 0) * rounds;
+    if (it.subId) { const s = recById(it.subId); if (s && (Number(s.fgStock) || 0) < need) short.push(`• ${s.name} (ต้องการ ${need} ${s.yieldUnit || ''} · มี ${Number(s.fgStock) || 0})`); }
+    else { const m = matById(it.matId); if (m && matStockBase(m) < need) short.push(`• ${m.name} (ต้องการ ${need} ${baseU(m)} · มี ${matStockBase(m)})`); }
+  });
   if (short.length) {
-    const msg = short.map(x => `• ${x.m.name} (ต้องการ ${x.need} ${baseU(x.m)} · มี ${matStockBase(x.m)})`).join('<br>');
-    await ui.alert(`ผลิตไม่ได้ — วัตถุดิบไม่เพียงพอ:<br><br>${msg}<br><br>กรุณาเติมสต๊อกวัตถุดิบก่อน`, { title: 'วัตถุดิบไม่พอ', icon: 'alert-triangle', variant: 'warning' });
+    await ui.alert(`ผลิตไม่ได้ — ของไม่เพียงพอ:<br><br>${short.join('<br>')}<br><br>กรุณาเติมสต๊อก/ผลิตของกลางก่อน`, { title: 'ของไม่พอ', icon: 'alert-triangle', variant: 'warning' });
     return;
   }
 
+  // กรอก "จำนวนที่ผลิตได้จริง" (ค่าจริงอาจต่างจากสูตร เช่น น้ำเชื่อมระเหย) — default จากสูตร
+  const defMade = (r.batchYield || 1) * rounds;
+  const madeInput = await ui.prompt(`ผลิตได้จริงกี่ ${r.yieldUnit || 'หน่วย'}? (สูตรกำหนด ${defMade})`, defMade, { type: 'number', title: 'จำนวนที่ผลิตได้จริง' });
+  if (madeInput === null || madeInput === '') return;
+  const made = Math.max(0, +madeInput || 0) || defMade;
+
   r.items.forEach(it => {
-    const m = matById(it.matId);
-    if (m) m.stock = matStockBase(m) - it.amount * rounds;
+    const need = (Number(it.amount) || 0) * rounds;
+    if (it.subId) {
+      const s = recById(it.subId);
+      if (s) { const oldVal = Number(s.fgStock) || 0; s.fgStock = Math.max(0, oldVal - need);
+        pushMovement({ kind: 'produce', refType: 'recipe', refId: s.id, name: s.name, unit: s.yieldUnit, old: oldVal, newVal: s.fgStock, note: 'ใช้ทำ ' + r.name }); }
+    } else {
+      const m = matById(it.matId);
+      if (m) { const oldVal = matStockBase(m); m.stock = oldVal - need;
+        pushMovement({ kind: 'produce', refType: 'material', refId: m.id, name: m.name, unit: baseU(m), old: oldVal, newVal: m.stock, note: 'ผลิต ' + r.name }); }
+    }
   });
 
-  const made = (r.batchYield || 1) * rounds;
-  r.fgStock = (Number(r.fgStock) || 0) + made;
+  const fgOld = Number(r.fgStock) || 0;
+  r.fgStock = fgOld + made;
+  pushMovement({ kind: 'produce', refType: 'recipe', refId: r.id, name: r.name, unit: r.yieldUnit, old: fgOld, newVal: r.fgStock, note: 'ผลิตเข้าสต๊อก' });
 
   prodLogs.unshift({ id: uid(), recipeId: r.id, recipeName: r.name, rounds, made, date: new Date().toISOString().slice(0, 10) });
 
@@ -3182,8 +3921,7 @@ async function adjFg(id) {
   if (v === null || v === "") return;
   const newVal = +v || 0;
   r.fgStock = newVal;
-  adjLogs.unshift({ id: uid(), at: new Date().toISOString(), name: r.name, unit: r.yieldUnit, old: oldVal, newVal, type: 'fg' });
-  localStorage.setItem('recipro_adj_logs', JSON.stringify(adjLogs.slice(0, 300)));
+  pushMovement({ kind: 'adjust', refType: 'recipe', refId: r.id, name: r.name, unit: r.yieldUnit, old: oldVal, newVal });
   saveAll();
   render();
 }
@@ -3198,7 +3936,7 @@ function renderStockList() {
   });
 
   const q = ($('stkSearch').value || '').trim().toLowerCase();
-  const list = materials.filter(m => !q || m.name.toLowerCase().includes(q));
+  const list = materials.filter(m => !m.isConsumable && (!q || m.name.toLowerCase().includes(q)));
 
   $('stockList').innerHTML = list.map(m => {
     const st = matStockBase(m);
@@ -3275,7 +4013,11 @@ async function bulkReceive() {
 
   rows.forEach(r => {
     const m = matById(r.matId);
-    if (m) m.stock = matStockBase(m) + r.addBase;
+    if (m) {
+      const oldVal = matStockBase(m);
+      m.stock = oldVal + r.addBase;
+      pushMovement({ kind: 'receive', refType: 'material', refId: m.id, name: m.name, unit: r.baseUnit, old: oldVal, newVal: m.stock, note: `รับเข้า +${r.qty} ${r.unit}` });
+    }
   });
 
   stockReceiveLogs.unshift({
@@ -3325,8 +4067,7 @@ async function adjMat(id) {
   if (v === null || v === "") return;
   const newVal = +v || 0;
   m.stock = newVal;
-  adjLogs.unshift({ id: uid(), at: new Date().toISOString(), name: m.name, unit: baseU(m), old: oldVal, newVal, type: 'mat' });
-  localStorage.setItem('recipro_adj_logs', JSON.stringify(adjLogs.slice(0, 300)));
+  pushMovement({ kind: 'adjust', refType: 'material', refId: m.id, name: m.name, unit: baseU(m), old: oldVal, newVal });
   saveAll();
   render();
 }
@@ -3334,11 +4075,12 @@ async function adjMat(id) {
 function renderAdjLogs() {
   const el = $('adjLogList');
   if (!el) return;
-  if (!adjLogs.length) {
+  const logs = movementSource().filter(l => l.kind !== 'cons-out' && l.kind !== 'cons-in').slice(0, 100);
+  if (!logs.length) {
     el.innerHTML = '<tr><td colspan="5" style="color:#999;text-align:center;padding:16px;">ยังไม่มีประวัติการปรับคลัง</td></tr>';
     return;
   }
-  el.innerHTML = adjLogs.slice(0, 100).map(l => {
+  el.innerHTML = logs.map(l => {
     const dt = l.at ? new Date(l.at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '—';
     const diff = (l.newVal - l.old);
     const diffColor = diff >= 0 ? '#16a34a' : '#dc2626';
@@ -3457,11 +4199,14 @@ function setReportPeriod(p) {
 }
 
 function getReportRange() {
-  const today = new Date().toISOString().slice(0, 10);
-  if (reportPeriod === '7d')  return { from: new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10), to: today };
-  if (reportPeriod === '30d') return { from: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10), to: today };
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const ym = today.slice(0, 7);
+  if (reportPeriod === 'month') return { from: ym + '-01', to: today };                 // เดือนนี้
+  if (reportPeriod === 'year')  return { from: today.slice(0, 4) + '-01-01', to: today }; // ปีนี้
+  if (reportPeriod === 'all')   return { from: '0000-01-01', to: '9999-12-31' };          // ทั้งหมด
   if (reportPeriod === 'custom') return { from: $('rptRangeFrom')?.value || '0000-01-01', to: $('rptRangeTo')?.value || '9999-12-31' };
-  return { from: today, to: today }; // today
+  return { from: today, to: today }; // วันนี้
 }
 
 function toggleAllMenus() {
@@ -3476,21 +4221,33 @@ function renderReportRankings() {
   const { from, to } = getReportRange();
   const paid = bills.filter(b => b.status === 'paid' && (b.date || '') >= from && (b.date || '') <= to);
 
-  // --- สินค้าขายดี ---
+  // จำนวนวัน (สำหรับรายได้/วัน) — คิดจากช่วงข้อมูลจริงที่มีบิล (กันหารด้วยช่วงกว้างเกินตอนเลือก "ทั้งหมด/ปีนี้")
+  let days = 1;
+  if (paid.length) {
+    const ds = paid.map(b => b.date).filter(Boolean).sort();
+    const lo = ds.length ? new Date(ds[0]) : new Date(from);
+    const hi = ds.length ? new Date(ds[ds.length - 1]) : new Date(to);
+    days = Math.max(1, Math.round((hi - lo) / 86400000) + 1);
+  }
+
+  // --- สินค้าขายดี (รวมทั้งสูตรและวัตถุดิบที่ขายได้) ---
   const productMap = {};
   paid.forEach(b => (b.items || []).forEach(it => {
-    if (!it.recipeId) return;
-    if (!productMap[it.recipeId]) productMap[it.recipeId] = { qty: 0, revenue: 0 };
-    productMap[it.recipeId].qty     += it.qty || 1;
-    productMap[it.recipeId].revenue += (it.qty || 1) * (it.price || 0);
+    const key = it.matId ? ('m:' + it.matId) : (it.recipeId ? ('r:' + it.recipeId) : null);
+    if (!key) return;
+    if (!productMap[key]) {
+      const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+      productMap[key] = { qty: 0, revenue: 0, name: prod ? prod.name : key, category: (prod && prod.category) || '—' };
+    }
+    productMap[key].qty     += it.qty || 1;
+    productMap[key].revenue += (it.qty || 1) * (it.price || 0);
   }));
   let ranked = Object.entries(productMap).sort((a, b) => b[1].revenue - a[1].revenue);
   if (!showAllMenus) ranked = ranked.slice(0, 5);
-  $('rptTop5').innerHTML = ranked.length ? ranked.map(([rid, v], i) => {
-    const r = recById(rid);
+  $('rptTop5').innerHTML = ranked.length ? ranked.map(([key, v], i) => {
     const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    return `<tr><td>${rank} ${esc(r ? r.name : rid)}</td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(v.revenue)}</td></tr>`;
-  }).join('') : '<tr><td colspan="3" style="text-align:center; color:#999;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>';
+    return `<tr><td>${rank} ${esc(v.name)}</td><td><span class="cat-badge">${esc(v.category)}</span></td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(v.revenue)}</td><td class="r" style="color:var(--color-text-muted);">${money(v.revenue / days)}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" style="text-align:center; color:#999;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>';
 
   // --- อันดับตัวเลือกที่ขาย (จาก options ใน bill items) ---
   const optMap = {}; // group -> { choice -> {count, revenue} }
@@ -3755,10 +4512,15 @@ function switchPosTab(tab) {
   if (isLog) renderSalesLog();
 }
 
+function posSellableMats() { return materials.filter(m => m.showInPos && m.saleType === 'SELLABLE'); }
+
 function renderPosCategoryBar() {
   const bar = $('posCategoryBar');
   if (!bar) return;
-  const cats = [...new Set(recipes.filter(r => !r.isRaw && r.category).map(r => r.category))];
+  const cats = [...new Set([
+    ...recipes.filter(r => !r.isRaw && r.category).map(r => r.category),
+    ...posSellableMats().filter(m => m.category).map(m => m.category)
+  ])];
   if (!cats.length) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
   bar.innerHTML = [
@@ -3772,17 +4534,31 @@ function renderPosGrid() {
   const grid = $('posProductGrid');
   if (!grid) return;
   let sellable = recipes.filter(r => !r.isRaw);
-  if (posCategoryFilter) sellable = sellable.filter(r => r.category === posCategoryFilter);
-  if (!sellable.length) {
-    grid.innerHTML = `<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">${posCategoryFilter ? 'ไม่มีสินค้าในหมวดนี้' : 'ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู'}</p>`;
+  let mats = posSellableMats();
+  if (posCategoryFilter) { sellable = sellable.filter(r => r.category === posCategoryFilter); mats = mats.filter(m => m.category === posCategoryFilter); }
+  if (!sellable.length && !mats.length) {
+    grid.innerHTML = `<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">${posCategoryFilter ? 'ไม่มีสินค้าในหมวดนี้' : 'ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู หรือตั้งวัตถุดิบเป็น "ขายได้เลย"'}</p>`;
     return;
   }
-  const hasOpts = r => (r.optGroups || []).length > 0;
+  const hasOpts = r => (r.optGroups || []).length > 0 || optionGroups.some(g => g.enabled && (g.recipeIds || []).includes(r.id));
+  const matCards = mats.map(m => {
+    const stock = Number(m.stock) || 0;
+    const oos = stock <= 0;
+    const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
+    const price = m.sellPrice || m.salePrice2 || 0;
+    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
+      <span class="ppc-opts-badge" style="background:var(--color-secondary);">สินค้า</span>
+      <div class="ppc-name">${esc(m.name)}</div>
+      <div class="ppc-price">${money(price)}</div>
+      <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${esc(m.unit || '')}`}</div>
+    </div>`;
+  }).join('');
   grid.innerHTML = sellable.map(r => {
     const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
     if (settings.makeToOrder) {
       const canMake = (r.items || []).length === 0 || (r.items || []).every(ri => {
-        const mat = materials.find(m => m.id === ri.matId);
+        if (ri.subId) { const s = recById(ri.subId); return s && (Number(s.fgStock) || 0) >= ri.amount; }
+        const mat = matById(ri.matId);
         return mat && (Number(mat.stock) || 0) >= ri.amount;
       });
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
@@ -3803,38 +4579,59 @@ function renderPosGrid() {
       <div class="ppc-price">${money(r.sell)}</div>
       <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${r.yieldUnit || 'ชิ้น'}`}</div>
     </div>`;
-  }).join('');
+  }).join('') + matCards;
   renderIcons(grid);
+}
+
+// เพิ่มสินค้าที่มาจาก "วัตถุดิบขายได้เลย" ลงตะกร้า (ตัดสต๊อกวัตถุดิบตรง ไม่มี BOM)
+function addMatToCart(matId) {
+  const m = matById(matId);
+  if (!m) return;
+  const price = m.sellPrice || m.salePrice2 || 0;
+  const maxQty = Number(m.stock) || 0;
+  if (maxQty <= 0) return;
+  const existing = posCart.find(it => it.matId === matId);
+  if (existing) { if (existing.qty < maxQty) existing.qty++; }
+  else posCart.push({ matId, qty: 1, options: {}, price, choices: [], effectiveBom: [], lineCost: 0 });
+  renderPosCart();
 }
 
 // POS option sheet state
 let posOptRecipeId = null;
-let posOptSelections = {}; // { groupLabel: choiceValue }
+let posOptSelections = {}; // { groupId: choiceId (single) | Set<choiceId> (multi) }
+let posOptQtys = {};       // { choiceId: qty } for ADD type repeatable choices
+
+function getRecipeOptGroups(recipeId) {
+  return optionGroups.filter(g => g.enabled && (g.recipeIds || []).includes(recipeId));
+}
 
 function addToCart(recipeId) {
   const r = recById(recipeId);
   if (!r) return;
-  if ((r.optGroups || []).length > 0) {
+  const newGroups = getRecipeOptGroups(recipeId);
+  if (newGroups.length > 0 || (r.optGroups || []).length > 0) {
     showPosOptSheet(recipeId);
     return;
   }
-  _addToCartDirect(recipeId, {});
+  _addToCartDirect(recipeId, {}, null, [], [], 0);
 }
 
-function _addToCartDirect(recipeId, options) {
+function _addToCartDirect(recipeId, options, price, choices, effectiveBom, lineCost) {
   const r = recById(recipeId);
   if (!r) return;
+  const itemPrice = price != null ? price : r.sell;
   const maxQty = settings.makeToOrder ? 99 : (Number(r.fgStock) || 0);
-  const hasOpts = Object.keys(options).length > 0;
-  if (hasOpts) {
-    // Items with options always add as separate line
-    if (settings.makeToOrder || maxQty > 0) posCart.push({ recipeId, qty: 1, options });
+  const hasOptions = Object.keys(options || {}).length > 0 || (choices && choices.length > 0);
+  if (hasOptions) {
+    if (settings.makeToOrder || maxQty > 0)
+      posCart.push({ recipeId, qty: 1, options: options || {}, price: itemPrice, choices: choices || [], effectiveBom: effectiveBom || [], lineCost: lineCost || 0 });
   } else {
     const existing = posCart.find(it => it.recipeId === recipeId && !Object.keys(it.options || {}).length);
     if (existing) {
       if (existing.qty < maxQty) existing.qty++;
     } else {
-      if (settings.makeToOrder || maxQty > 0) posCart.push({ recipeId, qty: 1, options: {} });
+      if (settings.makeToOrder || maxQty > 0)
+        posCart.push({ recipeId, qty: 1, options: {}, price: itemPrice, choices: [], effectiveBom: [], lineCost: 0 });
     }
   }
   renderPosCart();
@@ -3845,33 +4642,196 @@ function showPosOptSheet(recipeId) {
   if (!r) return;
   posOptRecipeId = recipeId;
   posOptSelections = {};
+  posOptQtys = {};
   const sheet = $('posOptSheet');
   if (!sheet) return;
   $('posOptSheetName').textContent = r.name;
   $('posOptSheetPrice').textContent = money(r.sell);
+  const newGroups = getRecipeOptGroups(recipeId);
+  if (newGroups.length > 0) {
+    renderPosOptSheetBody();
+  } else {
+    // Legacy opt groups fallback
+    $('posOptSheetBody').innerHTML = (r.optGroups || []).map((g, gi) => {
+      const choices = g.choices || [];
+      return `<div style="margin-bottom:16px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px;">${esc(g.label)}${g.required ? ' <span style="color:#e53e3e;font-size:11px;">*บังคับ</span>' : ''}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${choices.map(c => `<button class="pos-opt-chip" data-group="${gi}" data-val="${esc(c)}" onclick="selectPosOptLegacy(${gi},'${esc(c)}')">${esc(c)}</button>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  }
+  sheet.style.display = 'flex';
+  renderIcons(sheet);
+  updatePosOptLiveTotal();
+}
+
+function renderPosOptSheetBody() {
+  const r = recById(posOptRecipeId);
+  if (!r) return;
+  const groups = getRecipeOptGroups(posOptRecipeId);
   const body = $('posOptSheetBody');
-  body.innerHTML = (r.optGroups || []).map((g, gi) => {
-    const choices = g.choices || [];
-    return `<div style="margin-bottom:16px;">
-      <div style="font-weight:700;font-size:14px;margin-bottom:8px;">${esc(g.label)}${g.required ? ' <span style="color:#e53e3e;font-size:11px;">*บังคับ</span>' : ''}</div>
+  if (!body) return;
+  body.innerHTML = groups.map(g => {
+    const isMulti = g.selectType === 'multi';
+    const selectedSet = isMulti ? (posOptSelections[g.id] || new Set()) : null;
+    const selectedId = !isMulti ? (posOptSelections[g.id] || null) : null;
+    return `<div style="margin-bottom:18px;">
+      <div style="font-weight:700;font-size:14px;margin-bottom:10px;color:var(--color-text-main);">
+        ${esc(g.label)}${g.required ? ' <span style="color:#e53e3e;font-size:11px;">*บังคับ</span>' : ''}
+        <span style="font-size:11px;color:var(--color-text-muted);font-weight:400;">${isMulti ? '(เลือกได้หลาย)' : '(เลือก 1)'}</span>
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        ${choices.map(c => `<button class="pos-opt-chip" data-group="${gi}" data-val="${esc(c)}" onclick="selectPosOpt(${gi},'${esc(c)}')">${esc(c)}</button>`).join('')}
+        ${g.choices.filter(c => c.enabled).map(c => {
+          const isSel = isMulti ? (selectedSet && selectedSet.has(c.id)) : (selectedId === c.id);
+          const qty = posOptQtys[c.id] || 1;
+          const priceStr = c.priceAdd ? (c.priceAdd > 0 ? ` +${money(c.priceAdd)}` : ` ${money(c.priceAdd)}`) : '';
+          const stockOk = checkChoiceStock(c);
+          const chipStyle = isSel
+            ? 'background:var(--color-primary);color:#fff;border-color:var(--color-primary);'
+            : 'background:var(--surface-1);color:var(--color-text-main);border-color:var(--border-soft);';
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <button class="pos-opt-chip" onclick="${stockOk ? `selectPosOptNew('${g.id}','${c.id}','${g.selectType}')` : ''}"
+              style="${chipStyle}border:1.5px solid;border-radius:20px;padding:6px 14px;font-size:13px;cursor:${stockOk?'pointer':'not-allowed'};${stockOk?'':'opacity:0.4;'}"
+              ${stockOk ? '' : 'disabled'} title="${stockOk ? '' : 'วัตถุดิบไม่เพียงพอ'}">
+              ${esc(c.label)}${priceStr ? `<span style="font-size:11px;opacity:0.85;"> ${priceStr}</span>` : ''}
+            </button>
+            ${isSel && c.effectType === 'ADD' && c.maxQty > 1 ? `
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <button onclick="posOptQtyChange('${c.id}',-1,${c.maxQty})" style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border-soft);background:var(--surface-2);cursor:pointer;line-height:1;">−</button>
+                <span>${qty}</span>
+                <button onclick="posOptQtyChange('${c.id}',1,${c.maxQty})" style="width:22px;height:22px;border-radius:50%;border:1px solid var(--border-soft);background:var(--surface-2);cursor:pointer;line-height:1;">+</button>
+              </div>` : ''}
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
   }).join('');
-  sheet.style.display = 'flex';
-  renderIcons(sheet);
+  updatePosOptLiveTotal();
 }
 
-function selectPosOpt(groupIdx, val) {
+function checkChoiceStock(c) {
+  if (!settings.makeToOrder) return true;
+  if (c.effectType === 'ADD') {
+    return (c.links || []).every(l => {
+      const m = matById(l.matId);
+      return m && !m.isConsumable && matStockBase(m) >= l.amount;
+    });
+  }
+  return true;
+}
+
+function selectPosOptLegacy(groupIdx, val) {
   const r = recById(posOptRecipeId);
   if (!r) return;
   const g = (r.optGroups || [])[groupIdx];
   if (!g) return;
   posOptSelections[g.label] = val;
-  // Update chip highlight
   const chips = $('posOptSheetBody').querySelectorAll(`[data-group="${groupIdx}"]`);
   chips.forEach(c => c.classList.toggle('selected', c.dataset.val === val));
+}
+
+function selectPosOptNew(groupId, choiceId, selectType) {
+  if (selectType === 'multi') {
+    if (!posOptSelections[groupId]) posOptSelections[groupId] = new Set();
+    const s = posOptSelections[groupId];
+    if (s.has(choiceId)) { s.delete(choiceId); delete posOptQtys[choiceId]; }
+    else { s.add(choiceId); posOptQtys[choiceId] = 1; }
+  } else {
+    posOptSelections[groupId] = choiceId;
+    posOptQtys[choiceId] = 1;
+  }
+  renderPosOptSheetBody();
+}
+
+function posOptQtyChange(choiceId, delta, maxQty) {
+  posOptQtys[choiceId] = Math.max(1, Math.min(maxQty || 99, (posOptQtys[choiceId] || 1) + delta));
+  renderPosOptSheetBody();
+}
+
+function updatePosOptLiveTotal() {
+  const r = recById(posOptRecipeId);
+  if (!r) return;
+  let total = r.sell;
+  const groups = getRecipeOptGroups(posOptRecipeId);
+  groups.forEach(g => {
+    const choiceIds = g.selectType === 'multi'
+      ? [...(posOptSelections[g.id] || new Set())]
+      : (posOptSelections[g.id] ? [posOptSelections[g.id]] : []);
+    choiceIds.forEach(cid => {
+      const c = g.choices.find(x => x.id === cid);
+      if (c) total += (c.priceAdd || 0) * (posOptQtys[cid] || 1);
+    });
+  });
+  const btn = $('posOptConfirmBtn');
+  if (btn) btn.innerHTML = icon('shopping-cart') + ` เพิ่มลงตะกร้า ${money(total)}`;
+}
+
+// ---- resolveLineBOM ----
+function resolveLineBOM(recipe, chosenChoicesWithQty) {
+  let priceAdd = 0;
+  const variantChoice = chosenChoicesWithQty.find(c => c.choice.effectType === 'RECIPE_VARIANT');
+  let baseItems;
+  if (variantChoice?.choice.variantRecipeId) {
+    const varRec = recById(variantChoice.choice.variantRecipeId);
+    baseItems = varRec ? [...(varRec.items || [])] : [...(recipe.items || [])];
+  } else {
+    baseItems = [...(recipe.items || [])];
+  }
+  // bom: matId -> { amount, role }
+  const bom = new Map();
+  const roleIndex = new Map(); // role -> matId
+  baseItems.forEach(it => {
+    if (!it.matId) return;
+    const e = bom.get(it.matId) || { amount: 0, role: it.role || '' };
+    e.amount += Number(it.amount);
+    bom.set(it.matId, e);
+    if (it.role) roleIndex.set(it.role, it.matId);
+  });
+  // Price
+  chosenChoicesWithQty.forEach(({ choice, qty }) => { priceAdd += (choice.priceAdd || 0) * (qty || 1); });
+  // REPLACE
+  chosenChoicesWithQty.forEach(({ choice }) => {
+    if (choice.effectType !== 'REPLACE' || !choice.targetRole) return;
+    const oldId = roleIndex.get(choice.targetRole);
+    if (oldId) { bom.delete(oldId); roleIndex.delete(choice.targetRole); }
+    (choice.links || []).filter(l => l.matId).forEach(l => {
+      const e = bom.get(l.matId) || { amount: 0, role: choice.targetRole };
+      e.amount += Number(l.amount); bom.set(l.matId, e);
+      if (choice.targetRole) roleIndex.set(choice.targetRole, l.matId);
+    });
+  });
+  // QUANTITY
+  chosenChoicesWithQty.forEach(({ choice }) => {
+    if (choice.effectType !== 'QUANTITY' || !choice.targetRole) return;
+    const matId = roleIndex.get(choice.targetRole);
+    if (!matId) return;
+    const newAmt = Number(choice.amount) || 0;
+    if (newAmt <= 0) bom.delete(matId);
+    else { const e = bom.get(matId) || { amount: 0 }; e.amount = newAmt; bom.set(matId, e); }
+  });
+  // ADD
+  chosenChoicesWithQty.forEach(({ choice, qty }) => {
+    if (choice.effectType !== 'ADD') return;
+    (choice.links || []).filter(l => l.matId).forEach(l => {
+      const e = bom.get(l.matId) || { amount: 0, role: '' };
+      e.amount += Number(l.amount) * (qty || 1); bom.set(l.matId, e);
+    });
+  });
+  // Drop zero/negative
+  for (const [k, v] of bom.entries()) { if (v.amount <= 0) bom.delete(k); }
+  // Cost
+  let lineCost = 0;
+  const effectiveBom = [];
+  for (const [matId, entry] of bom.entries()) {
+    const m = matById(matId);
+    if (!m || m.isConsumable) continue;
+    const lc = perBase(m) * entry.amount;
+    lineCost += lc;
+    effectiveBom.push({ matId, name: m.name, amount: entry.amount, unit: baseU(m), lineCost: lc });
+  }
+  return { bom, priceAdd, lineCost, effectiveBom };
 }
 
 function closePosOptSheet() {
@@ -3879,27 +4839,58 @@ function closePosOptSheet() {
   if (sheet) sheet.style.display = 'none';
   posOptRecipeId = null;
   posOptSelections = {};
+  posOptQtys = {};
 }
 
 function confirmPosOpt() {
   const r = recById(posOptRecipeId);
   if (!r) return;
-  const required = (r.optGroups || []).filter(g => g.required);
-  for (const g of required) {
-    if (!posOptSelections[g.label]) {
-      ui.toast(`กรุณาเลือก: ${g.label}`, 'warning');
-      return;
+  const newGroups = getRecipeOptGroups(posOptRecipeId);
+  if (newGroups.length === 0) {
+    // Legacy path
+    const required = (r.optGroups || []).filter(g => g.required);
+    for (const g of required) {
+      if (!posOptSelections[g.label]) { ui.toast(`กรุณาเลือก: ${g.label}`, 'warning'); return; }
     }
+    _addToCartDirect(posOptRecipeId, { ...posOptSelections }, null, [], [], 0);
+    closePosOptSheet();
+    return;
   }
-  _addToCartDirect(posOptRecipeId, { ...posOptSelections });
+  // New engine path
+  for (const g of newGroups) {
+    if (!g.required) continue;
+    const hasSel = g.selectType === 'multi'
+      ? (posOptSelections[g.id] && posOptSelections[g.id].size > 0)
+      : !!posOptSelections[g.id];
+    if (!hasSel) { ui.toast(`กรุณาเลือก: ${g.label}`, 'warning'); return; }
+  }
+  const chosen = [];
+  const optionsDisplay = {};
+  newGroups.forEach(g => {
+    const choiceIds = g.selectType === 'multi'
+      ? [...(posOptSelections[g.id] || new Set())]
+      : (posOptSelections[g.id] ? [posOptSelections[g.id]] : []);
+    const labels = [];
+    choiceIds.forEach(cid => {
+      const c = g.choices.find(x => x.id === cid);
+      if (!c) return;
+      const qty = posOptQtys[cid] || 1;
+      chosen.push({ choice: c, qty, groupLabel: g.label });
+      labels.push(qty > 1 ? `${c.label}×${qty}` : c.label);
+    });
+    if (labels.length) optionsDisplay[g.label] = labels.join('/');
+  });
+  const { effectiveBom, priceAdd, lineCost } = resolveLineBOM(r, chosen);
+  _addToCartDirect(posOptRecipeId, optionsDisplay, r.sell + priceAdd, chosen, effectiveBom, lineCost);
   closePosOptSheet();
 }
 
 function posChangeQty(cartIdx, delta) {
   if (cartIdx < 0 || cartIdx >= posCart.length) return;
   const it = posCart[cartIdx];
-  const r = recById(it.recipeId);
-  const maxQty = settings.makeToOrder ? 99 : (Number(r?.fgStock) || 0);
+  const maxQty = it.matId
+    ? (Number(matById(it.matId)?.stock) || 0)
+    : (settings.makeToOrder ? 99 : (Number(recById(it.recipeId)?.fgStock) || 0));
   posCart[cartIdx].qty = Math.max(0, Math.min(maxQty, posCart[cartIdx].qty + delta));
   if (posCart[cartIdx].qty === 0) posCart.splice(cartIdx, 1);
   renderPosCart();
@@ -3923,16 +4914,17 @@ function renderPosCart() {
 
   let grand = 0;
   cartEl.innerHTML = posCart.map((it, ci) => {
-    const r = recById(it.recipeId);
-    if (!r) return '';
-    const lineTotal = it.qty * r.sell;
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    if (!prod) return '';
+    const name = prod.name;
+    const lineTotal = it.qty * (it.price != null ? it.price : (it.matId ? (prod.sellPrice || 0) : prod.sell));
     grand += lineTotal;
     const optsText = Object.keys(it.options || {}).length
       ? `<div class="pci-opts">${Object.entries(it.options).map(([k,v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
-      : '';
+      : (it.matId ? '<div class="pci-opts" style="color:var(--color-secondary);">สินค้า (วัตถุดิบ)</div>' : '');
     return `<div class="pos-cart-item">
       <div style="flex:1;min-width:0;">
-        <div class="pci-name">${esc(r.name)}</div>
+        <div class="pci-name">${esc(name)}</div>
         ${optsText}
       </div>
       <div class="pci-qty">
@@ -3961,8 +4953,7 @@ async function posCheckout() {
   if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
 
   const sub = posCart.reduce((s, it) => {
-    const r = recById(it.recipeId);
-    return s + (r ? it.qty * r.sell : 0);
+    return s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0));
   }, 0);
   const discVal = parseFloat($('posDiscVal')?.value) || 0;
   const discType = $('posDiscType')?.value || '%';
@@ -3982,22 +4973,39 @@ async function posCheckout() {
     discV: discVal, discT: discType,
     taxV: 0, taxT: '%',
     items: posCart.map(it => {
-      const r = recById(it.recipeId);
-      return { recipeId: it.recipeId, qty: it.qty, price: r ? r.sell : 0, options: it.options || {} };
+      const r = it.matId ? null : recById(it.recipeId);
+      return { recipeId: it.recipeId || null, matId: it.matId || null, qty: it.qty, price: it.price != null ? it.price : (r ? r.sell : 0), options: it.options || {} };
     })
   };
 
+  // ขายสินค้าที่มาจากวัตถุดิบ → ตัดสต๊อกวัตถุดิบตรง + audit (sale)
+  posCart.filter(it => it.matId).forEach(it => {
+    const m = matById(it.matId);
+    if (m) {
+      const oldVal = Number(m.stock) || 0;
+      m.stock = Math.max(0, oldVal - it.qty);
+      pushMovement({ kind: 'sale', refType: 'material', refId: m.id, name: m.name, unit: m.unit, old: oldVal, newVal: m.stock, note: 'ขาย ' + newBill.billNo });
+    }
+  });
+
   if (settings.makeToOrder) {
-    newBill.items.forEach(it => {
-      const r = recById(it.recipeId);
+    posCart.forEach(ci => {
+      const r = ci.matId ? null : recById(ci.recipeId);
       if (!r) return;
-      (r.items || []).forEach(ri => {
-        const mat = materials.find(m => m.id === ri.matId);
-        if (mat) mat.stock = Math.max(0, (Number(mat.stock) || 0) - ri.amount * it.qty);
+      const bomToUse = ci.effectiveBom?.length ? ci.effectiveBom : (r.items || []).map(ri => ({ matId: ri.matId, subId: ri.subId, amount: ri.amount }));
+      bomToUse.forEach(entry => {
+        if (entry.subId) {  // ส่วนผสมเป็น SOP → ตัดจากสต๊อกของกลาง (fgStock)
+          const s = recById(entry.subId);
+          if (s) s.fgStock = Math.max(0, (Number(s.fgStock) || 0) - entry.amount * ci.qty);
+        } else {
+          const mat = matById(entry.matId);
+          if (mat) mat.stock = Math.max(0, (Number(mat.stock) || 0) - entry.amount * ci.qty);
+        }
       });
     });
   } else {
     newBill.items.forEach(it => {
+      if (it.matId) return; // สินค้าจากวัตถุดิบหักไปแล้วด้านบน
       const r = recById(it.recipeId);
       if (r) r.fgStock = Math.max(0, (Number(r.fgStock) || 0) - it.qty);
     });
@@ -4016,11 +5024,11 @@ async function posCheckout() {
 function showPosReceipt(b, total) {
   const shopName = settings.shopName || 'Recipro';
   const rows = (b.items || []).map(it => {
-    const r = recById(it.recipeId);
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
     const optsLine = Object.keys(it.options || {}).length
       ? `<div style="font-size:11px;color:#666;padding-left:2px;">${Object.entries(it.options).map(([k,v]) => `${k}: ${v}`).join(', ')}</div>`
       : '';
-    return `<tr><td>${esc(r ? r.name : '-')}${optsLine}</td><td class="rc-c">${it.qty}</td><td class="rc-r">${money(it.qty * it.price)}</td></tr>`;
+    return `<tr><td>${esc(prod ? prod.name : '-')}${optsLine}</td><td class="rc-c">${it.qty}</td><td class="rc-r">${money(it.qty * it.price)}</td></tr>`;
   }).join('');
   const ppLine = settings.pp ? `<div class="rc-sub">พร้อมเพย์ ${esc(settings.pp)}</div>` : '';
   const phoneLine = settings.phone ? `<div class="rc-sub">โทร. ${esc(settings.phone)}</div>` : '';
@@ -4144,7 +5152,7 @@ function renderDashboard() {
   const monthProfit = monthSales - monthCost;
   const profitPct = monthSales > 0 ? Math.round(monthProfit / monthSales * 100) : 0;
 
-  const lowItems = materials.filter(m => m.lowStock > 0 && m.stock <= m.lowStock);
+  const lowItems = materials.filter(m => !m.isConsumable && m.lowStock > 0 && m.stock <= m.lowStock);
 
   // -- KPI row (4 cards) --
   const kpis = [
@@ -4211,21 +5219,23 @@ function renderDashboard() {
       </div>`;
   }
 
-  // -- Top menus with horizontal bars --
+  // -- Top menus with horizontal bars (รวมสินค้าจากวัตถุดิบที่ขายได้) --
   const itemCount = {};
   paidBills.forEach(b => (b.items || []).forEach(it => {
-    itemCount[it.recipeId] = (itemCount[it.recipeId] || 0) + it.qty;
+    const key = it.matId ? ('m:' + it.matId) : (it.recipeId ? ('r:' + it.recipeId) : null);
+    if (!key) return;
+    itemCount[key] = (itemCount[key] || 0) + it.qty;
   }));
   const top5 = Object.entries(itemCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxQty = top5.length ? top5[0][1] : 1;
   $('dashTopMenus').innerHTML = top5.length
-    ? top5.map(([id, qty], i) => {
-        const r = recById(id);
+    ? top5.map(([key, qty], i) => {
+        const prod = key.startsWith('m:') ? matById(key.slice(2)) : recById(key.slice(2));
         const pct = Math.round(qty / maxQty * 100);
         const medals = ['🥇', '🥈', '🥉', '4.', '5.'];
         return `<div style="margin-bottom:13px;">
           <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;">
-            <span style="font-weight:${i < 3 ? '700' : '400'};"><span style="margin-right:5px;font-style:normal;">${medals[i]}</span>${r ? esc(r.name) : id}</span>
+            <span style="font-weight:${i < 3 ? '700' : '400'};"><span style="margin-right:5px;font-style:normal;">${medals[i]}</span>${prod ? esc(prod.name) : key}</span>
             <span style="font-weight:700;color:var(--color-primary);flex-shrink:0;margin-left:8px;">${qty} ชิ้น</span>
           </div>
           <div style="height:7px;background:var(--surface-2);border-radius:10px;overflow:hidden;">
@@ -4273,7 +5283,7 @@ function renderDashboard() {
 }
 
 function checkLowStockAlert() {
-  const low = materials.filter(m => m.lowStock > 0 && m.stock <= m.lowStock);
+  const low = materials.filter(m => !m.isConsumable && m.lowStock > 0 && m.stock <= m.lowStock);
   if (low.length) {
     ui.toast(`⚠ สต๊อกต่ำ ${low.length} รายการ — ${low.slice(0,2).map(m=>m.name).join(', ')}${low.length>2?' และอื่นๆ':''}`, 'warning');
   }
@@ -4779,7 +5789,7 @@ function renderAdminDashboard(d) {
     return;
   }
   $('adminExpiringList').innerHTML = `
-    <table class="lst">
+    <div class="table-scroll"><table class="lst">
       <thead><tr><th>ชื่อร้าน</th><th>รอบบิล</th><th>วันหมดอายุ</th><th class="r">เหลือ</th></tr></thead>
       <tbody>
         ${d.expiring.map(e => `
@@ -4790,7 +5800,7 @@ function renderAdminDashboard(d) {
             <td class="r"><span style="color:${e.daysLeft <= 3 ? '#ef4444' : '#b45309'}; font-weight:700;">${e.daysLeft} วัน</span></td>
           </tr>`).join('')}
       </tbody>
-    </table>`;
+    </table></div>`;
 }
 
 async function adminUpdateShopStatus(shopId, status) {
@@ -4938,6 +5948,250 @@ async function exportTemplate(format) {
     ui.toast('ดาวน์โหลดเทมเพลต Excel แล้ว');
   } catch (e) {
     ui.alert('สร้างไฟล์เทมเพลตไม่สำเร็จ: ' + e.message);
+  }
+}
+
+function ensureXLSXStyle() {
+  return new Promise((res, rej) => {
+    if (window.XLSXStyle) return res(window.XLSXStyle);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    s.onload = () => { window.XLSXStyle = window.XLSX; res(window.XLSXStyle); };
+    s.onerror = () => rej(new Error('โหลด xlsx-js-style ไม่สำเร็จ'));
+    document.head.appendChild(s);
+  });
+}
+
+async function exportRecipesXLSX() {
+  if (!recipes.length) { ui.toast('ยังไม่มีสูตร', 'warning'); return; }
+  ui.toast('กำลังสร้างไฟล์ Excel...', 'info');
+  try {
+    const XS = await ensureXLSXStyle();
+
+    // ─── Styles ───────────────────────────────────────────────
+    const ORANGE   = 'FFEA580C';
+    const ORANGE_L = 'FFFFF7ED';
+    const GRAY_H   = 'FF6B7280';
+    const GREEN    = 'FF16A34A';
+    const RED      = 'FFDC2626';
+    const WHITE    = 'FFFFFFFF';
+    const ALT      = 'FFFFF7ED'; // alternate row tint
+    const BORDER   = { style: 'thin', color: { rgb: 'FFD1D5DB' } };
+    const BORDERS  = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
+
+    const hdrStyle = { font: { bold: true, color: { rgb: WHITE }, sz: 11 },
+      fill: { fgColor: { rgb: ORANGE } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: BORDERS };
+    const titleStyle = { font: { bold: true, color: { rgb: WHITE }, sz: 16, name: 'Tahoma' },
+      fill: { fgColor: { rgb: ORANGE } }, alignment: { horizontal: 'center', vertical: 'center' } };
+    const subStyle  = { font: { italic: true, color: { rgb: GRAY_H }, sz: 10 },
+      fill: { fgColor: { rgb: 'FFFAFAFA' } }, alignment: { horizontal: 'left', vertical: 'center' } };
+    const sumStyle  = { font: { bold: true, sz: 11 },
+      fill: { fgColor: { rgb: 'FFFFE4C4' } }, alignment: { horizontal: 'center' }, border: BORDERS };
+
+    const cell = (v, s, t) => ({ v, s, t: t || (typeof v === 'number' ? 'n' : 's') });
+    const numFmt = (v, s, fmt) => ({ v, s: { ...s, numFmt: fmt || '#,##0.00' }, t: 'n' });
+
+    // ─── Column definitions ──────────────────────────────────
+    const COLS = [
+      { label: 'รหัส',           w: 12 },
+      { label: 'ชื่อสูตร',        w: 32 },
+      { label: 'ประเภท',          w: 16 },
+      { label: 'หมวดหมู่',        w: 16 },
+      { label: 'ผลิต (ต่อ Batch)', w: 14 },
+      { label: 'หน่วย',           w: 10 },
+      { label: 'ต้นทุน/หน่วย (฿)', w: 18 },
+      { label: 'ราคาขาย (฿)',      w: 16 },
+      { label: 'กำไร/หน่วย (฿)',   w: 18 },
+      { label: '%กำไร',            w: 12 },
+      { label: 'วัตถุดิบ',         w: 45 },
+    ];
+    const NC = COLS.length; // 11
+
+    // ─── Build rows ───────────────────────────────────────────
+    const shopName = settings.shopName || 'Recipro';
+    const today    = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const aoa = []; // will convert to cells manually
+
+    // Row 1: Title (merged A1:K1)
+    // Row 2: Subtitle
+    // Row 3: (empty spacer)
+    // Row 4: Column headers
+    // Row 5+: Data
+    // Last+1: Summary
+
+    const ws = {};
+    let R = 0; // 0-based row index
+
+    // ── Row 0: Title ──
+    ws[XS.utils.encode_cell({ r: R, c: 0 })] = cell(`📊 รายงานสูตรคำนวณและผลิต — ${shopName}`, titleStyle);
+    for (let c = 1; c < NC; c++) ws[XS.utils.encode_cell({ r: R, c })] = cell('', { fill: { fgColor: { rgb: ORANGE } } });
+    R++;
+
+    // ── Row 1: Subtitle ──
+    ws[XS.utils.encode_cell({ r: R, c: 0 })] = cell(`สร้างเมื่อ ${today}  ·  จำนวนสูตรทั้งหมด ${recipes.length} รายการ`, subStyle);
+    for (let c = 1; c < NC; c++) ws[XS.utils.encode_cell({ r: R, c })] = cell('', subStyle);
+    R++;
+
+    // ── Row 2: Empty ──
+    R++;
+
+    // ── Row 3: Header ──
+    COLS.forEach((col, c) => { ws[XS.utils.encode_cell({ r: R, c })] = cell(col.label, hdrStyle); });
+    R++;
+
+    // ── Data rows ──
+    let totalCost = 0, totalSell = 0, totalProfit = 0, profitableCount = 0;
+
+    recipes.forEach((r, ri) => {
+      const isAlt = ri % 2 === 1;
+      const bgFill = { fgColor: { rgb: isAlt ? ALT : WHITE } };
+      const baseStyle = { fill: bgFill, alignment: { vertical: 'center' }, border: BORDERS };
+      const numStyle  = { fill: bgFill, alignment: { horizontal: 'right', vertical: 'center' }, border: BORDERS };
+
+      const cost    = recipeCost(r.items) / Math.max(0.0001, r.batchYield || 1);
+      const profit  = r.sell - cost;
+      const margin  = r.sell > 0 ? Math.round(profit / r.sell * 10000) / 100 : 0;
+      const ingText = (r.items || []).map(it => {
+        const m = matById(it.matId);
+        return m && !m.isConsumable ? `${m.name} ${it.amount}${baseU(m)}` : '';
+      }).filter(Boolean).join(' | ');
+
+      const pStyle = profit >= 0
+        ? { fill: bgFill, font: { bold: true, color: { rgb: GREEN } }, alignment: { horizontal: 'right', vertical: 'center' }, border: BORDERS }
+        : { fill: bgFill, font: { bold: true, color: { rgb: RED } }, alignment: { horizontal: 'right', vertical: 'center' }, border: BORDERS };
+      const mStyle = margin >= 30
+        ? { fill: bgFill, font: { bold: true, color: { rgb: GREEN } }, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS }
+        : margin >= 0
+          ? { fill: bgFill, font: { color: { rgb: GRAY_H } }, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS }
+          : { fill: bgFill, font: { bold: true, color: { rgb: RED } }, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS };
+
+      ws[XS.utils.encode_cell({ r: R, c: 0  })] = cell(r.code || '-', baseStyle);
+      ws[XS.utils.encode_cell({ r: R, c: 1  })] = cell(r.name, { ...baseStyle, font: { bold: true } });
+      ws[XS.utils.encode_cell({ r: R, c: 2  })] = cell(r.isRaw ? 'กึ่งสำเร็จรูป' : 'สินค้าปกติ', { ...baseStyle, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS });
+      ws[XS.utils.encode_cell({ r: R, c: 3  })] = cell(r.category || '-', { ...baseStyle, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS });
+      ws[XS.utils.encode_cell({ r: R, c: 4  })] = numFmt(r.batchYield || 1, { ...numStyle }, '#,##0.##');
+      ws[XS.utils.encode_cell({ r: R, c: 5  })] = cell(r.yieldUnit || 'ชิ้น', { ...baseStyle, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS });
+      ws[XS.utils.encode_cell({ r: R, c: 6  })] = numFmt(Math.round(cost * 100) / 100, numStyle);
+      ws[XS.utils.encode_cell({ r: R, c: 7  })] = numFmt(r.sell, numStyle);
+      ws[XS.utils.encode_cell({ r: R, c: 8  })] = numFmt(Math.round(profit * 100) / 100, pStyle);
+      ws[XS.utils.encode_cell({ r: R, c: 9  })] = { v: margin / 100, s: mStyle, t: 'n', z: '0.0%' };
+      ws[XS.utils.encode_cell({ r: R, c: 10 })] = cell(ingText, { ...baseStyle, alignment: { wrapText: true, vertical: 'top' }, border: BORDERS });
+      R++;
+
+      totalCost   += cost;
+      totalSell   += r.sell;
+      totalProfit += profit;
+      if (profit > 0) profitableCount++;
+    });
+
+    // ── Empty row ──
+    R++;
+
+    // ── Summary row ──
+    const avgMargin = totalSell > 0 ? totalProfit / totalSell : 0;
+    ws[XS.utils.encode_cell({ r: R, c: 0 })] = cell('สรุปรวม', sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 1 })] = cell(`${recipes.length} สูตร  ·  มีกำไร ${profitableCount} สูตร`, { ...sumStyle, alignment: { horizontal: 'left' } });
+    ws[XS.utils.encode_cell({ r: R, c: 2 })] = cell('', sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 3 })] = cell('', sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 4 })] = cell('', sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 5 })] = cell('ต้นทุนเฉลี่ย', { ...sumStyle, alignment: { horizontal: 'right' } });
+    ws[XS.utils.encode_cell({ r: R, c: 6 })] = numFmt(Math.round(totalCost / recipes.length * 100) / 100, sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 7 })] = numFmt(Math.round(totalSell / recipes.length * 100) / 100, sumStyle);
+    ws[XS.utils.encode_cell({ r: R, c: 8 })] = numFmt(Math.round(totalProfit / recipes.length * 100) / 100, { ...sumStyle, font: { bold: true, color: { rgb: totalProfit >= 0 ? GREEN : RED } } });
+    ws[XS.utils.encode_cell({ r: R, c: 9 })] = { v: avgMargin, s: { ...sumStyle, font: { bold: true, color: { rgb: avgMargin >= 0 ? GREEN : RED } } }, t: 'n', z: '0.0%' };
+    ws[XS.utils.encode_cell({ r: R, c: 10})] = cell('', sumStyle);
+
+    // ── Sheet metadata ──
+    const summaryRow = R; // 0-based index of summary row
+    ws['!ref'] = XS.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R, c: NC - 1 } });
+    ws['!cols'] = COLS.map(c => ({ wch: c.w }));
+    ws['!rows'] = [{ hpt: 36 }, { hpt: 20 }, { hpt: 6 }, { hpt: 26 }]; // title/sub/spacer/header heights
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: NC - 1 } }, // Title full-width
+      { s: { r: 1, c: 0 }, e: { r: 1, c: NC - 1 } }, // Subtitle full-width
+      { s: { r: summaryRow, c: 1 }, e: { r: summaryRow, c: 4 } }, // Summary label
+    ];
+    ws['!freeze'] = { xSplit: 0, ySplit: 4, topLeftCell: 'A5', activeCell: 'A5' };
+    // Autofilter over header + data rows only (header at row index 3)
+    ws['!autofilter'] = { ref: XS.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3 + recipes.length, c: NC - 1 } }) };
+
+    // ═══ Sheet 2: BOM (วัตถุดิบแยกตามสูตร) ═══════════════════════
+    const BCOLS = [
+      { label: 'รหัสสูตร',          w: 12 },
+      { label: 'ชื่อสูตร',           w: 30 },
+      { label: 'วัตถุดิบ',           w: 28 },
+      { label: 'ปริมาณ',            w: 12 },
+      { label: 'หน่วย',             w: 10 },
+      { label: 'ต้นทุน/หน่วย (฿)',   w: 16 },
+      { label: 'ต้นทุนรวม (฿)',      w: 16 },
+    ];
+    const BNC = BCOLS.length;
+    const cur = (v, s) => ({ v: Math.round(v * 100) / 100, s: { ...s, numFmt: '"฿"#,##0.00' }, t: 'n' });
+    const bom = {};
+    let BR = 0;
+    bom[XS.utils.encode_cell({ r: BR, c: 0 })] = cell(`🧾 วัตถุดิบแยกตามสูตร (BOM) — ${shopName}`, titleStyle);
+    for (let c = 1; c < BNC; c++) bom[XS.utils.encode_cell({ r: BR, c })] = cell('', { fill: { fgColor: { rgb: ORANGE } } });
+    BR++;
+    BCOLS.forEach((col, c) => { bom[XS.utils.encode_cell({ r: BR, c })] = cell(col.label, hdrStyle); });
+    BR++;
+    const bMerges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: BNC - 1 } }];
+    recipes.forEach((r, ri) => {
+      const isAlt = ri % 2 === 1;
+      const bg = { fgColor: { rgb: isAlt ? ALT : WHITE } };
+      const bBase = { fill: bg, alignment: { vertical: 'center' }, border: BORDERS };
+      const bNum = { fill: bg, alignment: { horizontal: 'right', vertical: 'center' }, border: BORDERS };
+      const bCtr = { fill: bg, alignment: { horizontal: 'center', vertical: 'center' }, border: BORDERS };
+      const list = (r.items || []).map(it => ({ it, m: matById(it.matId) })).filter(x => x.m);
+      const groupStart = BR;
+      if (!list.length) {
+        bom[XS.utils.encode_cell({ r: BR, c: 0 })] = cell(r.code || '-', bBase);
+        bom[XS.utils.encode_cell({ r: BR, c: 1 })] = cell(r.name, { ...bBase, font: { bold: true } });
+        bom[XS.utils.encode_cell({ r: BR, c: 2 })] = cell('— ไม่มีวัตถุดิบ —', { ...bBase, font: { italic: true, color: { rgb: GRAY_H } } });
+        for (let c = 3; c < BNC; c++) bom[XS.utils.encode_cell({ r: BR, c })] = cell('', bBase);
+        BR++;
+      } else {
+        let batchTotal = 0;
+        list.forEach((x, xi) => {
+          const unitCost = perBase(x.m);
+          const lineCost = unitCost * (Number(x.it.amount) || 0);
+          batchTotal += lineCost;
+          bom[XS.utils.encode_cell({ r: BR, c: 0 })] = cell(xi === 0 ? (r.code || '-') : '', bBase);
+          bom[XS.utils.encode_cell({ r: BR, c: 1 })] = cell(xi === 0 ? r.name : '', { ...bBase, font: { bold: true } });
+          bom[XS.utils.encode_cell({ r: BR, c: 2 })] = cell(x.m.name, bBase);
+          bom[XS.utils.encode_cell({ r: BR, c: 3 })] = numFmt(Number(x.it.amount) || 0, bNum, '#,##0.##');
+          bom[XS.utils.encode_cell({ r: BR, c: 4 })] = cell(baseU(x.m), bCtr);
+          bom[XS.utils.encode_cell({ r: BR, c: 5 })] = cur(unitCost, bNum);
+          bom[XS.utils.encode_cell({ r: BR, c: 6 })] = cur(lineCost, bNum);
+          BR++;
+        });
+        // subtotal row per recipe
+        const stStyle = { fill: { fgColor: { rgb: 'FFFFE4C4' } }, font: { bold: true }, alignment: { horizontal: 'right', vertical: 'center' }, border: BORDERS };
+        bom[XS.utils.encode_cell({ r: BR, c: 0 })] = cell('', stStyle);
+        bom[XS.utils.encode_cell({ r: BR, c: 1 })] = cell('', stStyle);
+        bom[XS.utils.encode_cell({ r: BR, c: 2 })] = cell('', stStyle);
+        bom[XS.utils.encode_cell({ r: BR, c: 3 })] = cell('', stStyle);
+        bom[XS.utils.encode_cell({ r: BR, c: 4 })] = cell('', stStyle);
+        bom[XS.utils.encode_cell({ r: BR, c: 5 })] = cell('รวมต้นทุน/รอบ', { ...stStyle });
+        bom[XS.utils.encode_cell({ r: BR, c: 6 })] = cur(batchTotal, stStyle);
+        BR++;
+      }
+      if (list.length > 1) bMerges.push({ s: { r: groupStart, c: 1 }, e: { r: groupStart + list.length - 1, c: 1 } });
+    });
+    bom['!ref'] = XS.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(BR - 1, 1), c: BNC - 1 } });
+    bom['!cols'] = BCOLS.map(c => ({ wch: c.w }));
+    bom['!rows'] = [{ hpt: 36 }, { hpt: 26 }];
+    bom['!merges'] = bMerges;
+    bom['!freeze'] = { xSplit: 0, ySplit: 2, topLeftCell: 'A3', activeCell: 'A3' };
+
+    const wb = XS.utils.book_new();
+    XS.utils.book_append_sheet(wb, ws, 'สรุปสูตร & ต้นทุน');
+    XS.utils.book_append_sheet(wb, bom, 'วัตถุดิบรายสูตร (BOM)');
+    const fname = `recipro-สูตร-${shopName}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    XS.writeFile(wb, fname);
+    ui.toast(`Export สำเร็จ ${recipes.length} สูตร (2 ชีต)`, 'success');
+  } catch (e) {
+    ui.alert('Export ไม่สำเร็จ: ' + e.message);
   }
 }
 
@@ -5100,7 +6354,7 @@ async function commitImport() {
     if (!ok) return;
   }
   if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
-  let added = 0;
+  let added = 0, updated = 0;
   importRecords.forEach(r => {
     if (rowHasError(r)) return;
     let supId = '';
@@ -5112,18 +6366,248 @@ async function commitImport() {
     }
     const category = (r.category || '').trim();
     if (category && !settings.categories.includes(category)) settings.categories.push(category);
-    materials.push({
-      id: uid(), sku: (r.sku || '').trim(), name: r.name.trim(), qty: Number(r.qty) || 1, unit: r.unit.trim(),
+    const sku = (r.sku || '').trim();
+    const name = r.name.trim();
+    const fields = {
+      sku, name, qty: Number(r.qty) || 1, unit: r.unit.trim(),
       price: Number(r.price) || 0, sellPrice: Number(r.sellPrice) || 0,
       convQty: Number(r.convQty) || null, stockUnit: (r.stockUnit || '').trim() || null,
-      supId, orderUrl: (r.orderUrl || '').trim(), category, stock: 0, lowStock: 0
-    });
-    added++;
+      supId, orderUrl: (r.orderUrl || '').trim(), category
+    };
+    // จับคู่ของเดิมเพื่อกันสร้างซ้ำ: SKU ก่อน ถ้าไม่เจอใช้ชื่อ (case-insensitive)
+    const existing =
+      (sku && materials.find(m => (m.sku || '').trim().toLowerCase() === sku.toLowerCase())) ||
+      materials.find(m => (m.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (existing) {
+      Object.assign(existing, fields); // คงสต๊อก/เกณฑ์เตือน/id เดิมไว้
+      updated++;
+    } else {
+      materials.push({ id: uid(), ...fields, stock: 0, lowStock: 0 });
+      added++;
+    }
   });
   closeImportReview();
   saveAll();
   render();
-  ui.alert(`นำเข้าสำเร็จ ${added} รายการ`, { title: 'นำเข้าเสร็จ', icon: 'check-circle', variant: 'success' });
+  ui.alert(`นำเข้าสำเร็จ — เพิ่มใหม่ ${added} รายการ${updated ? `, อัปเดต ${updated} รายการ (ของเดิม ไม่สร้างซ้ำ)` : ''}`, { title: 'นำเข้าเสร็จ', icon: 'check-circle', variant: 'success' });
+}
+
+// ============================================================
+// 12a. นำเข้าเมนู/สูตร จาก Excel/CSV (เฉพาะข้อมูลเมนู — ไม่รวมวัตถุดิบ)
+// ============================================================
+const RECIPE_IMPORT_COLS = [
+  { key: 'code',       label: 'รหัส',          hint: 'SS01-F',                  w: 90 },
+  { key: 'name',       label: 'ชื่อเมนู', required: true, hint: 'เช่น Hot Latte', w: 200 },
+  { key: 'type',       label: 'ประเภท',         hint: 'สินค้าปกติ / กึ่งสำเร็จรูป', w: 140 },
+  { key: 'category',   label: 'หมวดหมู่',       hint: 'กาแฟ/ขนม',                 w: 110 },
+  { key: 'sell',       label: 'ราคาขาย(บาท)',   num: true, hint: '90',           w: 110 },
+  { key: 'batchYield', label: 'ผลิตได้/รอบ',    num: true, hint: '1',            w: 100 },
+  { key: 'yieldUnit',  label: 'หน่วย',          hint: 'แก้ว/ชิ้น',                 w: 90 },
+  { key: 'steps',      label: 'วิธีทำ',         hint: 'ขั้นตอน (ขึ้นบรรทัดใหม่ได้)', w: 280 },
+];
+
+function recipeTemplateAOA() {
+  const header = RECIPE_IMPORT_COLS.map(c => c.label + (c.required ? '*' : ''));
+  return [header];
+}
+
+async function exportRecipeTemplate(format) {
+  const aoa = recipeTemplateAOA();
+  const fname = 'recipro-template-เมนู';
+  try {
+    if (format === 'csv') {
+      const csv = aoa.map(r => r.map(cell => {
+        const s = String(cell == null ? '' : cell);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',')).join('\r\n');
+      downloadBlob('﻿' + csv, fname + '.csv', 'text/csv;charset=utf-8;');
+      ui.toast('ดาวน์โหลดเทมเพลตเมนู CSV แล้ว');
+      return;
+    }
+    // styled xlsx template — หัวตารางอย่างเดียว (ไม่มีตัวอย่าง/คำอธิบาย)
+    const XS = await ensureXLSXStyle();
+    const ORANGE = 'FFEA580C', WHITE = 'FFFFFFFF';
+    const BORDER = { style: 'thin', color: { rgb: 'FFD1D5DB' } };
+    const BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
+    const hdrStyle = { font: { bold: true, color: { rgb: WHITE }, sz: 11 }, fill: { fgColor: { rgb: ORANGE } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BORDERS };
+    const NC = RECIPE_IMPORT_COLS.length;
+    const ws = {};
+    // header only
+    RECIPE_IMPORT_COLS.forEach((col, c) => { ws[XS.utils.encode_cell({ r: 0, c })] = { v: col.label + (col.required ? ' *' : ''), s: hdrStyle, t: 's' }; });
+    ws['!ref'] = XS.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: NC - 1 } });
+    ws['!cols'] = RECIPE_IMPORT_COLS.map(c => ({ wch: Math.round(c.w / 7) }));
+    ws['!rows'] = [{ hpt: 24 }];
+    ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activeCell: 'A2' };
+    const wb = XS.utils.book_new();
+    XS.utils.book_append_sheet(wb, ws, 'เทมเพลตเมนู');
+    XS.writeFile(wb, fname + '.xlsx');
+    ui.toast('ดาวน์โหลดเทมเพลตเมนู Excel แล้ว');
+  } catch (e) {
+    ui.alert('สร้างไฟล์เทมเพลตไม่สำเร็จ: ' + e.message);
+  }
+}
+
+function recipeRowsToRecords(rows) {
+  if (!rows || !rows.length) return [];
+  // หาแถวหัวตาราง (ข้ามแถว note/ชื่อเรื่องที่เป็นเซลล์เดียว) — หัวจริงมีหลายคอลัมน์
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    const cells = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
+    const nonEmpty = cells.filter(Boolean).length;
+    const lc = cells.map(c => c.toLowerCase());
+    if (nonEmpty >= 3 && lc.some(c => /ชื่อ|name|เมนู/.test(c))) { headerIdx = i; break; }
+  }
+  let colOrder = RECIPE_IMPORT_COLS.map(c => c.key);
+  let start = 0;
+  if (headerIdx >= 0) {
+    start = headerIdx + 1;
+    const first = (rows[headerIdx] || []).map(x => String(x == null ? '' : x).toLowerCase());
+    colOrder = first.map(h => {
+      if (/รหัส|code/.test(h)) return 'code';
+      if (/ชื่อ|name|เมนู/.test(h)) return 'name';
+      if (/ประเภท|type|ชนิด/.test(h)) return 'type';
+      if (/หมวด|category/.test(h)) return 'category';
+      if (/ราคา|sell|price/.test(h)) return 'sell';
+      if (/ผลิต|รอบ|batch|yield/.test(h)) return 'batchYield';
+      if (/หน่วย|unit/.test(h)) return 'yieldUnit';
+      if (/วิธี|ขั้นตอน|step|how/.test(h)) return 'steps';
+      return null;
+    });
+  }
+  const recs = [];
+  for (let i = start; i < rows.length; i++) {
+    const cells = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
+    if (!cells.some(c => c)) continue;
+    const rec = { code: '', name: '', type: '', category: '', sell: '', batchYield: '', yieldUnit: '', steps: '' };
+    colOrder.forEach((k, ci) => { if (k && rec[k] !== undefined) rec[k] = cells[ci] ?? ''; });
+    if (!rec.name && !rec.code) continue;
+    recs.push(rec);
+  }
+  return recs;
+}
+
+async function importRecipeFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  updateCloudStatus('กำลังอ่านไฟล์...');
+  try {
+    await ensureXLSX();
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+    const recs = recipeRowsToRecords(rows);
+    if (!recs.length) { ui.alert('ไม่พบข้อมูลเมนูในไฟล์ หรือรูปแบบไม่ตรงเทมเพลต — ลองดาวน์โหลดเทมเพลตเป็นตัวอย่าง'); return; }
+    openRecipeImportReview(recs);
+  } catch (err) {
+    ui.alert('อ่านไฟล์ไม่สำเร็จ: ' + err.message);
+  } finally {
+    updateCloudStatus(isMockMode ? 'โหมดจำลองออฟไลน์' : 'ซิงค์คลาวด์เรียบร้อย', isMockMode ? 'wifi-off' : 'circle-check');
+  }
+}
+
+// ---- ตารางรีวิว/แก้ไขก่อนนำเข้าเมนู ----
+let recImportRecords = [];
+function recCellHasError(r, c) {
+  const v = String(r[c.key] ?? '').trim();
+  if (c.required && !v) return true;
+  if (c.num && v && isNaN(Number(v))) return true;
+  return false;
+}
+function recRowHasError(r) { return RECIPE_IMPORT_COLS.some(c => recCellHasError(r, c)); }
+
+function openRecipeImportReview(recs) {
+  recImportRecords = recs.map(r => ({ ...r }));
+  const ov = $('recImportModalOverlay'); if (ov) ov.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'import-modal-overlay'; overlay.id = 'recImportModalOverlay';
+  overlay.innerHTML = `
+    <div class="import-modal">
+      <div class="import-modal-head">
+        <h3 style="margin:0; font-size:17px;">${icon('upload')} ตรวจ/แก้ไขเมนูก่อนนำเข้า</h3>
+        <button class="drawer-close" onclick="closeRecipeImportReview()" aria-label="ปิด">${icon('x')}</button>
+      </div>
+      <div style="padding:8px 16px 0;" class="import-warn">${icon('alert-triangle')} นำเข้าเฉพาะข้อมูลเมนู (ไม่รวมวัตถุดิบ) · ถ้า "รหัส" ตรงกับเมนูเดิม ระบบจะอัปเดตให้ (คงวัตถุดิบ/สต๊อกเดิมไว้)</div>
+      <div class="import-modal-body">
+        <table class="import-tbl">
+          <thead><tr>${RECIPE_IMPORT_COLS.map(c => `<th style="min-width:${c.w}px">${c.label}${c.required ? ' *' : ''}</th>`).join('')}<th style="width:36px"></th></tr></thead>
+          <tbody id="recImportTbody"></tbody>
+        </table>
+      </div>
+      <div class="import-modal-foot">
+        <span class="import-warn" id="recImportWarn"></span>
+        <div style="display:flex; gap:10px; margin-left:auto;">
+          <button class="btn btn-ghost" onclick="addRecImportRow()">${icon('plus')} เพิ่มแถว</button>
+          <button class="btn btn-ghost" onclick="closeRecipeImportReview()">ยกเลิก</button>
+          <button class="btn btn-primary" onclick="commitRecipeImport()">${icon('save')} นำเข้า</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderRecImportRows();
+  renderIcons(overlay);
+}
+function renderRecImportRows() {
+  const tb = $('recImportTbody');
+  if (!tb) return;
+  tb.innerHTML = recImportRecords.map((r, i) => `<tr>
+    ${RECIPE_IMPORT_COLS.map(c => `<td><input class="${recCellHasError(r, c) ? 'bad' : ''}" value="${esc(r[c.key] ?? '')}" placeholder="${esc(c.hint || '')}" title="${esc(r[c.key] ?? '')}" oninput="updateRecImportCell(${i}, '${c.key}', this)"></td>`).join('')}
+    <td><button class="import-row-del" onclick="removeRecImportRow(${i})" title="ลบแถว">${icon('trash-2')}</button></td>
+  </tr>`).join('');
+  renderIcons(tb);
+  updateRecImportWarn();
+}
+function updateRecImportCell(i, key, el) {
+  recImportRecords[i][key] = el.value;
+  el.title = el.value;
+  const col = RECIPE_IMPORT_COLS.find(c => c.key === key);
+  el.classList.toggle('bad', recCellHasError(recImportRecords[i], col));
+  updateRecImportWarn();
+}
+function updateRecImportWarn() {
+  const bad = recImportRecords.filter(recRowHasError).length;
+  const w = $('recImportWarn'); if (!w) return;
+  w.innerHTML = bad
+    ? icon('alert-triangle') + ` มี ${bad}/${recImportRecords.length} แถวที่ยังไม่ครบ/ผิด (ช่องสีแดง)`
+    : icon('check-circle') + ` ข้อมูลครบ ${recImportRecords.length} เมนู พร้อมนำเข้า`;
+}
+function addRecImportRow() { recImportRecords.push({ code: '', name: '', type: '', category: '', sell: '', batchYield: '', yieldUnit: '', steps: '' }); renderRecImportRows(); }
+function removeRecImportRow(i) { recImportRecords.splice(i, 1); renderRecImportRows(); }
+function closeRecipeImportReview() { const ov = $('recImportModalOverlay'); if (ov) ov.remove(); }
+
+async function commitRecipeImport() {
+  const bad = recImportRecords.filter(recRowHasError);
+  if (bad.length) {
+    const ok = await ui.confirm(`ยังมี ${bad.length} แถวที่ข้อมูลไม่ครบ/ผิด จะนำเข้าเฉพาะแถวที่ถูกต้องไหม?`, { okText: 'นำเข้าเฉพาะที่ถูก' });
+    if (!ok) return;
+  }
+  if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
+  let added = 0, updated = 0;
+  recImportRecords.forEach(r => {
+    if (recRowHasError(r)) return;
+    const name = r.name.trim();
+    const code = (r.code || '').trim();
+    const category = (r.category || '').trim();
+    if (category && !settings.categories.includes(category)) settings.categories.push(category);
+    const isRaw = /ดิบ|กึ่ง|raw|semi/i.test((r.type || '').trim());
+    const sell = Number(r.sell) || 0;
+    const batchYield = Number(r.batchYield) || 1;
+    const yieldUnit = (r.yieldUnit || '').trim() || 'ชิ้น';
+    const steps = (r.steps || '').trim();
+    const existing = code ? recipes.find(x => (x.code || '').trim() === code) : null;
+    if (existing) {
+      Object.assign(existing, { name, category, isRaw, sell, batchYield, yieldUnit, steps });
+      updated++;
+    } else {
+      recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items: [], fgStock: 0, fgLow: 0, category, optGroups: [], imgData: '' });
+      added++;
+    }
+  });
+  closeRecipeImportReview();
+  saveAll();
+  render();
+  ui.alert(`นำเข้าเมนูสำเร็จ — เพิ่มใหม่ ${added} รายการ${updated ? `, อัปเดต ${updated} รายการ` : ''}`, { title: 'นำเข้าเสร็จ', icon: 'check-circle', variant: 'success' });
 }
 
 // ============================================================
@@ -5148,7 +6632,7 @@ async function loadLogs() {
 function renderLogs(logs, scope) {
   const el = $('logList'); if (!el) return;
   if (!logs.length) { el.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px;">ยังไม่มีบันทึกกิจกรรม</div>'; return; }
-  el.innerHTML = `<table class="lst"><thead><tr>
+  el.innerHTML = `<div class="table-scroll"><table class="lst"><thead><tr>
       <th>เวลา</th><th>กิจกรรม</th><th>ผู้ใช้</th>${scope === 'all' ? '<th>ร้าน</th>' : ''}<th>รายละเอียด</th>
     </tr></thead><tbody>${logs.map(l => {
       const when = new Date(l.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
@@ -5161,7 +6645,7 @@ function renderLogs(logs, scope) {
         ${scope === 'all' ? `<td style="font-size:12px;">${esc(l.shop_name || '-')}</td>` : ''}
         <td style="font-size:12px; color:var(--color-text-muted);">${detail}</td>
       </tr>`;
-    }).join('')}</tbody></table>`;
+    }).join('')}</tbody></table></div>`;
 }
 
 // ============================================================
@@ -5283,13 +6767,18 @@ function renderExpensePage() {
     const d = (e.date || '').slice(0, 10);
     return (!from || d >= from) && (!to || d <= to);
   });
-  const yearStr = new Date().toISOString().slice(0, 4);
-  const yearExp = expenses.filter(e => (e.date || '').slice(0, 4) === yearStr);
+  const incomeRows = rangeExp.filter(e => e.kind === 'income');
+  const expenseRows = rangeExp.filter(e => e.kind !== 'income');
+  const incomeTotal = incomeRows.reduce((s, e) => s + e.amount, 0);
+  const expenseTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
+  const net = incomeTotal - expenseTotal;
 
-  $('expMonthTotal').textContent = money(rangeExp.reduce((s, e) => s + e.amount, 0));
-  $('expMonthCount').textContent = `${rangeExp.length} รายการ`;
-  $('expCashTotal').textContent = money(rangeExp.filter(e => e.payType === 'cash').reduce((s, e) => s + e.amount, 0));
-  $('expYearTotal').textContent = money(yearExp.reduce((s, e) => s + e.amount, 0));
+  $('expIncomeTotal').textContent = money(incomeTotal);
+  $('expIncomeCount').textContent = `${incomeRows.length} รายการ`;
+  $('expMonthTotal').textContent = money(expenseTotal);
+  $('expMonthCount').textContent = `${expenseRows.length} รายการ`;
+  const netEl = $('expNetTotal');
+  if (netEl) { netEl.textContent = (net >= 0 ? '' : '−') + money(Math.abs(net)).replace('-', ''); netEl.style.color = net >= 0 ? '#16a34a' : '#dc2626'; }
 
   const cats = [...new Set(expenses.map(e => e.category).filter(Boolean))].sort();
   const catSel = $('expCatFilter');
@@ -5304,35 +6793,50 @@ function renderExpensePage() {
   if (typeFilter) filtered = filtered.filter(e => e.payType === typeFilter);
   filtered.sort((a, b) => (b.date || '') > (a.date || '') ? -1 : 1);
 
-  $('expenseList').innerHTML = filtered.length ? filtered.map(e => `
-    <tr>
+  $('expenseList').innerHTML = filtered.length ? filtered.map(e => {
+    const isIncome = e.kind === 'income';
+    const col = isIncome ? '#16a34a' : '#dc2626';
+    return `<tr>
       <td style="white-space:nowrap;">${e.date || ''}</td>
-      <td><span style="font-weight:600;">${esc(e.description)}</span>${e.note ? `<br><span style="font-size:11px;color:var(--color-text-muted);">${esc(e.note)}</span>` : ''}</td>
+      <td>
+        <span style="font-size:11px;font-weight:700;color:${col};">${isIncome ? '▲ รายรับ' : '▼ รายจ่าย'}</span><br>
+        <span style="font-weight:600;">${esc(e.description)}</span>${e.note ? `<br><span style="font-size:11px;color:var(--color-text-muted);">${esc(e.note)}</span>` : ''}
+      </td>
       <td><span style="font-size:12px;background:var(--surface-2);padding:2px 8px;border-radius:20px;">${esc(e.category || '—')}</span></td>
       <td style="font-size:12px;">${EXP_PAY_LABELS[e.payType] || e.payType}</td>
-      <td class="r" style="font-weight:700;color:#dc2626;">${money(e.amount)}</td>
+      <td class="r" style="font-weight:700;color:${col};">${isIncome ? '+' : '−'}${money(e.amount).replace('-', '')}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-ghost btn-sm" onclick="openExpenseForm('${e.id}')"><span class="ico" data-icon="pencil"></span></button>
         <button class="btn btn-ghost btn-sm" onclick="deleteExpense('${e.id}')" style="color:#e53e3e;"><span class="ico" data-icon="trash-2"></span></button>
       </td>
-    </tr>`).join('') :
-    `<tr><td colspan="6" style="text-align:center;color:var(--color-text-muted);padding:32px 0;">ไม่มีรายจ่ายในช่วงเวลานี้</td></tr>`;
+    </tr>`;
+  }).join('') :
+    `<tr><td colspan="6" style="text-align:center;color:var(--color-text-muted);padding:32px 0;">ไม่มีรายการในช่วงเวลานี้</td></tr>`;
 
   renderIcons($('expensePage'));
 }
 
-function openExpenseForm(id) {
+function openExpenseForm(id, presetKind) {
   editExpenseId = id || null;
   const e = id ? expenses.find(x => x.id === id) : null;
-  $('expenseDrawerTitle').innerHTML = icon(id ? 'pencil' : 'plus') + (id ? ' แก้ไขรายจ่าย' : ' เพิ่มรายจ่าย');
   $('expId').value = id || '';
+  $('expKind').value = e ? (e.kind || 'expense') : (presetKind || 'expense');
   $('expDate').value = e ? e.date : new Date().toISOString().slice(0, 10);
   $('expDesc').value = e ? e.description : '';
   $('expAmount').value = e ? e.amount : '';
   $('expPayType').value = e ? (e.payType || 'cash') : 'cash';
   $('expCategory').value = e ? (e.category || '') : '';
   $('expNote').value = e ? (e.note || '') : '';
+  updateExpFormType();
   openDrawer('expenseDrawer');
+}
+
+function updateExpFormType() {
+  const isIncome = $('expKind').value === 'income';
+  const t = $('expenseDrawerTitle');
+  if (t) t.innerHTML = icon(editExpenseId ? 'pencil' : 'plus') + (editExpenseId ? ' แก้ไข' : ' เพิ่ม') + (isIncome ? 'รายรับ' : 'รายจ่าย');
+  const desc = $('expDesc');
+  if (desc) desc.placeholder = isIncome ? 'เช่น เงินทอนเข้า, รายรับอื่นๆ, เงินลงทุน' : 'เช่น ค่าน้ำ, ค่าวัตถุดิบเพิ่มเติม, ค่าแก๊ส';
 }
 
 function saveExpense() {
@@ -5342,6 +6846,7 @@ function saveExpense() {
   if (!amount || amount <= 0) { ui.toast('กรุณาระบุจำนวนเงิน'); return; }
   const obj = {
     id: editExpenseId || uid(),
+    kind: $('expKind').value || 'expense',
     date: $('expDate').value || new Date().toISOString().slice(0, 10),
     description: desc,
     amount,
@@ -5366,6 +6871,371 @@ async function deleteExpense(id) {
   expenses = expenses.filter(e => e.id !== id);
   saveAll();
   renderExpensePage();
+}
+
+// ============================================================
+// OPTIONS MANAGER
+// ============================================================
+let editGroupId = null;
+let editGroupChoices = [];
+
+function renderOptionsPage() {
+  const el = $('optGroupList');
+  if (!el) return;
+  if (!optionGroups.length) {
+    el.innerHTML = '<div class="glass-card" style="text-align:center;color:var(--color-text-muted);padding:40px;">ยังไม่มีกลุ่มตัวเลือก — กด "สร้างกลุ่มตัวเลือก" เพื่อเริ่ม</div>';
+    return;
+  }
+  el.innerHTML = optionGroups.map(g => {
+    const recipeNames = (g.recipeIds || []).map(id => recById(id)?.name || '').filter(Boolean).join(', ');
+    return `<div class="glass-card" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div>
+          <span style="font-weight:700;font-size:15px;">${esc(g.label)}</span>
+          <span style="font-size:12px;background:var(--surface-2);padding:2px 8px;border-radius:20px;margin-left:8px;">${g.selectType==='multi'?'เลือกได้หลาย':'เลือกได้ 1'}</span>
+          ${g.required?'<span style="font-size:11px;color:#e53e3e;margin-left:4px;">*บังคับ</span>':''}
+          ${!g.enabled?'<span style="font-size:11px;color:var(--color-text-muted);margin-left:4px;">ปิดอยู่</span>':''}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="cloneGroup('${g.id}')">${icon('copy')} โคลน</button>
+          <button class="btn btn-ghost btn-sm" onclick="openGroupForm('${g.id}')">${icon('pencil')} แก้ไข</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteGroup('${g.id}')" style="color:#e53e3e;">${icon('trash-2')}</button>
+        </div>
+      </div>
+      ${recipeNames?`<div style="font-size:12px;color:var(--color-text-muted);margin-bottom:8px;">${icon('utensils')} ใช้กับ: ${esc(recipeNames)}</div>`:''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${(g.choices||[]).map(c=>{
+          const eff=c.effectType||'NONE';
+          const effColor={ADD:'#16a34a',REPLACE:'#2563eb',QUANTITY:'#7c3aed',RECIPE_VARIANT:'#d97706',NONE:'#6b7280'}[eff]||'#6b7280';
+          const priceStr=c.priceAdd?(c.priceAdd>0?`+${money(c.priceAdd)}`:`${money(c.priceAdd)}`):'';
+          return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border-radius:20px;padding:3px 10px;font-size:12px;${!c.enabled?'opacity:0.45;':''}">
+            ${esc(c.label)}${priceStr?`<span style="color:var(--color-secondary);font-size:11px;">${priceStr}</span>`:''}
+            <span style="font-size:10px;color:${effColor};font-weight:700;">${eff}</span>
+          </span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  renderIcons(el);
+}
+
+function openGroupForm(id) {
+  editGroupId = id || null;
+  const g = id ? optionGroups.find(x => x.id === id) : null;
+  editGroupChoices = g ? g.choices.map(c => ({ ...c, links: (c.links||[]).map(l=>({...l})) })) : [];
+  $('ogLabel').value = g?.label || '';
+  $('ogSelectType').value = g?.selectType || 'single';
+  $('ogRequired').checked = !!g?.required;
+  $('ogEnabled').checked = g?.enabled !== false;
+  renderGroupChoices();
+  renderGroupRecipePicker(g?.recipeIds || []);
+  openDrawer('optGroupDrawer');
+}
+
+function renderGroupChoices() {
+  const el = $('ogChoiceList');
+  if (!el) return;
+  if (!editGroupChoices.length) {
+    el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีตัวเลือก — กดเพิ่มด้านบน</p>';
+    return;
+  }
+  el.innerHTML = editGroupChoices.map((c, ci) => {
+    const eff = c.effectType || 'NONE';
+    const linksHtml = (eff === 'ADD' || eff === 'REPLACE') ? `
+      <div style="margin-top:8px;">
+        <label style="font-size:11px;color:var(--color-text-muted);">วัตถุดิบที่เชื่อม:</label>
+        ${(c.links||[]).map((l,li)=>`
+          <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+            <select onchange="editGroupChoices[${ci}].links[${li}].matId=this.value" style="flex:2;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+              <option value="">—เลือกวัตถุดิบ—</option>
+              ${materials.filter(m=>!m.isConsumable).map(m=>`<option value="${m.id}"${m.id===l.matId?' selected':''}>${esc(m.name)} (${baseU(m)})</option>`).join('')}
+            </select>
+            <input type="number" step="any" value="${l.amount||0}" oninput="editGroupChoices[${ci}].links[${li}].amount=+this.value" placeholder="จำนวน" style="width:80px;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+            <button class="btn btn-danger btn-sm" onclick="removeChoiceLink(${ci},${li})" style="padding:4px 7px;">${icon('x')}</button>
+          </div>`).join('')}
+        <button class="btn btn-ghost btn-sm" onclick="addChoiceLink(${ci})" style="margin-top:4px;font-size:11px;">+ เพิ่มวัตถุดิบ</button>
+      </div>` : '';
+    const roleHtml = (eff === 'REPLACE' || eff === 'QUANTITY') ? `
+      <div style="margin-top:6px;">
+        <label style="font-size:11px;color:var(--color-text-muted);">Role เป้าหมาย (ตรงกับ role ในสูตร เช่น milk):</label>
+        <input value="${esc(c.targetRole||'')}" oninput="editGroupChoices[${ci}].targetRole=this.value" placeholder="milk, sweetener, ..." style="width:100%;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+      </div>` : '';
+    const quantityHtml = eff === 'QUANTITY' ? `
+      <div style="margin-top:6px;">
+        <label style="font-size:11px;color:var(--color-text-muted);">ปริมาณใหม่ (0 = ตัดออก):</label>
+        <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value" style="width:80px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+      </div>` : '';
+    const variantHtml = eff === 'RECIPE_VARIANT' ? `
+      <div style="margin-top:6px;">
+        <label style="font-size:11px;color:var(--color-text-muted);">สูตรที่ใช้แทน BOM:</label>
+        <select onchange="editGroupChoices[${ci}].variantRecipeId=this.value" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+          <option value="">—เลือกสูตร—</option>
+          ${recipes.map(r=>`<option value="${r.id}"${r.id===c.variantRecipeId?' selected':''}>${esc(r.name)}</option>`).join('')}
+        </select>
+      </div>` : '';
+    const maxQtyHtml = eff === 'ADD' ? `
+      <div style="margin-top:6px;font-size:11px;color:var(--color-text-muted);">
+        สั่งซ้ำได้สูงสุด:
+        <input type="number" min="1" value="${c.maxQty||1}" oninput="editGroupChoices[${ci}].maxQty=+this.value||1" style="width:50px;font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-left:4px;">
+      </div>` : '';
+    return `<div style="background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:8px;">
+      <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;">
+        <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value" placeholder="ชื่อตัวเลือก" style="flex:2;min-width:100px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <input type="number" step="any" value="${c.priceAdd||0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value" placeholder="+ราคา" style="width:72px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <select onchange="editGroupChoices[${ci}].effectType=this.value;renderGroupChoices();" style="font-size:12px;padding:5px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          ${['NONE','ADD','REPLACE','QUANTITY','RECIPE_VARIANT'].map(e=>`<option value="${e}"${e===eff?' selected':''}>${e}</option>`).join('')}
+        </select>
+        <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${c.enabled!==false?' checked':''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิด</label>
+        <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:5px 7px;">${icon('trash-2')}</button>
+      </div>
+      ${roleHtml}${quantityHtml}${variantHtml}${linksHtml}${maxQtyHtml}
+    </div>`;
+  }).join('');
+  renderIcons(el);
+}
+
+function addChoiceRow() {
+  editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', variantRecipeId: null, links: [], amount: 0 });
+  renderGroupChoices();
+}
+function addChoiceLink(ci) {
+  if (!editGroupChoices[ci].links) editGroupChoices[ci].links = [];
+  editGroupChoices[ci].links.push({ id: uid(), matId: '', amount: 0 });
+  renderGroupChoices();
+}
+function removeChoiceLink(ci, li) { editGroupChoices[ci].links.splice(li, 1); renderGroupChoices(); }
+
+function renderGroupRecipePicker(selectedIds) {
+  const el = $('ogRecipePicker');
+  if (!el) return;
+  el.innerHTML = recipes.filter(r => !r.isRaw).map(r => `
+    <label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:13px;">
+      <input type="checkbox" class="og-recipe-chk" data-rid="${r.id}" ${(selectedIds||[]).includes(r.id)?'checked':''} style="width:auto;margin:0;"> ${esc(r.name)}
+    </label>`).join('') || '<p style="color:var(--color-text-muted);font-size:12px;">ยังไม่มีสูตร</p>';
+}
+
+function saveGroupForm() {
+  const label = $('ogLabel').value.trim();
+  if (!label) { ui.toast('ระบุชื่อกลุ่มตัวเลือก', 'warning'); return; }
+  const recipeIds = [...document.querySelectorAll('.og-recipe-chk:checked')].map(el => el.dataset.rid);
+  const g = {
+    id: editGroupId || uid(),
+    label,
+    selectType: $('ogSelectType').value,
+    required: $('ogRequired').checked,
+    minSelect: 0,
+    maxSelect: $('ogSelectType').value === 'multi' ? 99 : 1,
+    sort: editGroupId ? (optionGroups.find(x => x.id === editGroupId)?.sort || 0) : optionGroups.length,
+    enabled: $('ogEnabled').checked,
+    recipeIds,
+    choices: editGroupChoices.map((c, i) => ({ ...c, sort: i, links: (c.links||[]).filter(l => l.matId) }))
+  };
+  if (editGroupId) {
+    const idx = optionGroups.findIndex(x => x.id === editGroupId);
+    if (idx >= 0) optionGroups[idx] = g;
+  } else {
+    optionGroups.push(g);
+  }
+  saveAll();
+  closeDrawer();
+  renderOptionsPage();
+}
+
+async function deleteGroup(id) {
+  if (!(await ui.confirm('ลบกลุ่มตัวเลือกนี้?', { okText: 'ลบ', danger: true }))) return;
+  optionGroups = optionGroups.filter(g => g.id !== id);
+  saveAll();
+  renderOptionsPage();
+}
+
+function cloneGroup(id) {
+  const src = optionGroups.find(g => g.id === id);
+  if (!src) return;
+  const clone = JSON.parse(JSON.stringify(src));
+  clone.id = uid();
+  clone.label = src.label + ' (สำเนา)';
+  clone.recipeIds = [];
+  clone.sort = optionGroups.length;
+  clone.choices = clone.choices.map(c => ({ ...c, id: uid(), links: (c.links||[]).map(l => ({ ...l, id: uid() })) }));
+  optionGroups.push(clone);
+  saveAll();
+  renderOptionsPage();
+}
+
+// ============================================================
+// ของใช้สิ้นเปลืองในร้าน (consumables) — แยกจากสูตร, ตัดเป็นแพ็ค/ขวด รายวัน
+// ============================================================
+let editConsId = null;
+
+function consList() { return materials.filter(m => m.isConsumable); }
+
+function renderConsumablesPage() {
+  const items = consList();
+  const totalVal = items.reduce((s, m) => s + (Number(m.stock) || 0) * (Number(m.price) || 0), 0);
+  // เบิกใช้เดือนนี้ (มูลค่า) จาก log type cons-out
+  const ym = new Date().toISOString().slice(0, 7);
+  const monthOut = movementSource().filter(l => l.kind === 'cons-out' && (l.at || '').slice(0, 7) === ym)
+    .reduce((s, l) => s + Math.abs((Number(l.old) || 0) - (Number(l.newVal) || 0)) * (Number(l.price) || matById(l.refId)?.price || 0), 0);
+  if ($('consCount')) $('consCount').textContent = items.length;
+  if ($('consValue')) $('consValue').textContent = money(totalVal);
+  if ($('consMonthOut')) $('consMonthOut').textContent = money(monthOut);
+
+  const lowFlag = m => (Number(m.lowStock) || 0) > 0 && (Number(m.stock) || 0) <= Number(m.lowStock);
+  const tb = $('consList');
+  if (tb) {
+    tb.innerHTML = items.map(m => {
+      const low = lowFlag(m);
+      const stockStr = `<b style="color:${low ? '#dc2626' : 'inherit'};">${(Number(m.stock) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}</b>${low ? ' <span style="font-size:11px;color:#dc2626;">⚠ ใกล้หมด</span>' : ''}`;
+      return `<tr>
+        <td><b>${esc(m.name)}</b></td>
+        <td style="font-size:13px;color:var(--color-text-muted);">${esc(m.unit || '-')}</td>
+        <td class="r">${money(m.price)}</td>
+        <td class="r">${stockStr}</td>
+        <td>
+          <div style="display:flex;gap:5px;align-items:center;">
+            <input type="number" step="any" min="0" id="cons-out-${m.id}" placeholder="จำนวน" style="width:78px;padding:5px 7px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+            <button class="btn btn-danger btn-sm" onclick="consWithdraw('${m.id}')" style="padding:5px 10px;white-space:nowrap;">เบิก</button>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;gap:5px;align-items:center;">
+            <input type="number" step="any" min="0" id="cons-in-${m.id}" placeholder="+" style="width:56px;padding:5px 7px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+            <button class="btn btn-ghost btn-sm" onclick="consReceive('${m.id}')" style="padding:5px 9px;" title="รับเข้า">${icon('plus')}</button>
+          </div>
+        </td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-ghost btn-sm" onclick="openConsForm('${m.id}')" style="padding:6px 9px;" title="แก้ไข">${icon('pencil')}</button>
+          <button class="btn btn-danger btn-sm" onclick="delCons('${m.id}')" style="padding:6px 9px;" title="ลบ">${icon('trash-2')}</button>
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" style="color:#999;text-align:center;padding:20px;">ยังไม่มีของใช้สิ้นเปลือง — กด "เพิ่มของสิ้นเปลือง"</td></tr>';
+  }
+
+  // mobile cards
+  const cards = $('consListCards');
+  if (cards) {
+    cards.innerHTML = items.length ? items.map(m => {
+      const low = lowFlag(m);
+      return `<div class="item-card">
+        <div class="item-card-row">
+          <div style="flex:1;min-width:0;">
+            <div class="item-card-title">${esc(m.name)}</div>
+            <div class="item-card-sub">คงเหลือ <b style="color:${low ? '#dc2626' : 'inherit'};">${(Number(m.stock) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}</b> ${esc(m.unit || '')} · ${money(m.price)}/${esc(m.unit || 'หน่วย')}</div>
+          </div>
+        </div>
+        <div class="item-card-stats">
+          <div class="item-card-stat" style="flex:1;"><span>เบิกวันนี้</span>
+            <div style="display:flex;gap:5px;margin-top:3px;"><input type="number" step="any" min="0" id="cons-out-${m.id}" placeholder="จำนวน" style="flex:1;min-width:0;padding:6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;"><button class="btn btn-danger btn-sm" onclick="consWithdraw('${m.id}')">เบิก</button></div>
+          </div>
+          <div class="item-card-stat" style="flex:1;"><span>รับเข้า</span>
+            <div style="display:flex;gap:5px;margin-top:3px;"><input type="number" step="any" min="0" id="cons-in-${m.id}" placeholder="+" style="flex:1;min-width:0;padding:6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;"><button class="btn btn-ghost btn-sm" onclick="consReceive('${m.id}')">${icon('plus')}</button></div>
+          </div>
+        </div>
+        <div class="item-card-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openConsForm('${m.id}')" style="flex:1;">${icon('pencil')} แก้ไข</button>
+          <button class="btn btn-danger btn-sm" onclick="delCons('${m.id}')" style="flex:1;">${icon('trash-2')} ลบ</button>
+        </div>
+      </div>`;
+    }).join('') : '<p style="color:var(--color-text-muted);text-align:center;padding:24px 0;">ยังไม่มีของใช้สิ้นเปลือง</p>';
+  }
+
+  renderConsLogs();
+  renderIcons($('consumablesPage'));
+}
+
+function renderConsLogs() {
+  const el = $('consLogList');
+  if (!el) return;
+  const logs = movementSource().filter(l => l.kind === 'cons-out' || l.kind === 'cons-in').slice(0, 80);
+  if (!logs.length) { el.innerHTML = '<tr><td colspan="6" style="color:var(--color-text-muted);text-align:center;padding:16px;">ยังไม่มีประวัติ</td></tr>'; return; }
+  el.innerHTML = logs.map(l => {
+    const when = new Date(l.at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+    const diff = (Number(l.newVal) || 0) - (Number(l.old) || 0);
+    const isOut = l.kind === 'cons-out';
+    return `<tr>
+      <td style="white-space:nowrap;font-size:12px;">${when}</td>
+      <td>${esc(l.name)}</td>
+      <td><span style="font-size:12px;font-weight:700;color:${isOut ? '#dc2626' : '#16a34a'};">${isOut ? 'เบิกใช้' : 'รับเข้า'}</span></td>
+      <td class="r">${(Number(l.old) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}</td>
+      <td class="r">${(Number(l.newVal) || 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}</td>
+      <td class="r" style="color:${diff < 0 ? '#dc2626' : '#16a34a'};font-weight:700;">${diff > 0 ? '+' : ''}${diff.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ${esc(l.unit || '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pushConsLog(m, oldVal, newVal, type) {
+  // type = 'cons-out' (เบิก) | 'cons-in' (รับเข้า)
+  pushMovement({ kind: type, refType: 'material', refId: m.id, name: m.name, unit: m.unit || '', old: oldVal, newVal, price: Number(m.price) || 0, note: type === 'cons-out' ? 'เบิกสิ้นเปลือง' : 'รับเข้าสิ้นเปลือง' });
+}
+
+function openConsForm(id) {
+  editConsId = id || null;
+  const m = id ? matById(id) : null;
+  $('consName').value = m?.name || '';
+  $('consUnit').value = m?.unit || 'แพ็ค';
+  $('consPrice').value = m?.price ?? '';
+  $('consStock').value = m?.stock ?? '';
+  $('consLow').value = m?.lowStock ?? '';
+  $('consSaveBtn').innerHTML = icon('save') + (id ? ' อัปเดต' : ' บันทึก');
+  openDrawer('consDrawer');
+}
+
+function saveCons() {
+  const name = $('consName').value.trim();
+  if (!name) { ui.toast('ระบุชื่อของใช้', 'warning'); return; }
+  const unit = $('consUnit').value.trim() || 'แพ็ค';
+  const price = Number($('consPrice').value) || 0;
+  const stock = Number($('consStock').value) || 0;
+  const lowStock = Number($('consLow').value) || 0;
+  if (editConsId) {
+    const m = matById(editConsId);
+    if (m) Object.assign(m, { name, unit, price, stock, lowStock, isConsumable: true });
+  } else {
+    materials.push({ id: uid(), sku: '', name, qty: 1, unit, price, sellPrice: 0, supId: '', orderUrl: '', stock, lowStock, category: 'สิ้นเปลือง', convQty: null, stockUnit: null, isConsumable: true });
+  }
+  editConsId = null;
+  saveAll();
+  closeDrawer();
+  renderConsumablesPage();
+}
+
+async function delCons(id) {
+  const m = matById(id);
+  if (!m) return;
+  if (!(await ui.confirm(`ลบ "${m.name}" ออกจากของใช้สิ้นเปลือง?`, { okText: 'ลบ', danger: true }))) return;
+  materials = materials.filter(x => x.id !== id);
+  saveAll();
+  renderConsumablesPage();
+}
+
+function consWithdraw(id) {
+  const m = matById(id);
+  if (!m) return;
+  const el = $('cons-out-' + id);
+  const qty = Number(el?.value) || 0;
+  if (qty <= 0) { ui.toast('ใส่จำนวนที่เบิก', 'warning'); return; }
+  const oldVal = Number(m.stock) || 0;
+  const newVal = Math.max(0, oldVal - qty);
+  m.stock = newVal;
+  pushConsLog(m, oldVal, newVal, 'cons-out');
+  saveAll();
+  renderConsumablesPage();
+  ui.toast(`เบิก ${m.name} ${qty} ${m.unit || ''} แล้ว`, 'success');
+}
+
+function consReceive(id) {
+  const m = matById(id);
+  if (!m) return;
+  const el = $('cons-in-' + id);
+  const qty = Number(el?.value) || 0;
+  if (qty <= 0) { ui.toast('ใส่จำนวนที่รับเข้า', 'warning'); return; }
+  const oldVal = Number(m.stock) || 0;
+  const newVal = oldVal + qty;
+  m.stock = newVal;
+  pushConsLog(m, oldVal, newVal, 'cons-in');
+  saveAll();
+  renderConsumablesPage();
+  ui.toast(`รับเข้า ${m.name} +${qty} ${m.unit || ''}`, 'success');
 }
 
 if (isMockMode) {

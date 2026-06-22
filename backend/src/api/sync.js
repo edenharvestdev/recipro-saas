@@ -6,12 +6,13 @@ const { logEvent } = require('../logs');
 const router = express.Router();
 
 // upsert ช่วย: ระบุ table, คอลัมน์, แถว, และคีย์ conflict
-async function upsertRows(client, table, cols, rows, conflict) {
+async function upsertRows(client, table, cols, rows, conflict, touchUpdatedAt) {
   for (const row of rows) {
     const values = cols.map((c) => row[c]);
     const ph = cols.map((_, i) => `$${i + 1}`).join(', ');
-    const updates = cols.filter((c) => c !== conflict)
+    let updates = cols.filter((c) => c !== conflict)
       .map((c) => `${c} = excluded.${c}`).join(', ');
+    if (touchUpdatedAt) updates += ', updated_at = now()'; // R2: ให้ /changes ตรวจจับการแก้ไขได้
     await client.query(
       `insert into ${table} (${cols.join(', ')}) values (${ph})
        on conflict (${conflict}) do update set ${updates}`,
@@ -33,15 +34,15 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit'],
-        withShop(b.materials), 'id');
+        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2'],
+        withShop(b.materials), 'id', true);
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop'],
         withShop((b.recipes || []).map(r => ({
           ...r,
           opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))
-        }))), 'id');
+        }))), 'id', true);
 
       // recipe_items: ลบของสูตรในร้านนี้ทั้งหมดแล้วใส่ใหม่ (ตรงกับ logic เดิม)
       const recIds = (b.recipes || []).map((r) => r.id);
@@ -49,8 +50,8 @@ router.post('/sync', async (req, res) => {
         await client.query('delete from recipe_items where recipe_id = any($1::uuid[])', [recIds]);
         for (const it of (b.recipe_items || [])) {
           await client.query(
-            'insert into recipe_items (recipe_id, material_id, amount) values ($1, $2, $3)',
-            [it.recipe_id, it.material_id || null, it.amount]
+            'insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1, $2, $3, $4, $5)',
+            [it.recipe_id, it.material_id || null, it.amount, it.role || '', it.sub_recipe_id || null]
           );
         }
       }
@@ -78,8 +79,43 @@ router.post('/sync', async (req, res) => {
       }
 
       await upsertRows(client, 'expenses',
-        ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note'],
+        ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note', 'kind'],
         withShop(b.expenses || []), 'id');
+
+      // option_groups
+      await upsertRows(client, 'option_groups',
+        ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled'],
+        withShop(b.option_groups || []), 'id');
+
+      // option_choices
+      for (const c of (b.option_choices || [])) {
+        await client.query(
+          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=$11`,
+          [c.id, c.group_id, c.label, c.price_add ?? 0, c.effect_type || 'NONE',
+           c.enabled ?? true, c.is_default ?? false, c.sort ?? 0, c.max_qty ?? 1,
+           c.target_role || '', c.variant_recipe_id || null]);
+      }
+
+      // option_choice_links: delete+reinsert for all groups synced
+      const groupIds = (b.option_groups || []).map(g => g.id);
+      if (groupIds.length) {
+        await client.query(
+          'delete from option_choice_links where choice_id in (select id from option_choices where group_id = any($1::uuid[]))',
+          [groupIds]);
+        for (const l of (b.option_choice_links || [])) {
+          await client.query(
+            'insert into option_choice_links (id,choice_id,material_id,amount) values ($1,$2,$3,$4)',
+            [l.id, l.choice_id, l.material_id, l.amount]);
+        }
+        await client.query('delete from recipe_option_groups where group_id = any($1::uuid[])', [groupIds]);
+        for (const rg of (b.recipe_option_groups || [])) {
+          await client.query(
+            'insert into recipe_option_groups (recipe_id,group_id,sort) values ($1,$2,$3) on conflict do nothing',
+            [rg.recipe_id, rg.group_id, rg.sort ?? 0]);
+        }
+      }
 
       if (b.shop && b.shop.name) {
         await client.query('update shops set name = $1 where id = $2', [b.shop.name, shopId]);

@@ -8,6 +8,15 @@ const { pool } = require('./db');
 const files = [
   '../db/schema.sql',
   '../db/schema-extend.sql',
+  // additive migrations (idempotent: add column / create table if not exists)
+  '../db/schema-expenses.sql',
+  '../db/schema-unit-conversion.sql',
+  '../db/schema-options.sql',
+  '../db/schema-consumables.sql',
+  '../db/schema-r1.sql',
+  '../db/schema-pos.sql',
+  '../db/schema-sop.sql',
+  '../db/schema-income.sql',
   '../db/seed.sql',
 ];
 
