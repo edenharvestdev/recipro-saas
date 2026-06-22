@@ -3658,6 +3658,8 @@ function saveRecipe() {
   const batchYield = Math.max(0.0001, +$('rYield').value || 1);
   const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
   const isRaw = $('rOutputType').value === 'RAW';
+  // bridge: เชื่อม Main/RAW เดิม → taxonomy ใหม่ (Production/Menu + หมวดที่ผลิต)
+  const recipeType = isRaw ? 'PRODUCTION' : 'MENU';
   const steps = $('rSteps').value;
   const category = ($('rCategory')?.value || '').trim();
   const imgData = window._rImgData || '';
@@ -3673,12 +3675,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData, recipeType, outputItemType: r.outputItemType || (isRaw ? 'PREP' : 'SALE') });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType, outputItemType: isRaw ? 'PREP' : 'SALE' });
   }
 
   saveAll();
