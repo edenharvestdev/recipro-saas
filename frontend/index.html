@@ -311,7 +311,7 @@
         </div>
 
         <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
-          <input id="matSearch" placeholder="ค้นหาวัตถุดิบ..." oninput="renderMatList()" style="padding:8px 12px; flex:1; min-width:160px;">
+          <input id="matSearch" placeholder="ค้นหาวัตถุดิบ (ชื่อ/รหัส)..." oninput="matPage=1; renderMatList()" style="padding:8px 12px; flex:1; min-width:160px;">
           <button class="btn btn-ghost btn-sm" onclick="exportTemplate('xlsx')" style="white-space:nowrap; padding:8px 12px;" title="ดาวน์โหลดเทมเพลต Excel"><span class="ico" data-icon="file-text"></span> เทมเพลต .xlsx</button>
           <button class="btn btn-ghost btn-sm" onclick="exportTemplate('csv')" style="white-space:nowrap; padding:8px 12px;" title="ดาวน์โหลดเทมเพลต CSV"><span class="ico" data-icon="file-text"></span> .csv</button>
           <button class="btn btn-primary btn-sm" onclick="document.getElementById('csvFile').click()" style="white-space:nowrap; padding:8px 12px;"><span class="ico" data-icon="upload"></span> นำเข้าไฟล์</button>
@@ -323,6 +323,10 @@
           <select id="matCatSelect" style="flex:1; max-width:240px; padding:7px 10px; border-radius:8px; border:1px solid var(--border-soft); background:var(--surface-1); color:var(--color-text-main); font-size:13px;" onchange="setMatCatFilter(this.value)"></select>
           <button class="btn btn-ghost btn-sm" onclick="manageCategoriesDialog()" style="white-space:nowrap;"><span class="ico" data-icon="settings-2"></span> <span data-lang-key="add_category">จัดการหมวดหมู่</span></button>
         </div>
+
+        <!-- ตัวกรองหมวดสินค้า (item_type) — แยกของกลาง/ซ้อนสูตรได้ -->
+        <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:6px;">กรองตามหมวดสินค้า</div>
+        <div id="matTypeChips" style="display:flex; align-items:center; gap:6px; margin-bottom:14px; flex-wrap:wrap;"></div>
 
         <!-- bulk action bar -->
         <div id="matBulkBar" style="display:none; align-items:center; gap:10px; padding:8px 12px; background:var(--color-primary-light,rgba(234,88,12,0.08)); border-radius:10px; margin-bottom:10px; flex-wrap:wrap;">
@@ -349,6 +353,7 @@
           </table>
         </div>
         <div id="matListCards" class="item-cards-mobile"></div>
+        <div id="matPager" style="display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:wrap; margin-top:14px;"></div>
       </div>
 
       <!-- แหล่งจัดซื้อ -->
@@ -384,6 +389,10 @@
           <button class="btn btn-danger btn-sm" onclick="bulkDeleteRecs()"><span class="ico" data-icon="trash-2"></span> ลบที่เลือก</button>
           <button class="btn btn-ghost btn-sm" onclick="clearRecSelection()">ยกเลิกการเลือก</button>
         </div>
+        <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+          <input id="recipeSearch" placeholder="ค้นหาสูตร/เมนู (ชื่อ/รหัส/หมวด)..." oninput="recPage=1; renderRecipeList()" style="padding:8px 12px; flex:1; min-width:160px;">
+          <div id="recTypeChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
           <button class="btn btn-ghost btn-sm" onclick="exportRecipesXLSX()" title="ส่งออกรายงานสูตรทั้งหมด (มีข้อมูลจริง 2 ชีต)"><span class="ico" data-icon="download"></span> Export Excel</button>
           <span style="width:1px;height:22px;background:var(--border-soft);margin:0 2px;"></span>
@@ -409,6 +418,7 @@
           </table>
         </div>
         <div id="recipeListCards" class="item-cards-mobile"></div>
+        <div id="recipePager" style="display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:wrap; margin-top:14px;"></div>
       </div>
     </section>
 
@@ -3362,6 +3372,65 @@ async function delMat(id) {
 }
 
 let matCatFilter = '';
+let matTypeFilter = '';        // กรองตามหมวดสินค้า (item_type): '' ทั้งหมด · 'NESTED' ของกลาง/ซ้อนสูตร · 'BLANK' ยังไม่ระบุ · หรือ code
+let matPage = 1;
+const MAT_PAGE_SIZE = 20;
+
+// ---- ตัวช่วย filter + แบ่งหน้า (ใช้ร่วมหน้าวัตถุดิบ/สูตร) ----
+function pageWindow(cur, pages) {
+  const out = []; const range = (a, b) => { for (let i = a; i <= b; i++) out.push(i); };
+  if (pages <= 7) { range(1, pages); return out; }
+  out.push(1);
+  if (cur > 4) out.push('...');
+  range(Math.max(2, cur - 1), Math.min(pages - 1, cur + 1));
+  if (cur < pages - 3) out.push('...');
+  out.push(pages);
+  return out;
+}
+function filterChip(onclick, label, count, active) {
+  return `<button onclick="${onclick}" style="padding:5px 11px;border-radius:999px;border:1px solid ${active ? 'var(--color-primary)' : 'var(--border-soft)'};background:${active ? 'var(--color-primary)' : 'var(--surface-1)'};color:${active ? '#fff' : 'var(--color-text-main)'};font-size:13px;cursor:pointer;white-space:nowrap;">${label}${count != null ? ` <span style="opacity:.7;font-size:11px;">${count}</span>` : ''}</button>`;
+}
+function renderPagerEl(elId, total, pageSize, cur, gotoFn) {
+  const el = $(elId); if (!el) return;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (total <= pageSize) { el.innerHTML = total ? `<span style="font-size:12px;color:var(--color-text-muted);">ทั้งหมด ${total} รายการ</span>` : ''; return; }
+  const btn = (p, label, dis, act) => `<button ${dis ? 'disabled' : ''} onclick="${gotoFn}(${p})" style="min-width:34px;padding:5px 9px;border-radius:8px;border:1px solid var(--border-soft);background:${act ? 'var(--color-primary)' : 'var(--surface-1)'};color:${act ? '#fff' : 'var(--color-text-main)'};font-size:13px;cursor:${dis ? 'default' : 'pointer'};opacity:${dis ? '0.4' : '1'};">${label}</button>`;
+  let nums = '';
+  pageWindow(cur, pages).forEach(p => { nums += p === '...' ? `<span style="padding:0 4px;color:var(--color-text-muted);">…</span>` : btn(p, String(p), false, p === cur); });
+  el.innerHTML = `<span style="font-size:12px;color:var(--color-text-muted);margin-right:6px;">ทั้งหมด ${total} · หน้า ${cur}/${pages}</span>` + btn(cur - 1, '‹', cur <= 1, false) + nums + btn(cur + 1, '›', cur >= pages, false);
+}
+
+// ---- หน้าวัตถุดิบ: ตัวกรองหมวดสินค้า (item_type) ----
+function matTypeBadge(m) {
+  if (!m.itemType) return '';
+  const c = itemCategories().find(x => x.code === m.itemType);
+  const nm = c ? c.name_th : m.itemType;
+  const nested = ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
+  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET';
+  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : '#854F0B';
+  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : '#FAEEDA';
+  return `<span style="display:inline-block;font-size:10px;padding:1px 8px;border-radius:999px;background:${bg};color:${col};margin-left:6px;">${esc(nm)}${nested ? ' · ซ้อนสูตร' : ''}</span>`;
+}
+function matMatchesType(m) {
+  if (!matTypeFilter) return true;
+  if (matTypeFilter === 'NESTED') return ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
+  if (matTypeFilter === 'BLANK') return !m.itemType;
+  return m.itemType === matTypeFilter;
+}
+function renderMatTypeChips() {
+  const box = $('matTypeChips'); if (!box) return;
+  const mats = materials.filter(m => !m.isConsumable);
+  const cnt = code => mats.filter(m => m.itemType === code).length;
+  const nestedCnt = mats.filter(m => ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType)).length;
+  const blankCnt = mats.filter(m => !m.itemType).length;
+  let html = filterChip("setMatTypeFilter('')", 'ทั้งหมด', mats.length, matTypeFilter === '');
+  if (nestedCnt) html += filterChip("setMatTypeFilter('NESTED')", 'ของกลาง · ซ้อนสูตร', nestedCnt, matTypeFilter === 'NESTED');
+  itemCategories().forEach(c => { const n = cnt(c.code); if (n) html += filterChip(`setMatTypeFilter('${c.code}')`, c.name_th, n, matTypeFilter === c.code); });
+  if (blankCnt) html += filterChip("setMatTypeFilter('BLANK')", 'ยังไม่ระบุ', blankCnt, matTypeFilter === 'BLANK');
+  box.innerHTML = html;
+}
+function setMatTypeFilter(v) { matTypeFilter = (matTypeFilter === v ? '' : v); matPage = 1; renderMatList(); }
+function gotoMatPage(p) { matPage = p; renderMatList(); const w = document.querySelector('#cardMat .lst-desktop-wrap'); if (w) w.scrollTop = 0; }
 let selectedMats = new Set();
 let selectedRecs = new Set();
 
@@ -3543,21 +3612,28 @@ async function deleteCategory(cat) {
 
 function renderMatList() {
   renderMatCatChips();
+  renderMatTypeChips();
   const q = ($('matSearch').value || '').trim().toLowerCase();
   const filtered = materials.filter(m =>
     !m.isConsumable &&
-    (!q || m.name.toLowerCase().includes(q)) &&
-    (!matCatFilter || m.category === matCatFilter)
+    (!q || m.name.toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q)) &&
+    (!matCatFilter || m.category === matCatFilter) &&
+    matMatchesType(m)
   );
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / MAT_PAGE_SIZE));
+  if (matPage > pages) matPage = pages;
+  if (matPage < 1) matPage = 1;
+  const pageItems = filtered.slice((matPage - 1) * MAT_PAGE_SIZE, matPage * MAT_PAGE_SIZE);
 
-  const matRows = filtered.map(m => {
+  const matRows = pageItems.map(m => {
     const sp = supById(m.supId);
     const costPerBase = money(perBase(m));
     const checked = selectedMats.has(m.id) ? 'checked' : '';
     return `<tr class="${selectedMats.has(m.id) ? 'row-selected' : ''}">
       <td><input type="checkbox" ${checked} onchange="toggleMatSelect('${m.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td style="font-family:monospace; font-size:12px; color:var(--color-text-muted);">${esc(m.sku || '—')}</td>
-      <td><b>${esc(m.name)}</b><br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
+      <td><b>${esc(m.name)}</b>${matTypeBadge(m)}<br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
       <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
       <td class="r">${money(m.price)}</td>
       <td class="r" style="color:var(--green);">${m.sellPrice ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
@@ -3569,13 +3645,13 @@ function renderMatList() {
       </td>
     </tr>`;
   });
-  $('matList').innerHTML = matRows.join('') || '<tr><td colspan="9" style="color:#999; text-align:center;">ไม่พบข้อมูลวัตถุดิบ</td></tr>';
+  $('matList').innerHTML = matRows.join('') || `<tr><td colspan="9" style="color:#999; text-align:center;">${total ? 'หน้านี้ว่าง' : 'ไม่พบข้อมูลวัตถุดิบ'}</td></tr>`;
   updateMatBulkBar();
 
   // Mobile card view
   const matCards = $('matListCards');
   if (matCards) {
-    matCards.innerHTML = filtered.length ? filtered.map(m => {
+    matCards.innerHTML = pageItems.length ? pageItems.map(m => {
       const sp = supById(m.supId);
       const costPerBase = money(perBase(m));
       const chk = selectedMats.has(m.id);
@@ -3585,6 +3661,7 @@ function renderMatList() {
           <div style="flex:1; min-width:0;" onclick="editMat('${m.id}')">
             <div class="item-card-title">${esc(m.name)}</div>
             <div class="item-card-sub">${m.qty} ${m.unit}${m.sku ? ' · ' + esc(m.sku) : ''}${sp ? ' · ' + esc(sp.name) : ''}</div>
+            ${m.itemType ? `<div style="margin-top:4px;">${matTypeBadge(m)}</div>` : ''}
           </div>
           <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;" onclick="editMat('${m.id}')">
             ${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : ''}
@@ -3604,6 +3681,7 @@ function renderMatList() {
     }).join('') : '<p style="color:var(--color-text-muted);text-align:center;padding:24px 0;">ไม่พบข้อมูลวัตถุดิบ</p>';
     renderIcons(matCards);
   }
+  renderPagerEl('matPager', total, MAT_PAGE_SIZE, matPage, 'gotoMatPage');
 }
 
 // ============================================================
@@ -3612,6 +3690,18 @@ function renderMatList() {
 const recById = id => recipes.find(r => r.id === id);
 let recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
 let editRecipeId = null;
+let recTypeFilter = '';        // '' ทั้งหมด · 'MAIN' สินค้าขาย · 'RAW' ของกลาง/ซ้อนสูตร
+let recPage = 1;
+const REC_PAGE_SIZE = 20;
+function setRecTypeFilter(v) { recTypeFilter = (recTypeFilter === v ? '' : v); recPage = 1; renderRecipeList(); }
+function gotoRecPage(p) { recPage = p; renderRecipeList(); const w = document.querySelector('#recipesPage .lst-desktop-wrap'); if (w) w.scrollTop = 0; }
+function renderRecTypeChips() {
+  const box = $('recTypeChips'); if (!box) return;
+  const mainN = recipes.filter(r => !r.isRaw).length, rawN = recipes.filter(r => r.isRaw).length;
+  box.innerHTML = filterChip("setRecTypeFilter('')", 'ทั้งหมด', recipes.length, recTypeFilter === '')
+    + filterChip("setRecTypeFilter('MAIN')", 'สินค้าขาย', mainN, recTypeFilter === 'MAIN')
+    + filterChip("setRecTypeFilter('RAW')", 'ของกลาง · ซ้อนสูตร', rawN, recTypeFilter === 'RAW');
+}
 let recipeOptGroups = []; // [{ label, choices: string, required }]
 
 function addRecipeIng() {
@@ -3872,7 +3962,19 @@ function cloneRecipe(id) {
 }
 
 function renderRecipeList() {
-  $('recipeList').innerHTML = recipes.map(r => {
+  renderRecTypeChips();
+  const q = ($('recipeSearch') ? $('recipeSearch').value : '').trim().toLowerCase();
+  const filtered = recipes.filter(r =>
+    (!q || r.name.toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q) || (r.category || '').toLowerCase().includes(q)) &&
+    (!recTypeFilter || (recTypeFilter === 'RAW' ? r.isRaw : !r.isRaw))
+  );
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / REC_PAGE_SIZE));
+  if (recPage > pages) recPage = pages;
+  if (recPage < 1) recPage = 1;
+  const pageItems = filtered.slice((recPage - 1) * REC_PAGE_SIZE, recPage * REC_PAGE_SIZE);
+
+  $('recipeList').innerHTML = pageItems.map(r => {
     const cost = recipeCost(r.items) / (r.batchYield || 1);
     const chk = selectedRecs.has(r.id);
     return `<tr class="${chk ? 'row-selected' : ''}">
@@ -3892,13 +3994,13 @@ function renderRecipeList() {
         <button class="btn btn-danger btn-sm" onclick="delRecipe('${r.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="color:#999; text-align:center;">ยังไม่มีสูตรถูกสร้างขึ้น</td></tr>';
+  }).join('') || `<tr><td colspan="7" style="color:#999; text-align:center;">${total ? 'หน้านี้ว่าง' : 'ยังไม่มีสูตรถูกสร้างขึ้น'}</td></tr>`;
   updateRecBulkBar();
 
   // Mobile card view
   const rcCards = $('recipeListCards');
   if (rcCards) {
-    rcCards.innerHTML = recipes.length ? recipes.map(r => {
+    rcCards.innerHTML = pageItems.length ? pageItems.map(r => {
       const cost = recipeCost(r.items) / (r.batchYield || 1);
       const profit = r.sell - cost;
       const margin = r.sell > 0 ? Math.round(profit / r.sell * 100) : 0;
@@ -3929,6 +4031,7 @@ function renderRecipeList() {
     }).join('') : '<p style="color:var(--color-text-muted);text-align:center;padding:24px 0;">ยังไม่มีสูตร</p>';
     renderIcons(rcCards);
   }
+  renderPagerEl('recipePager', total, REC_PAGE_SIZE, recPage, 'gotoRecPage');
 
   const _rawRecs = recipes.filter(r => r.isRaw), _mainRecs = recipes.filter(r => !r.isRaw);
   $('prodRecipe').innerHTML =
