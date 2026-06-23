@@ -159,6 +159,43 @@ router.post('/pos/sell', async (req, res) => {
         results.push({ type: tag, ref_id: rec.id, before, after });
       };
 
+      // M2: effective BOM ฝั่ง server จากสูตร + options (mirror resolveLineBOM: RECIPE_VARIANT/REPLACE/ADD, ข้าม is_metadata_only)
+      const buildEffectiveBom = async (recipeId, chosenOptions) => {
+        const opts = Array.isArray(chosenOptions) ? chosenOptions.filter((o) => o && o.choice_id) : [];
+        let choices = [];
+        if (opts.length) {
+          const ids = opts.map((o) => o.choice_id);
+          const qById = {}; opts.forEach((o) => { qById[o.choice_id] = Number(o.qty) || 1; });
+          const cr = (await c.query('select id, effect_type, target_role, variant_recipe_id, is_metadata_only from option_choices where id = any($1::uuid[])', [ids])).rows;
+          const lr = (await c.query('select choice_id, material_id, amount from option_choice_links where choice_id = any($1::uuid[])', [ids])).rows;
+          const byChoice = {}; lr.forEach((l) => { (byChoice[l.choice_id] = byChoice[l.choice_id] || []).push(l); });
+          choices = cr.map((x) => ({ ...x, qty: qById[x.id] || 1, links: byChoice[x.id] || [] })).filter((x) => !x.is_metadata_only);
+        }
+        const variant = choices.find((x) => x.effect_type === 'RECIPE_VARIANT' && x.variant_recipe_id);
+        const baseId = variant ? variant.variant_recipe_id : recipeId;
+        const items = (await c.query('select material_id, sub_recipe_id, amount, role from recipe_items where recipe_id=$1', [baseId])).rows;
+        const bom = new Map(); const subs = []; const roleIndex = new Map();
+        for (const it of items) {
+          if (it.sub_recipe_id) { subs.push({ sub_recipe_id: it.sub_recipe_id, amount: Number(it.amount) || 0 }); continue; }
+          if (!it.material_id) continue;
+          const e = bom.get(it.material_id) || { amount: 0 };
+          e.amount += Number(it.amount) || 0; bom.set(it.material_id, e);
+          if (it.role) roleIndex.set(it.role, it.material_id);
+        }
+        for (const ch of choices) { // REPLACE
+          if (ch.effect_type !== 'REPLACE' || !ch.target_role) continue;
+          const oldId = roleIndex.get(ch.target_role);
+          if (oldId) { bom.delete(oldId); roleIndex.delete(ch.target_role); }
+          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += Number(l.amount) || 0; bom.set(l.material_id, e); roleIndex.set(ch.target_role, l.material_id); }
+        }
+        for (const ch of choices) { // ADD
+          if (ch.effect_type !== 'ADD') continue;
+          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += (Number(l.amount) || 0) * (ch.qty || 1); bom.set(l.material_id, e); }
+        }
+        for (const [k, v] of bom) { if (v.amount <= 0) bom.delete(k); }
+        return { bom, subs };
+      };
+
       for (const ln of (lines || [])) {
         const qty = Number(ln.qty) || 0;
         if (qty <= 0) continue;
@@ -169,16 +206,16 @@ router.post('/pos/sell', async (req, res) => {
           const rec = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [ln.ref_id, req.shopId])).rows[0];
           if (!rec) continue;
           if (make_to_order) {
-            const items = (await c.query('select material_id, sub_recipe_id, amount from recipe_items where recipe_id=$1', [ln.ref_id])).rows;
-            for (const it of items) {
-              const amt = (Number(it.amount) || 0) * qty;
-              if (amt <= 0) continue;
-              if (it.sub_recipe_id) {
-                const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [it.sub_recipe_id, req.shopId])).rows[0];
-                if (sub) await deductRecipeFg(sub, amt, 'recipe_use', 'sub_recipe');
-              } else if (it.material_id) {
-                await deductMaterial(it.material_id, amt, 'recipe_use');
-              }
+            // M2: ขยาย BOM ตาม options (ถ้าไม่มี chosen_options = สูตรปกติ) แล้วตัดสต๊อก
+            const { bom, subs } = await buildEffectiveBom(ln.ref_id, ln.chosen_options);
+            for (const [matId, entry] of bom) {
+              if (entry.amount * qty <= 0) continue;
+              await deductMaterial(matId, entry.amount * qty, 'recipe_use');
+            }
+            for (const s of subs) {
+              if (s.amount * qty <= 0) continue;
+              const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [s.sub_recipe_id, req.shopId])).rows[0];
+              if (sub) await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
             }
           } else {
             await deductRecipeFg(rec, qty, 'on_sale', 'recipe_fg');
