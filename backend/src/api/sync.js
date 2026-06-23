@@ -79,7 +79,7 @@ router.post('/sync', async (req, res) => {
       }
 
       await upsertRows(client, 'expenses',
-        ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note', 'kind'],
+        ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note', 'kind', 'slip_data'],
         withShop(b.expenses || []), 'id');
 
       await upsertRows(client, 'recurring_expenses',

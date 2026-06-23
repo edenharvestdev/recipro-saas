@@ -1273,6 +1273,17 @@
         <label>หมายเหตุ</label>
         <textarea id="expNote" rows="2" placeholder="รายละเอียดเพิ่มเติม..."></textarea>
       </div>
+      <div class="field">
+        <label>แนบสลิป/ใบเสร็จ <span style="color:var(--color-text-muted);font-size:11px;">— ไว้รวมยื่นภาษี (ไม่บังคับ)</span></label>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div id="expSlipPreview" style="width:72px; height:72px; border-radius:12px; border:2px dashed var(--border-soft); background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="$('expSlipInput').click()"></div>
+          <div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="$('expSlipInput').click()"><span class="ico" data-icon="image"></span> แนบสลิป</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="expSlipClearBtn" onclick="clearExpSlip()" style="display:none; margin-left:4px; color:var(--color-danger,#e53e3e);">ลบ</button>
+          </div>
+        </div>
+        <input type="file" id="expSlipInput" accept="image/*" style="display:none;" onchange="handleExpSlipUpload(event)">
+      </div>
     </div>
     <div class="drawer-footer">
       <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
@@ -2562,7 +2573,8 @@ function applyBootstrapData(data) {
     expenses = (data.expenses || []).map(e => ({
       id: e.id, date: (e.expense_date || '').slice(0, 10), category: e.category || '',
       description: e.description, amount: Number(e.amount),
-      payType: e.payment_type || 'cash', note: e.note || '', kind: e.kind || 'expense'
+      payType: e.payment_type || 'cash', note: e.note || '', kind: e.kind || 'expense',
+      slipData: e.slip_data || ''
     }));
     recurringExpenses = (data.recurring_expenses || []).map(r => ({
       id: r.id, name: r.name || '', category: r.category || '',
@@ -2800,7 +2812,8 @@ async function syncToSupabase() {
     expenses: expenses.map(e => ({
       id: e.id, expense_date: e.date, category: e.category || '',
       description: e.description, amount: e.amount,
-      payment_type: e.payType || 'cash', note: e.note || '', kind: e.kind || 'expense'
+      payment_type: e.payType || 'cash', note: e.note || '', kind: e.kind || 'expense',
+      slip_data: e.slipData || null
     })),
     recurring_expenses: recurringExpenses.map(t => ({
       id: t.id, name: t.name, category: t.category || null,
@@ -6984,6 +6997,32 @@ function renderExpensePage() {
   renderIcons($('expensePage'));
 }
 
+// A3: แนบสลิป/ใบเสร็จต่อรายจ่าย (mirror image pattern)
+window._expSlipData = '';
+function setExpSlipPreview(data) {
+  window._expSlipData = data || '';
+  const preview = $('expSlipPreview'); const clearBtn = $('expSlipClearBtn');
+  if (!preview) return;
+  if (data) {
+    preview.innerHTML = `<img src="${data}" alt="สลิป" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    preview.innerHTML = `<span class="ico" data-icon="receipt" style="color:var(--color-text-muted);font-size:22px;"></span>`;
+    renderIcons(preview);
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+function handleExpSlipUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { ui.toast('ไฟล์ใหญ่เกิน 2MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = ev => setExpSlipPreview(ev.target.result);
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function clearExpSlip() { setExpSlipPreview(''); }
+
 function openExpenseForm(id, presetKind) {
   editExpenseId = id || null;
   const e = id ? expenses.find(x => x.id === id) : null;
@@ -6995,6 +7034,7 @@ function openExpenseForm(id, presetKind) {
   $('expPayType').value = e ? (e.payType || 'cash') : 'cash';
   $('expCategory').value = e ? (e.category || '') : '';
   $('expNote').value = e ? (e.note || '') : '';
+  setExpSlipPreview(e ? (e.slipData || '') : '');
   updateExpFormType();
   openDrawer('expenseDrawer');
 }
@@ -7020,7 +7060,8 @@ function saveExpense() {
     amount,
     payType: $('expPayType').value || 'cash',
     category: $('expCategory').value.trim(),
-    note: $('expNote').value.trim()
+    note: $('expNote').value.trim(),
+    slipData: window._expSlipData || ''
   };
   if (editExpenseId) {
     const idx = expenses.findIndex(e => e.id === editExpenseId);
