@@ -1445,16 +1445,13 @@
         </div>
         <div id="matCostPreview" style="font-size:12px;color:var(--color-secondary);min-height:16px;"></div>
       </div>
+      <!-- ประเภทวัตถุดิบ (RAW/Main) รวมเข้า "หมวดสินค้า" แล้ว — ซ่อนไว้ ระบบเดาให้อัตโนมัติจากหมวด -->
+      <select id="mSaleType" style="display:none;">
+        <option value="INGREDIENT_ONLY">INGREDIENT_ONLY</option>
+        <option value="SELLABLE">SELLABLE</option>
+      </select>
       <div class="field" style="margin-bottom:12px;">
-        <label>ประเภทวัตถุดิบ</label>
-        <select id="mSaleType" onchange="toggleSaleFields()">
-          <option value="INGREDIENT_ONLY">RAW — วัตถุดิบล้วน (ใช้ในสูตร · ห้ามขาย)</option>
-          <option value="SELLABLE">Main — ขายได้ + เป็นวัตถุดิบ (เข้า POS ได้)</option>
-        </select>
-        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW จะไม่แสดงในหน้าขาย POS เด็ดขาด</p>
-      </div>
-      <div class="field" style="margin-bottom:12px;">
-        <label>หมวดสินค้า <span style="color:var(--color-text-muted);font-size:11px;">— มีผลต่อการตัดสต๊อก (เลือกภายหลังได้)</span></label>
+        <label><b>หมวดสินค้า</b> <span style="color:var(--color-text-muted);font-size:11px;">— เลือกอันเดียวพอ คุมทั้งการขาย + การตัดสต๊อก</span></label>
         <select id="mItemType" onchange="updateItemTypeHint()">
           <option value="">— ยังไม่ระบุ —</option>
         </select>
@@ -1482,9 +1479,10 @@
             <input id="mSalePrice2" type="number" step="any" placeholder="(เว้นว่างได้)">
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
-          <input type="checkbox" id="mShowInPos" style="width:auto;margin:0;"> แสดงในหน้าขาย (POS)
+        <label style="display:none;">
+          <input type="checkbox" id="mShowInPos" checked style="width:auto;margin:0;"> แสดงในหน้าขาย (POS)
         </label>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:0;">หมวด "ของขาย" จะแสดงในหน้าขาย POS อัตโนมัติ</p>
       </div>
       <div class="field" style="margin-bottom: 12px;">
         <label>ลิงก์สั่งซื้อ (Shopee/Lazada)</label>
@@ -3229,7 +3227,7 @@ function saveMat() {
   const saleType = $('mSaleType').value || 'INGREDIENT_ONLY';
   const isMain = saleType === 'SELLABLE';
   const sellPrice = isMain ? (+$('mSellPrice').value || 0) : 0;   // RAW ไม่มีราคาขาย
-  const showInPos = isMain && $('mShowInPos').checked;   // RAW เข้า POS ไม่ได้เด็ดขาด
+  const showInPos = isMain;   // หมวด "ของขาย (SALE)" = แสดงใน POS อัตโนมัติ
   const sp2 = $('mSalePrice2').value;
   const salePrice2 = (isMain && sp2 !== '') ? (+sp2 || 0) : null;
   const itemType = $('mItemType') ? $('mItemType').value : '';
@@ -3295,11 +3293,20 @@ function renderItemTypeOptions(selected) {
 // อธิบายพฤติกรรมตัดสต๊อกของหมวดที่เลือก (ภาษาคน)
 function updateItemTypeHint() {
   const sel = $('mItemType'), hint = $('mItemTypeHint');
-  if (!sel || !hint) return;
-  const c = itemCategories().find(x => x.code === sel.value);
-  if (!c) { hint.textContent = 'เลือกหมวดเพื่อให้ระบบตัดสต๊อกถูกต้อง (ไม่บังคับตอนนี้ — เลือกภายหลังได้)'; return; }
-  const when = { recipe_use:'เมื่อใช้ในสูตร', on_sale:'เมื่อขาย', daily_or_manual:'รายวัน/เบิกมือ', none:'' }[c.deduct_event] || '';
-  hint.textContent = c.is_stock_deducted ? `ตัดสต๊อก${when ? ' ' + when : ''}` : 'ไม่ตัดสต๊อก';
+  if (!sel) return;
+  const code = sel.value;
+  const isSale = code === 'SALE';
+  // "หมวดสินค้า" = ตัวคุมการขาย: SALE → ขายใน POS, หมวดอื่น → วัตถุดิบ (ไม่ขายตรง)
+  // ถ้ายัง "ไม่ระบุ" จะไม่ไปแก้สถานะขายเดิม (กันของเก่าที่ยังไม่จัดหมวดเปลี่ยนเอง)
+  const st = $('mSaleType');
+  if (st && code) st.value = isSale ? 'SELLABLE' : 'INGREDIENT_ONLY';
+  if (typeof toggleSaleFields === 'function') toggleSaleFields();
+  if (!hint) return;
+  const c = itemCategories().find(x => x.code === code);
+  if (!c) { hint.textContent = 'เลือกหมวดเพื่อให้ระบบจัดการขาย + ตัดสต๊อกให้ถูก (เลือกภายหลังได้)'; return; }
+  const when = { recipe_use: 'เมื่อใช้ในสูตร', on_sale: 'เมื่อขาย', daily_or_manual: 'รายวัน/เบิกมือ', none: '' }[c.deduct_event] || '';
+  const sale = isSale ? ' · ขายใน POS ได้' : '';
+  hint.textContent = (c.is_stock_deducted ? `ตัดสต๊อก${when ? ' ' + when : ''}` : 'ไม่ตัดสต๊อก') + sale;
 }
 
 function editMat(id) {
