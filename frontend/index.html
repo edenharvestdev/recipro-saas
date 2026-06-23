@@ -5137,37 +5137,62 @@ async function posCheckout() {
     })
   };
 
-  // ขายสินค้าที่มาจากวัตถุดิบ → ตัดสต๊อกวัตถุดิบตรง + audit (sale)
-  posCart.filter(it => it.matId).forEach(it => {
-    const m = matById(it.matId);
-    if (m) {
-      const oldVal = Number(m.stock) || 0;
-      m.stock = Math.max(0, oldVal - it.qty);
-      pushMovement({ kind: 'sale', refType: 'material', refId: m.id, name: m.name, unit: m.unit, old: oldVal, newVal: m.stock, note: 'ขาย ' + newBill.billNo });
-    }
-  });
+  // ปิด P3: ตัดสต๊อกผ่าน engine /api/pos/sell ก้อนเดียว (atomic + รู้หมวด: ASSET ไม่ตัด,
+  // ขยาย options/สูตรซ้อนฝั่ง server, log consumption_category) แล้วเอาผลกลับมาอัปเดต client
+  // ให้ตรง (กัน saveAll เขียนทับ) — มี fallback กลับวิธีเดิมถ้า server พลาด/mock (กันขายไม่ได้)
+  let serverDeducted = false;
+  if (!isMockMode) {
+    const lines = posCart.map(it => it.matId
+      ? { ref_type: 'material', ref_id: it.matId, qty: it.qty }
+      : {
+          ref_type: 'recipe', ref_id: it.recipeId, qty: it.qty,
+          chosen_options: (it.choices || []).map(c => ({ choice_id: c.choice && c.choice.id, qty: c.qty || 1 })).filter(x => x.choice_id)
+        });
+    try {
+      const res = await API.post('/api/pos/sell', { lines, bill_no: newBill.billNo, make_to_order: !!settings.makeToOrder });
+      if (res && Array.isArray(res.results)) {
+        res.results.forEach(rr => {
+          if (rr.after == null) return; // 'skip' (ASSET ไม่ตัด) ไม่มี after
+          if (rr.type === 'material') { const m = matById(rr.ref_id); if (m) m.stock = Number(rr.after); }
+          else if (rr.type === 'recipe_fg' || rr.type === 'sub_recipe') { const s = recById(rr.ref_id); if (s) s.fgStock = Number(rr.after); }
+        });
+        serverDeducted = true;
+      }
+    } catch (e) { serverDeducted = false; }
+  }
 
-  if (settings.makeToOrder) {
-    posCart.forEach(ci => {
-      const r = ci.matId ? null : recById(ci.recipeId);
-      if (!r) return;
-      const bomToUse = ci.effectiveBom?.length ? ci.effectiveBom : (r.items || []).map(ri => ({ matId: ri.matId, subId: ri.subId, amount: ri.amount }));
-      bomToUse.forEach(entry => {
-        if (entry.subId) {  // ส่วนผสมเป็น SOP → ตัดจากสต๊อกของกลาง (fgStock)
-          const s = recById(entry.subId);
-          if (s) s.fgStock = Math.max(0, (Number(s.fgStock) || 0) - entry.amount * ci.qty);
-        } else {
-          const mat = matById(entry.matId);
-          if (mat) mat.stock = Math.max(0, (Number(mat.stock) || 0) - entry.amount * ci.qty);
-        }
+  if (!serverDeducted) {
+    // FALLBACK: วิธีตัดสต๊อกเดิม (client-side) — ใช้เมื่อ server พลาด หรือโหมดจำลอง
+    posCart.filter(it => it.matId).forEach(it => {
+      const m = matById(it.matId);
+      if (m) {
+        const oldVal = Number(m.stock) || 0;
+        m.stock = Math.max(0, oldVal - it.qty);
+        pushMovement({ kind: 'sale', refType: 'material', refId: m.id, name: m.name, unit: m.unit, old: oldVal, newVal: m.stock, note: 'ขาย ' + newBill.billNo });
+      }
+    });
+    if (settings.makeToOrder) {
+      posCart.forEach(ci => {
+        const r = ci.matId ? null : recById(ci.recipeId);
+        if (!r) return;
+        const bomToUse = ci.effectiveBom?.length ? ci.effectiveBom : (r.items || []).map(ri => ({ matId: ri.matId, subId: ri.subId, amount: ri.amount }));
+        bomToUse.forEach(entry => {
+          if (entry.subId) {
+            const s = recById(entry.subId);
+            if (s) s.fgStock = Math.max(0, (Number(s.fgStock) || 0) - entry.amount * ci.qty);
+          } else {
+            const mat = matById(entry.matId);
+            if (mat) mat.stock = Math.max(0, (Number(mat.stock) || 0) - entry.amount * ci.qty);
+          }
+        });
       });
-    });
-  } else {
-    newBill.items.forEach(it => {
-      if (it.matId) return; // สินค้าจากวัตถุดิบหักไปแล้วด้านบน
-      const r = recById(it.recipeId);
-      if (r) r.fgStock = Math.max(0, (Number(r.fgStock) || 0) - it.qty);
-    });
+    } else {
+      newBill.items.forEach(it => {
+        if (it.matId) return;
+        const r = recById(it.recipeId);
+        if (r) r.fgStock = Math.max(0, (Number(r.fgStock) || 0) - it.qty);
+      });
+    }
   }
 
   bills.push(newBill);
