@@ -339,8 +339,10 @@
             <thead>
               <tr>
                 <th style="width:32px;"><input type="checkbox" id="matSelectAll" onchange="toggleSelectAllMats(this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></th>
+                <th style="width:44px; text-align:center;" title="ลำดับ (ต่อเนื่องข้ามหน้า)">#</th>
                 <th style="width:90px">รหัส (SKU)</th>
                 <th>ชื่อวัตถุดิบ / อุปกรณ์</th>
+                <th>หมวดสินค้า</th>
                 <th>หมวดหมู่</th>
                 <th class="r">ราคาซื้อ/หน่วย</th>
                 <th class="r">ราคาขาย/หน่วย</th>
@@ -3411,6 +3413,17 @@ function matTypeBadge(m) {
   const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : '#FAEEDA';
   return `<span style="display:inline-block;font-size:10px;padding:1px 8px;border-radius:999px;background:${bg};color:${col};margin-left:6px;">${esc(nm)}${nested ? ' · ซ้อนสูตร' : ''}</span>`;
 }
+// เซลล์คอลัมน์ "หมวดสินค้า" — ของที่ยังไม่จัดจะขึ้น "ยังไม่ระบุ" ให้เห็นชัด
+function matTypeCell(m) {
+  if (!m.itemType) return `<span style="display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;border:1px dashed var(--border-soft);color:var(--color-text-muted);white-space:nowrap;">ยังไม่ระบุ</span>`;
+  const c = itemCategories().find(x => x.code === m.itemType);
+  const nm = c ? c.name_th : m.itemType;
+  const nested = ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
+  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET';
+  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : '#854F0B';
+  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : '#FAEEDA';
+  return `<span style="display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:${bg};color:${col};white-space:nowrap;">${esc(nm)}${nested ? ' · ซ้อนสูตร' : ''}</span>`;
+}
 function matMatchesType(m) {
   if (!matTypeFilter) return true;
   if (matTypeFilter === 'NESTED') return ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
@@ -3626,14 +3639,17 @@ function renderMatList() {
   if (matPage < 1) matPage = 1;
   const pageItems = filtered.slice((matPage - 1) * MAT_PAGE_SIZE, matPage * MAT_PAGE_SIZE);
 
-  const matRows = pageItems.map(m => {
+  const startIdx = (matPage - 1) * MAT_PAGE_SIZE;
+  const matRows = pageItems.map((m, i) => {
     const sp = supById(m.supId);
     const costPerBase = money(perBase(m));
     const checked = selectedMats.has(m.id) ? 'checked' : '';
     return `<tr class="${selectedMats.has(m.id) ? 'row-selected' : ''}">
       <td><input type="checkbox" ${checked} onchange="toggleMatSelect('${m.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
+      <td style="text-align:center; font-size:12px; color:var(--color-text-muted);">${startIdx + i + 1}</td>
       <td style="font-family:monospace; font-size:12px; color:var(--color-text-muted);">${esc(m.sku || '—')}</td>
-      <td><b>${esc(m.name)}</b>${matTypeBadge(m)}<br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
+      <td><b>${esc(m.name)}</b><br><span style="font-size:11px; color:var(--color-text-muted);">${m.qty} ${m.unit}</span></td>
+      <td>${matTypeCell(m)}</td>
       <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
       <td class="r">${money(m.price)}</td>
       <td class="r" style="color:var(--green);">${m.sellPrice ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
@@ -3645,7 +3661,7 @@ function renderMatList() {
       </td>
     </tr>`;
   });
-  $('matList').innerHTML = matRows.join('') || `<tr><td colspan="9" style="color:#999; text-align:center;">${total ? 'หน้านี้ว่าง' : 'ไม่พบข้อมูลวัตถุดิบ'}</td></tr>`;
+  $('matList').innerHTML = matRows.join('') || `<tr><td colspan="11" style="color:#999; text-align:center;">${total ? 'หน้านี้ว่าง' : 'ไม่พบข้อมูลวัตถุดิบ'}</td></tr>`;
   updateMatBulkBar();
 
   // Mobile card view
@@ -3661,7 +3677,7 @@ function renderMatList() {
           <div style="flex:1; min-width:0;" onclick="editMat('${m.id}')">
             <div class="item-card-title">${esc(m.name)}</div>
             <div class="item-card-sub">${m.qty} ${m.unit}${m.sku ? ' · ' + esc(m.sku) : ''}${sp ? ' · ' + esc(sp.name) : ''}</div>
-            ${m.itemType ? `<div style="margin-top:4px;">${matTypeBadge(m)}</div>` : ''}
+            <div style="margin-top:4px;">${matTypeCell(m)}</div>
           </div>
           <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;" onclick="editMat('${m.id}')">
             ${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : ''}
