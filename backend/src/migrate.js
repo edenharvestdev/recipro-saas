@@ -24,6 +24,7 @@ const files = [
   '../db/schema-a2.sql',
   '../db/schema-a3.sql',
   '../db/schema-m3.sql',
+  '../db/schema-a4.sql',
   '../db/seed.sql',
 ];
 

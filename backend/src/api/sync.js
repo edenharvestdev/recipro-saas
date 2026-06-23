@@ -74,7 +74,7 @@ router.post('/sync', async (req, res) => {
         const s = { ...b.shop_settings, shop_id: shopId };
         if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled', 'use_delivery'],
           [s], 'shop_id');
       }
 

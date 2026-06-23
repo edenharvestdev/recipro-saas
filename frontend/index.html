@@ -2563,7 +2563,8 @@ function applyBootstrapData(data) {
       makeToOrder: sRow?.make_to_order || false,
       usePettyCash: sRow?.use_petty_cash || false,
       publicMenuToken: sRow?.public_menu_token || '',
-      publicMenuEnabled: sRow?.public_menu_enabled || false
+      publicMenuEnabled: sRow?.public_menu_enabled || false,
+      useDelivery: sRow?.use_delivery || false
     };
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
@@ -2853,7 +2854,8 @@ async function syncToSupabase() {
       categories: settings.categories || DEFAULT_CATEGORIES.slice(),
       make_to_order: settings.makeToOrder || false,
       use_petty_cash: settings.usePettyCash || false,
-      public_menu_enabled: settings.publicMenuEnabled || false
+      public_menu_enabled: settings.publicMenuEnabled || false,
+      use_delivery: settings.useDelivery || false
     },
     shop: { name: settings.shopName }
   };
@@ -7253,49 +7255,101 @@ function togglePettyCash(on) {
 // (โมเดล "ต่อวัน" ไม่คิดรายแก้ว · ใช้ expenses เดิม ไม่ต้อง migration)
 // ============================================================
 const DELIVERY_PLATFORMS = ['Grab', 'LINE MAN', 'Foodpanda', 'Robinhood', 'ShopeeFood', 'อื่นๆ'];
+let dlvLines = [];   // เมนูที่ขาย delivery วันนั้น (สำหรับตัดสต๊อก)
+function deliverySellable() {
+  const out = [];
+  (recipes || []).forEach(r => { if (!r.isRaw && Number(r.sell) > 0) out.push({ refType: 'recipe', id: r.id, name: r.name, price: Number(r.sell) || 0 }); });
+  (materials || []).forEach(m => { if (m.saleType === 'SELLABLE' || m.itemType === 'SALE') out.push({ refType: 'material', id: m.id, name: m.name, price: Number(m.sellPrice || m.price) || 0 }); });
+  return out;
+}
+function addDlvLine() {
+  const sel = $('dlvMenuSel'); if (!sel || !sel.value) return;
+  const [refType, id] = sel.value.split('|');
+  const item = deliverySellable().find(x => x.refType === refType && x.id === id);
+  if (!item) return;
+  const ex = dlvLines.find(l => l.refType === refType && l.id === id);
+  if (ex) ex.qty++; else dlvLines.push({ ...item, qty: 1 });
+  renderDeliveryReconcile();
+}
+function dlvLineQty(i, d) { if (dlvLines[i]) { dlvLines[i].qty = Math.max(1, dlvLines[i].qty + d); renderDeliveryReconcile(); } }
+function removeDlvLine(i) { dlvLines.splice(i, 1); renderDeliveryReconcile(); }
+function toggleDelivery(on) { settings.useDelivery = !!on; saveAll(); renderDeliveryReconcile(); }
+
 function renderDeliveryReconcile() {
   const el = $('deliverySection');
   if (!el) return;
+  if (!settings.useDelivery) {
+    el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);"><span class="ico" data-icon="truck"></span> ขายผ่าน Delivery (Grab/LINE MAN…)? เปิดเพื่อกระทบยอด + ตัดสต๊อก</span>
+      <button class="btn btn-primary btn-sm" onclick="toggleDelivery(true)">${icon('truck')} เปิดใช้</button></div>`;
+    renderIcons(el); return;
+  }
   const dlv = (expenses || []).filter(e => (e.note || '').startsWith('#dlv:'));
-  const incRows = dlv.filter(e => e.kind === 'income').slice(0, 6).map(e => {
-    const fee = dlv.find(x => x.kind === 'expense' && x.note === e.note);
-    const feeAmt = fee ? Number(fee.amount) : 0;
-    return `<div style="display:flex;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border-soft);">
-      <span style="flex:1;min-width:0;">${esc(e.description)} · ${e.date}</span>
-      <span>ยอด ฿${Number(e.amount).toLocaleString('th-TH')}</span>
-      <span style="color:#dc2626;">หัก ฿${feeAmt.toLocaleString('th-TH')}</span>
-      <span style="color:#16a34a;">เข้า ฿${(Number(e.amount)-feeAmt).toLocaleString('th-TH')}</span>
-    </div>`;
+  const incRows = dlv.filter(e => e.kind === 'income').slice(0, 5).map(e => {
+    const fee = dlv.find(x => x.kind === 'expense' && x.note === e.note); const feeAmt = fee ? Number(fee.amount) : 0;
+    return `<div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border-soft);">
+      <span style="flex:1;min-width:0;">${esc(e.description)} · ${e.date}</span><span>ยอด ฿${Number(e.amount).toLocaleString('th-TH')}</span>
+      <span style="color:#dc2626;">หัก ฿${feeAmt.toLocaleString('th-TH')}</span><span style="color:#16a34a;">เข้า ฿${(Number(e.amount)-feeAmt).toLocaleString('th-TH')}</span></div>`;
   }).join('');
   const opts = DELIVERY_PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
+  const menuOpts = '<option value="">+ เลือกเมนูที่ขาย…</option>' + deliverySellable().map(s => `<option value="${s.refType}|${s.id}">${esc(s.name)} (฿${s.price})</option>`).join('');
+  const lineRows = dlvLines.map((l, i) => `<div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border-soft);">
+      <span style="flex:1;min-width:0;">${esc(l.name)}</span>
+      <span style="display:flex;align-items:center;gap:4px;"><button class="btn btn-ghost btn-sm" style="padding:2px 8px;" onclick="dlvLineQty(${i},-1)">−</button>${l.qty}<button class="btn btn-ghost btn-sm" style="padding:2px 8px;" onclick="dlvLineQty(${i},1)">+</button></span>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 6px;color:var(--color-danger,#e53e3e);" onclick="removeDlvLine(${i})">${icon('trash-2')}</button></div>`).join('');
   el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
-    <h3 style="font-size:15px;margin:0 0 6px;"><span class="ico" data-icon="truck"></span> กระทบยอด Delivery (รายวัน)</h3>
-    <p style="font-size:11px;color:var(--color-text-muted);margin:0 0 8px;">กรอกยอดจาก platform → ระบบลง <b>รายรับ = ยอดขายรวม</b> + <b>ค่าธรรมเนียม = ยอดขาย − เงินเข้าจริง</b> ให้อัตโนมัติ (เห็นว่าโดนหักไปเท่าไร)</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;">
-      <div style="flex:1;min-width:110px;"><label style="font-size:11px;color:var(--color-text-muted);">Platform</label><select id="dlvPlatform" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">${opts}</select></div>
-      <div style="min-width:130px;"><label style="font-size:11px;color:var(--color-text-muted);">วันที่</label><input id="dlvDate" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
-      <div style="min-width:90px;"><label style="font-size:11px;color:var(--color-text-muted);">ยอดขายรวม</label><input id="dlvGross" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
-      <div style="min-width:90px;"><label style="font-size:11px;color:var(--color-text-muted);">เงินเข้าจริง</label><input id="dlvNet" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
-      <button class="btn btn-primary btn-sm" onclick="saveDeliveryPayout()">${icon('check')} บันทึก</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="truck"></span> กระทบยอด Delivery (รายวัน)</h3>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="toggleDelivery(false)">ปิด</button></div>
+    <p style="font-size:11px;color:var(--color-text-muted);margin:0 0 8px;">① กรอกยอดเงินจาก platform → ลงรายรับ+ค่าธรรมเนียม · ② เลือกเมนูที่ขาย → ตัดสต๊อก+ต้นทุน</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+      <div style="flex:1;min-width:100px;"><label style="font-size:11px;color:var(--color-text-muted);">Platform</label><select id="dlvPlatform" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">${opts}</select></div>
+      <div style="min-width:120px;"><label style="font-size:11px;color:var(--color-text-muted);">วันที่</label><input id="dlvDate" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+      <div style="min-width:85px;"><label style="font-size:11px;color:var(--color-text-muted);">ยอดขายรวม</label><input id="dlvGross" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+      <div style="min-width:85px;"><label style="font-size:11px;color:var(--color-text-muted);">เงินเข้าจริง</label><input id="dlvNet" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
     </div>
+    <div style="background:var(--surface-2);border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">เมนูที่ขายวันนี้ (ตัดสต๊อก) <span style="font-weight:400;color:var(--color-text-muted);">— ไม่บังคับ</span></div>
+      <div style="display:flex;gap:6px;"><select id="dlvMenuSel" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">${menuOpts}</select><button class="btn btn-ghost btn-sm" onclick="addDlvLine()">${icon('plus')} เพิ่ม</button></div>
+      ${lineRows ? `<div style="margin-top:8px;">${lineRows}</div>` : ''}
+    </div>
+    <button class="btn btn-primary btn-sm" style="width:100%;" onclick="saveDeliveryPayout()">${icon('check')} บันทึก (ลงเงิน${dlvLines.length?' + ตัดสต๊อก':''})</button>
     ${incRows ? `<div style="margin-top:10px;">${incRows}</div>` : ''}
   </div>`;
   renderIcons(el);
 }
-function saveDeliveryPayout() {
+async function saveDeliveryPayout() {
   const platform = $('dlvPlatform') ? $('dlvPlatform').value : '';
   const date = ($('dlvDate') && $('dlvDate').value) || new Date().toISOString().slice(0, 10);
   const gross = parseFloat($('dlvGross') && $('dlvGross').value) || 0;
   const net = parseFloat($('dlvNet') && $('dlvNet').value) || 0;
-  if (gross <= 0) { ui.toast('ใส่ยอดขายรวม'); return; }
-  if (net > gross) { ui.toast('เงินเข้าจริงมากกว่ายอดขาย? ตรวจอีกที'); return; }
-  const tag = '#dlv:' + platform + ':' + date;
-  const fee = Math.max(0, gross - net);
-  expenses.unshift({ id: uid(), kind: 'income', date, description: platform + ' (delivery)', amount: gross, payType: 'transfer', category: 'รายรับ delivery', note: tag });
-  if (fee > 0) expenses.unshift({ id: uid(), kind: 'expense', date, description: 'ค่าธรรมเนียม ' + platform, amount: fee, payType: 'transfer', category: 'ค่าธรรมเนียม delivery', note: tag });
+  if (gross <= 0 && !dlvLines.length) { ui.toast('ใส่ยอดขาย หรือเลือกเมนู'); return; }
+  if (gross > 0 && net > gross) { ui.toast('เงินเข้าจริงมากกว่ายอดขาย? ตรวจอีกที'); return; }
+
+  // ② ตัดสต๊อกตามเมนูที่ขาย (ผ่าน engine เดียวกับ POS)
+  if (dlvLines.length && !isMockMode) {
+    const lines = dlvLines.map(l => ({ ref_type: l.refType, ref_id: l.id, qty: l.qty }));
+    try {
+      const res = await API.post('/api/pos/sell', { lines, bill_no: 'DLV ' + platform + ' ' + date, make_to_order: true });
+      if (res && Array.isArray(res.results)) res.results.forEach(rr => {
+        if (rr.after == null) return;
+        if (rr.type === 'material') { const m = matById(rr.ref_id); if (m) m.stock = Number(rr.after); }
+        else if (rr.type === 'recipe_fg' || rr.type === 'sub_recipe') { const s = recById(rr.ref_id); if (s) s.fgStock = Number(rr.after); }
+      });
+    } catch (e) { ui.toast('ตัดสต๊อกไม่สำเร็จ (ลงเงินให้แล้ว ตรวจสต๊อกอีกที)'); }
+  }
+
+  // ① ลงเงิน: รายรับ(gross) + ค่าธรรมเนียม(gross-net)
+  if (gross > 0) {
+    const tag = '#dlv:' + platform + ':' + date; const fee = Math.max(0, gross - net);
+    expenses.unshift({ id: uid(), kind: 'income', date, description: platform + ' (delivery)', amount: gross, payType: 'transfer', category: 'รายรับ delivery', note: tag });
+    if (fee > 0) expenses.unshift({ id: uid(), kind: 'expense', date, description: 'ค่าธรรมเนียม ' + platform, amount: fee, payType: 'transfer', category: 'ค่าธรรมเนียม delivery', note: tag });
+  }
+  const cut = dlvLines.length;
+  dlvLines = [];
   saveAll();
   renderExpensePage();
-  ui.toast(`บันทึก ${platform}: รายรับ ฿${gross.toLocaleString('th-TH')} · หัก ฿${fee.toLocaleString('th-TH')} · เข้าจริง ฿${net.toLocaleString('th-TH')}`);
+  ui.toast(`บันทึก ${platform}${gross>0?` · รายรับ ฿${gross.toLocaleString('th-TH')} หัก ฿${Math.max(0,gross-net).toLocaleString('th-TH')}`:''}${cut?` · ตัดสต๊อก ${cut} เมนู`:''}`);
 }
 
 // ============================================================
