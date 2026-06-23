@@ -1124,6 +1124,7 @@
         </div>
       </div>
 
+      <div id="deliverySection"></div>
       <div id="pettyCashSection"></div>
       <div id="recurringSection"></div>
 
@@ -6968,6 +6969,7 @@ function renderExpensePage() {
   const { from, to } = getExpDateRange();
   const catFilter = $('expCatFilter')?.value || '';
   const typeFilter = $('expTypeFilter')?.value || '';
+  if (typeof renderDeliveryReconcile === 'function') renderDeliveryReconcile();
   if (typeof renderPettyCash === 'function') renderPettyCash();
   if (typeof renderRecurringSection === 'function') renderRecurringSection();
 
@@ -7233,6 +7235,56 @@ function togglePettyCash(on) {
   settings.usePettyCash = !!on;
   saveAll();
   renderPettyCash();
+}
+
+// ============================================================
+// A4-A5: กระทบยอด Delivery รายวัน — gross/net → ลงรายรับ(gross) + ค่าธรรมเนียม(gross-net)
+// (โมเดล "ต่อวัน" ไม่คิดรายแก้ว · ใช้ expenses เดิม ไม่ต้อง migration)
+// ============================================================
+const DELIVERY_PLATFORMS = ['Grab', 'LINE MAN', 'Foodpanda', 'Robinhood', 'ShopeeFood', 'อื่นๆ'];
+function renderDeliveryReconcile() {
+  const el = $('deliverySection');
+  if (!el) return;
+  const dlv = (expenses || []).filter(e => (e.note || '').startsWith('#dlv:'));
+  const incRows = dlv.filter(e => e.kind === 'income').slice(0, 6).map(e => {
+    const fee = dlv.find(x => x.kind === 'expense' && x.note === e.note);
+    const feeAmt = fee ? Number(fee.amount) : 0;
+    return `<div style="display:flex;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border-soft);">
+      <span style="flex:1;min-width:0;">${esc(e.description)} · ${e.date}</span>
+      <span>ยอด ฿${Number(e.amount).toLocaleString('th-TH')}</span>
+      <span style="color:#dc2626;">หัก ฿${feeAmt.toLocaleString('th-TH')}</span>
+      <span style="color:#16a34a;">เข้า ฿${(Number(e.amount)-feeAmt).toLocaleString('th-TH')}</span>
+    </div>`;
+  }).join('');
+  const opts = DELIVERY_PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
+  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+    <h3 style="font-size:15px;margin:0 0 6px;"><span class="ico" data-icon="truck"></span> กระทบยอด Delivery (รายวัน)</h3>
+    <p style="font-size:11px;color:var(--color-text-muted);margin:0 0 8px;">กรอกยอดจาก platform → ระบบลง <b>รายรับ = ยอดขายรวม</b> + <b>ค่าธรรมเนียม = ยอดขาย − เงินเข้าจริง</b> ให้อัตโนมัติ (เห็นว่าโดนหักไปเท่าไร)</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;">
+      <div style="flex:1;min-width:110px;"><label style="font-size:11px;color:var(--color-text-muted);">Platform</label><select id="dlvPlatform" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">${opts}</select></div>
+      <div style="min-width:130px;"><label style="font-size:11px;color:var(--color-text-muted);">วันที่</label><input id="dlvDate" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+      <div style="min-width:90px;"><label style="font-size:11px;color:var(--color-text-muted);">ยอดขายรวม</label><input id="dlvGross" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+      <div style="min-width:90px;"><label style="font-size:11px;color:var(--color-text-muted);">เงินเข้าจริง</label><input id="dlvNet" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+      <button class="btn btn-primary btn-sm" onclick="saveDeliveryPayout()">${icon('check')} บันทึก</button>
+    </div>
+    ${incRows ? `<div style="margin-top:10px;">${incRows}</div>` : ''}
+  </div>`;
+  renderIcons(el);
+}
+function saveDeliveryPayout() {
+  const platform = $('dlvPlatform') ? $('dlvPlatform').value : '';
+  const date = ($('dlvDate') && $('dlvDate').value) || new Date().toISOString().slice(0, 10);
+  const gross = parseFloat($('dlvGross') && $('dlvGross').value) || 0;
+  const net = parseFloat($('dlvNet') && $('dlvNet').value) || 0;
+  if (gross <= 0) { ui.toast('ใส่ยอดขายรวม'); return; }
+  if (net > gross) { ui.toast('เงินเข้าจริงมากกว่ายอดขาย? ตรวจอีกที'); return; }
+  const tag = '#dlv:' + platform + ':' + date;
+  const fee = Math.max(0, gross - net);
+  expenses.unshift({ id: uid(), kind: 'income', date, description: platform + ' (delivery)', amount: gross, payType: 'transfer', category: 'รายรับ delivery', note: tag });
+  if (fee > 0) expenses.unshift({ id: uid(), kind: 'expense', date, description: 'ค่าธรรมเนียม ' + platform, amount: fee, payType: 'transfer', category: 'ค่าธรรมเนียม delivery', note: tag });
+  saveAll();
+  renderExpensePage();
+  ui.toast(`บันทึก ${platform}: รายรับ ฿${gross.toLocaleString('th-TH')} · หัก ฿${fee.toLocaleString('th-TH')} · เข้าจริง ฿${net.toLocaleString('th-TH')}`);
 }
 
 // ============================================================
