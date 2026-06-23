@@ -304,7 +304,10 @@
       <div class="glass-card" id="cardMat">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
           <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="carrot"></span> รายการวัตถุดิบ</h2>
-          <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="printPriceTags()"><span class="ico" data-icon="printer"></span> ป้ายราคา</button>
+            <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
+          </div>
         </div>
 
         <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
@@ -2935,6 +2938,46 @@ function openMatForm() {
 function toggleSaleFields() {
   const sellable = $('mSaleType') && $('mSaleType').value === 'SELLABLE';
   if ($('mSaleFields')) $('mSaleFields').style.display = sellable ? 'block' : 'none';
+}
+
+// ============================================================
+// P4: ปริ้นป้ายราคาติดสินค้า (price tags) — สินค้าที่ขาย (วัตถุดิบ Main + เมนู)
+// ============================================================
+function collectPriceTagItems() {
+  const tags = [];
+  (materials || []).forEach(m => {
+    if (m.saleType === 'SELLABLE') tags.push({ name: m.name, price: m.sellPrice || m.price || 0, code: m.sku || '' });
+  });
+  (recipes || []).forEach(r => {
+    if (!r.isRaw && Number(r.sell) > 0) tags.push({ name: r.name, price: r.sell, code: r.code || '' });
+  });
+  return tags;
+}
+function printPriceTags() {
+  const items = collectPriceTagItems();
+  if (!items.length) { ui.alert('ยังไม่มีสินค้าที่ตั้งราคาขาย — ตั้งวัตถุดิบเป็น Main + ใส่ราคา หรือสร้างเมนูก่อน', { icon: 'tag' }); return; }
+  const shop = (settings && settings.shopName) || 'Recipro';
+  const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const cards = items.map(it => `
+    <div class="tag">
+      <div class="tag-shop">${e(shop)}</div>
+      <div class="tag-name">${e(it.name)}</div>
+      <div class="tag-price">฿${Number(it.price).toLocaleString('th-TH')}</div>
+      ${it.code ? `<div class="tag-code">${e(it.code)}</div>` : ''}
+    </div>`).join('');
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ป้ายราคา</title>'
+    + '<style>*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+    + 'body{padding:8mm}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}'
+    + '.tag{border:1px dashed #999;border-radius:6px;padding:8px;text-align:center;height:32mm;'
+    + 'display:flex;flex-direction:column;justify-content:center;page-break-inside:avoid}'
+    + '.tag-shop{font-size:9px;color:#666}.tag-name{font-size:13px;font-weight:600;margin:3px 0;line-height:1.15}'
+    + '.tag-price{font-size:22px;font-weight:800}.tag-code{font-size:9px;color:#999;margin-top:2px}'
+    + '@media print{body{padding:6mm}.tag{border-color:#bbb}}</style></head>'
+    + '<body><div class="grid">' + cards + '</div>'
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},250)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank');
+  if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
+  w.document.write(html); w.document.close();
 }
 
 // เปิดฟอร์ม "เพิ่มแหล่งซื้อ" แบบล้างค่าใหม่
