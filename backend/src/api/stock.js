@@ -270,7 +270,7 @@ router.get('/alerts/reorder', async (req, res) => {
          left join suppliers s on s.id = m.supplier_id
          left join item_categories ic on ic.code = m.item_type
         where m.shop_id = $1
-          and coalesce(ic.is_stock_deducted, true) = true
+          and (coalesce(ic.is_stock_deducted, true) = true or m.item_type = 'SALE')
           and coalesce(m.low_stock, 0) > 0
           and coalesce(m.stock, 0) <= m.low_stock
         order by (coalesce(m.stock,0) - m.low_stock) asc`,
