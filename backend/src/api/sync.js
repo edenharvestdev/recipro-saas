@@ -49,8 +49,11 @@ router.post('/sync', async (req, res) => {
       if (recIds.length) {
         await client.query('delete from recipe_items where recipe_id = any($1::uuid[])', [recIds]);
         for (const it of (b.recipe_items || [])) {
+          // null-guard FK: ถ้าวัตถุดิบ/สูตรย่อยถูกลบไปแล้ว ให้ลงเป็น null แทน — กัน FK violation ทำทั้ง sync rollback
           await client.query(
-            'insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1, $2, $3, $4, $5)',
+            `insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id)
+             select $1, (select id from materials where id = $2), $3, $4, (select id from recipes where id = $5)
+             where exists (select 1 from recipes where id = $1)`,
             [it.recipe_id, it.material_id || null, it.amount, it.role || '', it.sub_recipe_id || null]
           );
         }
@@ -99,8 +102,8 @@ router.post('/sync', async (req, res) => {
       for (const c of (b.option_choices || [])) {
         await client.query(
           `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=$11,is_metadata_only=$12`,
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12)
+           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12`,
           [c.id, c.group_id, c.label, c.price_add ?? 0, c.effect_type || 'NONE',
            c.enabled ?? true, c.is_default ?? false, c.sort ?? 0, c.max_qty ?? 1,
            c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false]);
@@ -113,14 +116,23 @@ router.post('/sync', async (req, res) => {
           'delete from option_choice_links where choice_id in (select id from option_choices where group_id = any($1::uuid[]))',
           [groupIds]);
         for (const l of (b.option_choice_links || [])) {
+          // material_id เป็น NOT NULL — ถ้าวัตถุดิบ/choice ถูกลบแล้ว ข้ามแถวนี้ (กัน FK violation rollback ทั้ง sync)
           await client.query(
-            'insert into option_choice_links (id,choice_id,material_id,amount) values ($1,$2,$3,$4)',
+            `insert into option_choice_links (id,choice_id,material_id,amount)
+             select $1,$2,$3,$4
+             where exists (select 1 from materials where id=$3)
+               and exists (select 1 from option_choices where id=$2)`,
             [l.id, l.choice_id, l.material_id, l.amount]);
         }
         await client.query('delete from recipe_option_groups where group_id = any($1::uuid[])', [groupIds]);
         for (const rg of (b.recipe_option_groups || [])) {
+          // recipe_id/group_id เป็น NOT NULL — ถ้าสูตร/กลุ่มถูกลบแล้ว ข้ามแถวนี้ (กัน FK violation rollback ทั้ง sync)
           await client.query(
-            'insert into recipe_option_groups (recipe_id,group_id,sort) values ($1,$2,$3) on conflict do nothing',
+            `insert into recipe_option_groups (recipe_id,group_id,sort)
+             select $1,$2,$3
+             where exists (select 1 from recipes where id=$1)
+               and exists (select 1 from option_groups where id=$2)
+             on conflict do nothing`,
             [rg.recipe_id, rg.group_id, rg.sort ?? 0]);
         }
       }
