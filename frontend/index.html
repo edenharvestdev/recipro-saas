@@ -5631,12 +5631,13 @@ function renderDashboard() {
   const todaySales = sum(todayBills);
   const monthSales = sum(monthBills);
 
-  // calculate month cost & profit from recipe costs
+  // calculate month cost & profit — recipe lines use BOM cost, direct-sale material lines (resale) use purchase cost
   const monthCost = monthBills.reduce((s, b) => {
     return s + (b.items || []).reduce((cs, it) => {
-      const r = recById(it.recipeId);
-      const c = r ? recipeCost(r.items) / Math.max(r.batchYield || 1, 1) : 0;
-      return cs + c * it.qty;
+      let c = 0;
+      if (it.recipeId) { const r = recById(it.recipeId); c = r ? recipeCost(r.items) / Math.max(r.batchYield || 1, 1) : 0; }
+      else if (it.matId) { const m = matById(it.matId); c = m ? perBase(m) : 0; }
+      return cs + c * (it.qty || 0);
     }, 0);
   }, 0);
   const monthProfit = monthSales - monthCost;
