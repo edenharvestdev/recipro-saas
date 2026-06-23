@@ -1446,6 +1446,17 @@
         </select>
         <p id="mItemTypeHint" style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;"></p>
       </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label>รูปสินค้า (สำหรับ POS/เมนู) <span style="color:var(--color-text-muted);font-size:11px;">— ไม่บังคับ</span></label>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div id="mImgPreview" style="width:72px; height:72px; border-radius:12px; border:2px dashed var(--border-soft); background:var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="$('mImgInput').click()"></div>
+          <div>
+            <button class="btn btn-ghost btn-sm" type="button" onclick="$('mImgInput').click()"><span class="ico" data-icon="image"></span> เลือกรูป</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="mImgClearBtn" onclick="clearMatImg()" style="display:none; margin-left:4px; color:var(--color-danger,#e53e3e);">ลบภาพ</button>
+          </div>
+        </div>
+        <input type="file" id="mImgInput" accept="image/*" style="display:none;" onchange="handleMatImgUpload(event)">
+      </div>
       <div id="mSaleFields" style="display:none; background:var(--surface-2); border-radius:10px; padding:12px; margin-bottom:12px;">
         <div class="grid-2" style="margin-bottom:8px;">
           <div class="field" style="margin:0;">
@@ -2502,7 +2513,8 @@ function applyBootstrapData(data) {
       isConsumable: !!m.is_consumable,
       saleType: m.sale_type || 'INGREDIENT_ONLY', showInPos: !!m.show_in_pos,
       salePrice2: m.sale_price_2 != null ? Number(m.sale_price_2) : null,
-      itemType: m.item_type || ''
+      itemType: m.item_type || '',
+      imgData: m.img_data || ''
     }));
     const itemsGroup = data.recipe_items || [];
     recipes = (data.recipes || []).map(r => ({
@@ -2742,7 +2754,8 @@ async function syncToSupabase() {
       conv_qty: m.convQty || null, stock_unit: m.stockUnit || null,
       is_consumable: m.isConsumable || false,
       sale_type: m.saleType || 'INGREDIENT_ONLY', show_in_pos: m.showInPos || false, sale_price_2: m.salePrice2 || null,
-      item_type: m.itemType || null
+      item_type: m.itemType || null,
+      img_data: m.imgData || null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
@@ -2930,6 +2943,7 @@ function openMatForm() {
   if ($('matCostPreview')) $('matCostPreview').textContent = '';
   renderCatDatalist();
   renderItemTypeOptions('');
+  setMatImgPreview('');
   if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
   $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   openDrawer('matDrawer');
@@ -3184,6 +3198,7 @@ function saveMat() {
   const sp2 = $('mSalePrice2').value;
   const salePrice2 = (isMain && sp2 !== '') ? (+sp2 || 0) : null;
   const itemType = $('mItemType') ? $('mItemType').value : '';
+  const imgData = window._mImgData || '';
 
   if (!name) { alert('ระบุชื่อวัตถุดิบ'); return; }
 
@@ -3191,11 +3206,11 @@ function saveMat() {
   if (category && !settings.categories.includes(category)) settings.categories.push(category);
 
   if (editMatId) {
-    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2, itemType });
+    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2, itemType, imgData });
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2, itemType });
+    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2, itemType, imgData });
   }
 
   saveAll();
@@ -3272,6 +3287,7 @@ function editMat(id) {
   toggleSaleFields();
   renderCatDatalist();
   renderItemTypeOptions(m.itemType || '');
+  setMatImgPreview(m.imgData || '');
   updateMatCostPreview();
   $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
   openDrawer('matDrawer');
@@ -4639,8 +4655,9 @@ function renderPosGrid() {
     const oos = stock <= 0;
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
     const price = m.sellPrice || m.salePrice2 || 0;
-    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
-      <span class="ppc-opts-badge" style="background:var(--color-secondary);">สินค้า</span>
+    const imgHtml = m.imgData ? `<div class="ppc-img"><img src="${esc(m.imgData)}" alt="${esc(m.name)}"></div>` : '';
+    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}${m.imgData ? ' has-img' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
+      ${imgHtml}<span class="ppc-opts-badge" style="background:var(--color-secondary);">สินค้า</span>
       <div class="ppc-name">${esc(m.name)}</div>
       <div class="ppc-price">${money(price)}</div>
       <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${esc(m.unit || '')}`}</div>
@@ -6801,6 +6818,33 @@ function handleRecipeImgUpload(e) {
 function clearRecipeImg() {
   setRecipeImgPreview('');
 }
+
+// ---- M1: รูปสินค้า/วัตถุดิบ (สำหรับ POS) — mirror ของ recipe ----
+window._mImgData = '';
+function setMatImgPreview(data) {
+  window._mImgData = data || '';
+  const preview = $('mImgPreview');
+  const clearBtn = $('mImgClearBtn');
+  if (!preview) return;
+  if (data) {
+    preview.innerHTML = `<img src="${data}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+  } else {
+    preview.innerHTML = `<span class="ico" data-icon="image" style="color:var(--color-text-muted);font-size:24px;"></span>`;
+    renderIcons(preview);
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+function handleMatImgUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { ui.toast('ไฟล์ใหญ่เกิน 2MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = ev => setMatImgPreview(ev.target.result);
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function clearMatImg() { setMatImgPreview(''); }
 
 // ============================================================
 // EXPENSE MODULE

@@ -18,6 +18,7 @@ const files = [
   '../db/schema-sop.sql',
   '../db/schema-income.sql',
   '../db/schema-item-master.sql',
+  '../db/schema-m1.sql',
   '../db/seed.sql',
 ];
 
