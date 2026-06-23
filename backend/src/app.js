@@ -26,6 +26,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/auth', require('./auth/routes'));
 app.use('/webhooks', require('./webhooks/stripe'));   // POST /webhooks/stripe (raw body)
 app.use('/webhooks', require('./webhooks/omise'));
+app.use('/public', require('./api/public'));          // M3: เมนู/ออเดอร์สาธารณะ (ไม่ต้อง login)
 
 // /api/* — ต้องล็อกอิน + ผูกร้าน (tenant) ก่อนเสมอ
 const api = express.Router();
@@ -42,8 +43,10 @@ app.use('/api', api);
 // เสิร์ฟ frontend เป็น static + fallback
 const frontendDir = path.join(__dirname, '..', '..', 'frontend');
 app.use(express.static(frontendDir));
+// M3: หน้าเมนูสาธารณะสำหรับลูกค้า (เปิดจาก QR) — เสิร์ฟไฟล์แยก ไม่ใช่แอปหลัก
+app.get('/menu/:token', (req, res) => res.sendFile(path.join(frontendDir, 'menu.html')));
 app.get('*', (req, res, next) => {
-  if (/^\/(api|auth|webhooks)\b/.test(req.path)) return next();
+  if (/^\/(api|auth|webhooks|public)\b/.test(req.path)) return next();
   res.sendFile(path.join(frontendDir, 'index.html'));
 });
 

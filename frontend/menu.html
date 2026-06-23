@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>เมนูร้าน — สั่งออนไลน์</title>
+<style>
+  *{box-sizing:border-box;margin:0;font-family:'Sarabun','Segoe UI',system-ui,sans-serif}
+  body{background:#f6f6f7;color:#1a1a1a;padding-bottom:96px}
+  header{background:#fff;padding:16px;position:sticky;top:0;z-index:5;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+  header h1{font-size:20px} header .sub{font-size:12px;color:#777;margin-top:2px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:14px}
+  .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06);display:flex;flex-direction:column}
+  .card .img{height:110px;background:#eee center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:30px}
+  .card .b{padding:10px;flex:1;display:flex;flex-direction:column;gap:6px}
+  .card .nm{font-size:14px;font-weight:600;line-height:1.2}
+  .card .pr{font-size:16px;font-weight:800;color:#16a34a}
+  .add{margin-top:auto;border:none;background:#7c3aed;color:#fff;border-radius:10px;padding:8px;font-size:14px;font-weight:700;cursor:pointer}
+  .cat{padding:4px 14px 0;font-size:13px;font-weight:700;color:#7c3aed;grid-column:1/-1}
+  .cartbar{position:fixed;left:0;right:0;bottom:0;background:#fff;box-shadow:0 -2px 10px rgba(0,0,0,.1);padding:12px 16px;display:flex;gap:10px;align-items:center}
+  .cartbar b{flex:1;font-size:15px}
+  .cartbar button{border:none;background:#16a34a;color:#fff;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer}
+  .cartbar button:disabled{background:#ccc}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;z-index:10}
+  .modal.open{display:flex} .sheet{background:#fff;width:100%;max-height:85vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px}
+  .row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:14px}
+  .row .q{display:flex;align-items:center;gap:6px} .row .q button{width:28px;height:28px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:16px;cursor:pointer}
+  input,textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:15px;margin-top:8px}
+  .paybtn{width:100%;border:none;background:#7c3aed;color:#fff;border-radius:12px;padding:14px;font-size:16px;font-weight:800;margin-top:12px;cursor:pointer}
+  .done{text-align:center;padding:30px 16px} .done .qn{font-size:54px;font-weight:900;color:#7c3aed;margin:10px 0}
+  .muted{color:#888;font-size:13px}
+</style>
+</head>
+<body>
+<header><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div></header>
+<div class="grid" id="grid"></div>
+<div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
+
+<div class="modal" id="cartModal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+let MENU = [], CART = {};
+const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function load(){
+  try{
+    const r = await fetch('/public/menu/'+TOKEN);
+    if(!r.ok){ document.getElementById('shopName').textContent='ไม่พบเมนู หรือร้านปิดรับออนไลน์'; return; }
+    const d = await r.json();
+    document.getElementById('shopName').textContent = d.shop_name || 'เมนู';
+    MENU = d.items || [];
+    renderGrid();
+  }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; }
+}
+function renderGrid(){
+  const g = document.getElementById('grid'); let html=''; let lastCat=null;
+  MENU.forEach(it=>{
+    if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
+    const img = it.img ? `style="background-image:url('${esc(it.img)}')"` : '';
+    html+=`<div class="card"><div class="img" ${img}>${it.img?'':'🍽️'}</div><div class="b">
+      <div class="nm">${esc(it.name)}</div><div class="pr">${fmt(it.price)}</div>
+      <button class="add" onclick="addItem('${it.id}')">+ เพิ่ม</button></div></div>`;
+  });
+  g.innerHTML = html || '<p class="muted" style="grid-column:1/-1;text-align:center;padding:30px">ยังไม่มีเมนู</p>';
+}
+function addItem(id){ CART[id]=(CART[id]||0)+1; updateBar(); }
+function setQty(id,d){ CART[id]=Math.max(0,(CART[id]||0)+d); if(CART[id]===0) delete CART[id]; updateBar(); openCart(); }
+function cartTotal(){ return Object.entries(CART).reduce((s,[id,q])=>{ const it=MENU.find(x=>x.id===id); return s+(it?it.price*q:0); },0); }
+function cartCount(){ return Object.values(CART).reduce((a,b)=>a+b,0); }
+function updateBar(){
+  document.getElementById('cartSummary').textContent = `ตะกร้า ${cartCount()} รายการ · ${fmt(cartTotal())}`;
+  document.getElementById('cartBtn').disabled = cartCount()===0;
+}
+function openCart(){
+  const rows = Object.entries(CART).map(([id,q])=>{ const it=MENU.find(x=>x.id===id); if(!it) return '';
+    return `<div class="row"><span style="flex:1">${esc(it.name)}</span><span>${fmt(it.price*q)}</span>
+      <span class="q"><button onclick="setQty('${id}',-1)">−</button>${q}<button onclick="setQty('${id}',1)">+</button></span></div>`;
+  }).join('');
+  document.getElementById('sheet').innerHTML = `<h2 style="font-size:18px;margin-bottom:8px">ตะกร้าของคุณ</h2>${rows}
+    <div class="row" style="font-weight:800;border:none"><span style="flex:1">รวม</span><span>${fmt(cartTotal())}</span></div>
+    <input id="cName" placeholder="ชื่อผู้สั่ง"><input id="cPhone" placeholder="เบอร์โทร (ไม่บังคับ)">
+    <textarea id="cNote" rows="2" placeholder="หมายเหตุ เช่น หวานน้อย (ไม่บังคับ)"></textarea>
+    <button class="paybtn" onclick="submitOrder()">ยืนยันสั่ง · รับที่ร้าน</button>
+    <p class="muted" style="text-align:center;margin-top:8px">กดปิดด้านนอกเพื่อแก้ไขเพิ่ม</p>`;
+  document.getElementById('cartModal').classList.add('open');
+}
+document.getElementById('cartModal').onclick = e => { if(e.target.id==='cartModal') e.currentTarget.classList.remove('open'); };
+async function submitOrder(){
+  const items = Object.entries(CART).map(([id,q])=>{ const it=MENU.find(x=>x.id===id); return { id, type:it.type, name:it.name, price:it.price, qty:q }; });
+  const body = { customer_name: document.getElementById('cName').value, customer_phone: document.getElementById('cPhone').value, note: document.getElementById('cNote').value, items };
+  try{
+    const r = await fetch('/public/order/'+TOKEN, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if(!r.ok){ alert(d.error||'สั่งไม่สำเร็จ'); return; }
+    document.getElementById('sheet').innerHTML = `<div class="done"><div>สั่งสำเร็จ! 🎉</div>
+      <div class="qn">คิว ${d.queue_number}</div>
+      <div>เลขออเดอร์ ${esc(d.order_no)}</div><div style="margin:8px 0">ยอดรวม ${fmt(d.total)}</div>
+      <p class="muted">กรุณารอรับที่ร้าน · แจ้งหมายเลขคิวกับพนักงาน</p>
+      <button class="paybtn" onclick="location.reload()">สั่งเพิ่ม</button></div>`;
+    CART={}; updateBar();
+  }catch(e){ alert('สั่งไม่สำเร็จ ลองใหม่'); }
+}
+load();
+</script>
+</body>
+</html>

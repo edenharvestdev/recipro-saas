@@ -1124,6 +1124,7 @@
         </div>
       </div>
 
+      <div id="onlineMenuSection"></div>
       <div id="deliverySection"></div>
       <div id="pettyCashSection"></div>
       <div id="recurringSection"></div>
@@ -1805,6 +1806,7 @@ function pushMovement(mv) {
 let expenses = [];
 let recurringExpenses = [];   // A1: รายจ่ายประจำ (เทมเพลต)
 let cashTopups = [];          // A2: เงินสดย่อย (การเติมเงินก้อน)
+let orders = [];              // M3: ออเดอร์ลูกค้าจาก QR
 let optionGroups = []; // [{id, label, selectType, required, minSelect, maxSelect, sort, enabled, recipeIds:[], choices:[...]}]
 let allShops = [];
 let counter = 0;
@@ -2559,8 +2561,15 @@ function applyBootstrapData(data) {
       logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro',
       categories: Array.isArray(sRow?.categories) ? sRow.categories : DEFAULT_CATEGORIES.slice(),
       makeToOrder: sRow?.make_to_order || false,
-      usePettyCash: sRow?.use_petty_cash || false
+      usePettyCash: sRow?.use_petty_cash || false,
+      publicMenuToken: sRow?.public_menu_token || '',
+      publicMenuEnabled: sRow?.public_menu_enabled || false
     };
+    orders = (data.orders || []).map(o => ({
+      id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
+      total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number,
+      date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json
+    }));
     prodLogs = (data.prod_logs || []).map(p => ({
       id: p.id, recipeId: p.recipe_id, recipeName: p.recipe_name || '',
       rounds: Number(p.rounds), made: Number(p.made), date: p.log_date
@@ -2843,7 +2852,8 @@ async function syncToSupabase() {
       logo_url: settings.logoData, theme: settings.theme,
       categories: settings.categories || DEFAULT_CATEGORIES.slice(),
       make_to_order: settings.makeToOrder || false,
-      use_petty_cash: settings.usePettyCash || false
+      use_petty_cash: settings.usePettyCash || false,
+      public_menu_enabled: settings.publicMenuEnabled || false
     },
     shop: { name: settings.shopName }
   };
@@ -6969,6 +6979,7 @@ function renderExpensePage() {
   const { from, to } = getExpDateRange();
   const catFilter = $('expCatFilter')?.value || '';
   const typeFilter = $('expTypeFilter')?.value || '';
+  if (typeof renderOnlineMenu === 'function') renderOnlineMenu();
   if (typeof renderDeliveryReconcile === 'function') renderDeliveryReconcile();
   if (typeof renderPettyCash === 'function') renderPettyCash();
   if (typeof renderRecurringSection === 'function') renderRecurringSection();
@@ -7285,6 +7296,53 @@ function saveDeliveryPayout() {
   saveAll();
   renderExpensePage();
   ui.toast(`บันทึก ${platform}: รายรับ ฿${gross.toLocaleString('th-TH')} · หัก ฿${fee.toLocaleString('th-TH')} · เข้าจริง ฿${net.toLocaleString('th-TH')}`);
+}
+
+// ============================================================
+// M3: เมนูออนไลน์ (QR) ฝั่งร้าน — เปิด/ปิด + แสดง QR/ลิงก์ + คิวออเดอร์ลูกค้า
+// ============================================================
+function renderOnlineMenu() {
+  const el = $('onlineMenuSection');
+  if (!el) return;
+  const token = settings.publicMenuToken || '';
+  const url = location.origin + '/menu/' + token;
+  if (!settings.publicMenuEnabled) {
+    el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);"><span class="ico" data-icon="qr-code"></span> เมนูออนไลน์ (QR) — ให้ลูกค้าสแกนสั่งเอง รับที่ร้าน (ไม่บังคับ)</span>
+      <button class="btn btn-primary btn-sm" onclick="togglePublicMenu(true)">${icon('qr-code')} เปิดใช้</button></div>`;
+    renderIcons(el); return;
+  }
+  const pending = (orders || []).filter(o => o.status === 'pending');
+  const orderRows = (orders || []).slice(0, 8).map(o => `
+    <div style="display:flex;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border-soft);align-items:center;">
+      <span style="font-weight:800;color:var(--color-primary,#7c3aed);">คิว ${o.queue != null ? o.queue : '-'}</span>
+      <span style="flex:1;min-width:0;">${esc(o.name || 'ลูกค้า')} · ฿${Number(o.total).toLocaleString('th-TH')} <span style="color:var(--color-text-muted);">${o.date || ''}${o.phone ? ' · ' + esc(o.phone) : ''}</span></span>
+      <span style="font-size:11px;color:${o.status === 'pending' ? '#d97706' : '#16a34a'};">${o.status}</span>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--color-text-muted);padding:6px 0;">ยังไม่มีออเดอร์ออนไลน์</div>';
+  const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=' + encodeURIComponent(url);
+  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="qr-code"></span> เมนูออนไลน์ (QR)</h3>
+      ${pending.length ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ${pending.length} ออเดอร์รอ</span>` : ''}
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="togglePublicMenu(false)">ปิด</button>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
+      <img src="${qr}" alt="QR" style="width:140px;height:140px;border-radius:10px;border:1px solid var(--border-soft);background:#fff;">
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:12px;color:var(--color-text-muted);margin-bottom:4px;">ลิงก์เมนู — พิมพ์ QR ติดร้าน หรือส่งให้ลูกค้า</div>
+        <input value="${esc(url)}" readonly onclick="this.select()" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);font-size:12px;">
+        <a href="${esc(url)}" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:6px;">${icon('external-link')} เปิดดูเมนู</a>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:6px 0 0;">ออเดอร์ลูกค้าเข้ามาเป็น "คิว" ด้านล่าง (รีเฟรชหน้าเพื่ออัปเดต)</p>
+      </div>
+    </div>
+    <div style="margin-top:10px;">${orderRows}</div>
+  </div>`;
+  renderIcons(el);
+}
+function togglePublicMenu(on) {
+  settings.publicMenuEnabled = !!on;
+  saveAll();
+  renderOnlineMenu();
 }
 
 // ============================================================
