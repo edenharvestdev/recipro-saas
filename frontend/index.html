@@ -1617,21 +1617,12 @@
         </div>
       </div>
 
-      <div class="field" style="margin-bottom: 15px;">
-        <label>ผลลัพธ์การผลิต</label>
-        <select id="rOutputType" onchange="onRecipeOutputChange()">
-          <option value="MAIN">Main — สินค้าขาย (เข้า POS ได้)</option>
-          <option value="RAW">RAW — ของกลาง/กึ่งสำเร็จรูป (ใช้เป็นส่วนผสม · ไม่ขาย)</option>
-        </select>
-        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW ผลิตแล้วเข้า "สต๊อกกลาง" ไม่โผล่หน้าขาย · Main ผลิตแล้วเข้าหน้าขายได้เลย</p>
-      </div>
-
       <div class="field" style="margin-bottom: 12px;">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
           <input type="checkbox" id="rOnMenu" onchange="updateRecipeMenuUI()" style="width:16px;height:16px;accent-color:var(--color-primary);">
           นำขึ้นเมนู (ขายหน้าร้าน — ตั้งราคาขาย)
         </label>
-        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">ปิด = สูตรนี้เป็นของกลาง/ต้นทุนเท่านั้น (ไม่โผล่หน้าขาย) · เปิด = ขายหน้าร้านได้ ใส่ราคาด้านล่าง</p>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">ปิด = สูตรนี้เป็น "ของกลาง/ต้นทุน" (ไม่โผล่หน้าขาย) · เปิด = ขายหน้าร้านได้ ใส่ราคาด้านล่าง · ทุกสูตรเอาไปเป็นส่วนผสมในสูตรอื่นได้</p>
       </div>
       <div class="field" id="rSellField" style="margin-bottom: 15px;">
         <label>ราคาขาย (เมนู) (฿)</label>
@@ -3783,6 +3774,8 @@ function renderMatList() {
 // 6. RECIPE & INGREDIENT FORM
 // ============================================================
 const recById = id => recipes.find(r => r.id === id);
+// อยู่ในเมนู (ขายหน้าร้าน) ไหม — ใช้ on_menu, fallback เป็น !isRaw สำหรับสูตรเก่าที่ยังไม่ตั้ง
+const recIsOnMenu = r => (r && r.onMenu != null) ? !!r.onMenu : !(r && r.isRaw);
 let recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
 let editRecipeId = null;
 let recTypeFilter = '';        // '' ทั้งหมด · 'MAIN' สินค้าขาย · 'RAW' ของกลาง/ซ้อนสูตร
@@ -3792,10 +3785,10 @@ function setRecTypeFilter(v) { recTypeFilter = (recTypeFilter === v ? '' : v); r
 function gotoRecPage(p) { recPage = p; renderRecipeList(); const w = document.querySelector('#recipesPage .lst-desktop-wrap'); if (w) w.scrollTop = 0; }
 function renderRecTypeChips() {
   const box = $('recTypeChips'); if (!box) return;
-  const mainN = recipes.filter(r => !r.isRaw).length, rawN = recipes.filter(r => r.isRaw).length;
+  const onN = recipes.filter(r => recIsOnMenu(r)).length, offN = recipes.filter(r => !recIsOnMenu(r)).length;
   box.innerHTML = filterChip("setRecTypeFilter('')", 'ทั้งหมด', recipes.length, recTypeFilter === '')
-    + filterChip("setRecTypeFilter('MAIN')", 'สินค้าขาย', mainN, recTypeFilter === 'MAIN')
-    + filterChip("setRecTypeFilter('RAW')", 'ของกลาง · ซ้อนสูตร', rawN, recTypeFilter === 'RAW');
+    + filterChip("setRecTypeFilter('MAIN')", 'อยู่ในเมนู', onN, recTypeFilter === 'MAIN')
+    + filterChip("setRecTypeFilter('RAW')", 'ของกลาง/ไม่ขาย', offN, recTypeFilter === 'RAW');
 }
 let recipeOptGroups = []; // [{ label, choices: string, required }]
 
@@ -3820,35 +3813,60 @@ function recipeDependsOn(rid, targetId, path) {
   return (r.items || []).some(it => it.subId && recipeDependsOn(it.subId, targetId, next));
 }
 function sopCandidates() {
-  return recipes.filter(r => (r.isRaw || r.isSop) && r.id !== editRecipeId && !(editRecipeId && recipeDependsOn(r.id, editRecipeId)));
+  return recipes.filter(r => r.id !== editRecipeId && !(editRecipeId && recipeDependsOn(r.id, editRecipeId)));
 }
 function setIngKind(i, kind) {
   if (kind === 'sop') { recipeIng[i].subId = recipeIng[i].subId || ''; recipeIng[i].matId = null; }
   else { recipeIng[i].matId = recipeIng[i].matId || ''; recipeIng[i].subId = null; }
   renderRecipeForm();
 }
+// เลือก "หมวด" ของช่องส่วนผสม (แทน วัตถุดิบ/SOP เดิม) — กรองรายการให้หาง่าย; '_sop' = ของกลาง/สูตรย่อย
+function setIngCat(i, cat) {
+  recipeIng[i]._cat = cat;
+  if (cat === '_sop') { recipeIng[i].subId = recipeIng[i].subId || ''; recipeIng[i].matId = null; }
+  else { recipeIng[i].matId = recipeIng[i].matId || ''; recipeIng[i].subId = null; }
+  renderRecipeForm();
+}
 
 function renderRecipeForm() {
   const sops = sopCandidates();
+  const cats = itemCategories();
+  const nonCons = materials.filter(m => !m.isConsumable);
+  const presentCodes = new Set(nonCons.filter(m => m.itemType).map(m => m.itemType));
+  const hasBlank = nonCons.some(m => !m.itemType);
+  const catOptions = (sel) => {
+    let o = `<option value="_all"${sel === '_all' ? ' selected' : ''}>วัตถุดิบทั้งหมด</option>`;
+    cats.forEach(c => { if (presentCodes.has(c.code)) o += `<option value="${c.code}"${sel === c.code ? ' selected' : ''}>${esc(c.name_th)}</option>`; });
+    if (hasBlank) o += `<option value="_blank"${sel === '_blank' ? ' selected' : ''}>ยังไม่ระบุหมวด</option>`;
+    if (sops.length) o += `<option value="_sop"${sel === '_sop' ? ' selected' : ''}>ของกลาง / สูตรย่อย (SOP)</option>`;
+    return o;
+  };
   $('recipeIngRows').innerHTML = recipeIng.map((it, i) => {
     const isSop = !!it.subId || it.subId === '';
     const sub = it.subId ? recById(it.subId) : null;
     const m = matById(it.matId);
+    const curCat = it._cat || (isSop ? '_sop' : '_all');
     const unitName = isSop ? (sub ? (sub.yieldUnit || 'หน่วย') : 'หน่วย') : (m ? baseU(m) : 'หน่วย');
-    const picker = isSop
-      ? `<select onchange="recipeIng[${i}].subId=this.value; recipeIng[${i}].matId=null; renderRecipeForm();" style="flex:1;min-width:0;">
-           <option value="">— เลือก SOP —</option>
+    let picker;
+    if (curCat === '_sop') {
+      picker = `<select onchange="recipeIng[${i}].subId=this.value; recipeIng[${i}].matId=null; renderRecipeForm();" style="flex:1;min-width:0;">
+           <option value="">— เลือกของกลาง/SOP —</option>
            ${sops.map(r => `<option value="${r.id}"${r.id === it.subId ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}
-         </select>`
-      : `<select onchange="recipeIng[${i}].matId=this.value; recipeIng[${i}].subId=null; renderRecipeForm();" style="flex:1;min-width:0;">
-           <option value="">— เลือกวัตถุดิบ —</option>
-           ${materials.filter(mat => !mat.isConsumable).map(mat => `<option value="${mat.id}"${mat.id === it.matId ? ' selected' : ''}>${esc(mat.name)}</option>`).join('')}
          </select>`;
+    } else {
+      let list = nonCons;
+      if (curCat === '_blank') list = nonCons.filter(x => !x.itemType);
+      else if (curCat !== '_all') list = nonCons.filter(x => x.itemType === curCat);
+      if (m && !list.some(x => x.id === m.id)) list = [m, ...list]; // คงตัวที่เลือกไว้ให้เห็นเสมอแม้กรองหมวด
+      picker = `<select onchange="recipeIng[${i}].matId=this.value; recipeIng[${i}].subId=null; renderRecipeForm();" style="flex:1;min-width:0;">
+           <option value="">— เลือกวัตถุดิบ —</option>
+           ${list.map(mat => `<option value="${mat.id}"${mat.id === it.matId ? ' selected' : ''}>${esc(mat.name)}</option>`).join('')}
+         </select>`;
+    }
     return `<div class="recipe-row">
       <div style="display:flex; gap:5px; align-items:center; min-width:0;">
-        <select onchange="setIngKind(${i}, this.value)" style="flex:0 0 auto; width:80px; font-size:12px; padding:6px 4px;">
-          <option value="mat"${!isSop ? ' selected' : ''}>วัตถุดิบ</option>
-          <option value="sop"${isSop ? ' selected' : ''}>SOP</option>
+        <select onchange="setIngCat(${i}, this.value)" style="flex:0 0 auto; width:128px; font-size:12px; padding:6px 4px;" title="เลือกหมวดเพื่อกรองรายการ — หาของง่ายขึ้น">
+          ${catOptions(curCat)}
         </select>
         ${picker}
       </div>
@@ -3959,10 +3977,7 @@ function saveRecipe() {
   const sell = +$('rSell').value || 0;
   const batchYield = Math.max(0.0001, +$('rYield').value || 1);
   const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
-  const isRaw = $('rOutputType').value === 'RAW';
-  const onMenu = $('rOnMenu') ? $('rOnMenu').checked : !isRaw; // ชั้นเมนู: สวิตช์ "นำขึ้นเมนู"
-  // bridge: เชื่อม Main/RAW เดิม → taxonomy ใหม่ (Production/Menu + หมวดที่ผลิต)
-  const recipeType = isRaw ? 'PRODUCTION' : 'MENU';
+  const onMenu = $('rOnMenu') ? $('rOnMenu').checked : true; // ชั้นเมนู: สวิตช์ "นำขึ้นเมนู" (แทน Main/RAW เดิม)
   const steps = $('rSteps').value;
   const category = ($('rCategory')?.value || '').trim();
   const imgData = window._rImgData || '';
@@ -3978,12 +3993,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData, recipeType, onMenu, outputItemType: r.outputItemType || (isRaw ? 'PREP' : 'SALE') });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, steps, items, category, optGroups, imgData, onMenu });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType, onMenu, outputItemType: isRaw ? 'PREP' : 'SALE' });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw: false, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType: 'MENU', onMenu, outputItemType: 'SALE' });
   }
 
   saveAll();
@@ -4000,7 +4015,6 @@ function editRecipe(id) {
   $('rSell').value = r.sell;
   $('rYield').value = r.batchYield || 1;
   $('rYieldUnit').value = r.yieldUnit || 'ชิ้น';
-  $('rOutputType').value = r.isRaw ? 'RAW' : 'MAIN';
   if ($('rOnMenu')) { $('rOnMenu').checked = (r.onMenu != null ? !!r.onMenu : !r.isRaw); updateRecipeMenuUI(); }
   $('rSteps').value = r.steps || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
@@ -4063,7 +4077,7 @@ function renderRecipeList() {
   const q = ($('recipeSearch') ? $('recipeSearch').value : '').trim().toLowerCase();
   const filtered = recipes.filter(r =>
     (!q || r.name.toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q) || (r.category || '').toLowerCase().includes(q)) &&
-    (!recTypeFilter || (recTypeFilter === 'RAW' ? r.isRaw : !r.isRaw))
+    (!recTypeFilter || (recTypeFilter === 'RAW' ? !recIsOnMenu(r) : recIsOnMenu(r)))
   );
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / REC_PAGE_SIZE));
@@ -4078,7 +4092,7 @@ function renderRecipeList() {
       <td><input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td>
         <b>[${r.code || '-'}] ${r.name}</b><br>
-        <span style="font-size:12px; color:var(--color-text-muted);">${r.isRaw ? 'RAW · ของกลาง' : 'Main · สินค้าขาย'}${r.category ? ' · ' + esc(r.category) : ''}</span>
+        <span style="font-size:12px; color:var(--color-text-muted);">${recIsOnMenu(r) ? 'อยู่ในเมนู' : 'ของกลาง/ไม่ขาย'}${r.category ? ' · ' + esc(r.category) : ''}</span>
       </td>
       <td>${money(cost)}</td>
       <td>${money(r.sell)}</td>
@@ -4130,10 +4144,7 @@ function renderRecipeList() {
   }
   renderPagerEl('recipePager', total, REC_PAGE_SIZE, recPage, 'gotoRecPage');
 
-  const _rawRecs = recipes.filter(r => r.isRaw), _mainRecs = recipes.filter(r => !r.isRaw);
-  $('prodRecipe').innerHTML =
-    (_rawRecs.length ? `<optgroup label="ผลิตของกลาง (RAW)">${_rawRecs.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>` : '') +
-    (_mainRecs.length ? `<optgroup label="ผลิตสินค้าขาย (Main)">${_mainRecs.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>` : '');
+  if ($('prodRecipe')) $('prodRecipe').innerHTML = recipes.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
 }
 
 // ชั้นเมนู: แสดง/ซ่อนช่องราคาตามสวิตช์ "นำขึ้นเมนู"
@@ -4142,13 +4153,6 @@ function updateRecipeMenuUI() {
   const f = $('rSellField');
   if (f) f.style.display = on ? '' : 'none';
 }
-// เปลี่ยนชนิดผลลัพธ์: RAW = ของกลาง (ปิดนำขึ้นเมนูอัตโนมัติ) · Main = ขายได้ (เปิด)
-function onRecipeOutputChange() {
-  const raw = $('rOutputType').value === 'RAW';
-  if ($('rOnMenu')) $('rOnMenu').checked = !raw;
-  updateRecipeMenuUI();
-  updateRecipeTotals();
-}
 function resetRecipeForm() {
   editRecipeId = null;
   $('rCode').value = '';
@@ -4156,7 +4160,6 @@ function resetRecipeForm() {
   $('rSell').value = '';
   $('rYield').value = 1;
   $('rYieldUnit').value = 'ชิ้น';
-  $('rOutputType').value = 'MAIN';
   if ($('rOnMenu')) { $('rOnMenu').checked = true; updateRecipeMenuUI(); }
   $('rSteps').value = '';
   if ($('rCategory')) $('rCategory').value = '';
