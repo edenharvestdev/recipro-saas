@@ -8,10 +8,10 @@ const TBL = { material: { table: 'materials', col: 'stock' }, recipe: { table: '
 
 async function logMove(c, shopId, userId, m) {
   const r = await c.query(
-    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note,consumption_category)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id`,
     [shopId, userId || null, m.kind, m.ref_type, m.ref_id, m.ref_name || null, m.unit || null,
-     m.before, m.after, (m.after - m.before), m.note || null]
+     m.before, m.after, (m.after - m.before), m.note || null, m.consumption_category || null]
   );
   return r.rows[0].id;
 }
@@ -110,6 +110,84 @@ router.get('/changes', async (req, res) => {
       query('select id, fg_stock, updated_at from recipes where shop_id=$1 and updated_at > $2', [req.shopId, since]),
     ]);
     res.json({ now: new Date().toISOString(), movements: mv.rows, materials: mats.rows, recipes: recs.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// P3: ขายแบบรู้หมวด (category-aware) — endpoint ใหม่ ไม่แตะ /stock/sale เดิม
+// body: { lines:[{ ref_type:'recipe'|'material', ref_id, qty }], bill_no, make_to_order }
+// กฎ: ASSET/หมวดที่ is_stock_deducted=false → ไม่ตัด · packaging → log 'on_sale'
+//     recipe make_to_order → ขยาย BOM (วัตถุดิบตัด stock, สูตรซ้อนตัด fg_stock ของกลาง)
+//     recipe ปกติ → ตัด fg_stock ของเมนู (ขายของที่ผลิตเก็บไว้)
+// ============================================================
+router.post('/pos/sell', async (req, res) => {
+  const { lines, bill_no, make_to_order } = req.body || {};
+  if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: 'no lines' });
+  const note = bill_no ? ('ขาย ' + bill_no) : 'ขาย';
+  try {
+    const out = await tx(async (c) => {
+      // หมวด: code -> { deducted, event }
+      const cats = {};
+      for (const r of (await c.query('select code, is_stock_deducted, deduct_event from item_categories')).rows) {
+        cats[r.code] = { deducted: r.is_stock_deducted, event: r.deduct_event };
+      }
+      const results = [];
+
+      const deductMaterial = async (matId, amount, defaultCcat) => {
+        const m = (await c.query(
+          'select id,name,unit,stock,item_type from materials where id=$1 and shop_id=$2 for update',
+          [matId, req.shopId])).rows[0];
+        if (!m) return;
+        const cat = m.item_type ? cats[m.item_type] : null;
+        if (cat && cat.deducted === false) { // ASSET / SALE ฯลฯ → ไม่ตัดสต๊อกตัวเอง
+          results.push({ type: 'skip', ref_id: matId, item_type: m.item_type });
+          return;
+        }
+        const ccat = (cat && cat.event && cat.event !== 'none') ? cat.event : defaultCcat;
+        const before = Number(m.stock) || 0;
+        const after = Math.max(0, before - amount);
+        await c.query('update materials set stock=$1, updated_at=now() where id=$2', [after, matId]);
+        await logMove(c, req.shopId, req.userId, { kind: 'sale', ref_type: 'material', ref_id: matId, ref_name: m.name, unit: m.unit, before, after, note, consumption_category: ccat });
+        results.push({ type: 'material', ref_id: matId, item_type: m.item_type || null, before, after });
+      };
+
+      const deductRecipeFg = async (rec, amount, ccat, tag) => {
+        const before = Number(rec.fg_stock) || 0;
+        const after = Math.max(0, before - amount);
+        await c.query('update recipes set fg_stock=$1, updated_at=now() where id=$2', [after, rec.id]);
+        await logMove(c, req.shopId, req.userId, { kind: 'sale', ref_type: 'recipe', ref_id: rec.id, ref_name: rec.name, unit: rec.yield_unit, before, after, note, consumption_category: ccat });
+        results.push({ type: tag, ref_id: rec.id, before, after });
+      };
+
+      for (const ln of (lines || [])) {
+        const qty = Number(ln.qty) || 0;
+        if (qty <= 0) continue;
+
+        if (ln.ref_type === 'material') {
+          await deductMaterial(ln.ref_id, qty, 'on_sale');
+        } else if (ln.ref_type === 'recipe') {
+          const rec = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [ln.ref_id, req.shopId])).rows[0];
+          if (!rec) continue;
+          if (make_to_order) {
+            const items = (await c.query('select material_id, sub_recipe_id, amount from recipe_items where recipe_id=$1', [ln.ref_id])).rows;
+            for (const it of items) {
+              const amt = (Number(it.amount) || 0) * qty;
+              if (amt <= 0) continue;
+              if (it.sub_recipe_id) {
+                const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [it.sub_recipe_id, req.shopId])).rows[0];
+                if (sub) await deductRecipeFg(sub, amt, 'recipe_use', 'sub_recipe');
+              } else if (it.material_id) {
+                await deductMaterial(it.material_id, amt, 'recipe_use');
+              }
+            }
+          } else {
+            await deductRecipeFg(rec, qty, 'on_sale', 'recipe_fg');
+          }
+        }
+      }
+      return { results };
+    });
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
