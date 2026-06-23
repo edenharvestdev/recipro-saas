@@ -191,4 +191,26 @@ router.post('/pos/sell', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============================================================
+// P5: เตือนสั่งของ — รายการวัตถุดิบที่ stock ถึง/ต่ำกว่าจุดสั่งซื้อ (low_stock)
+// คืน supplier + ลิงก์สั่งซื้อ เพื่อสั่งต่อได้ทันที (ข้าม ASSET ที่ไม่ตัดสต๊อก)
+// ============================================================
+router.get('/alerts/reorder', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `select m.id, m.name, m.unit, m.stock, m.low_stock, m.item_type, m.order_url, m.sku,
+              s.name as supplier_name
+         from materials m
+         left join suppliers s on s.id = m.supplier_id
+         left join item_categories ic on ic.code = m.item_type
+        where m.shop_id = $1
+          and coalesce(ic.is_stock_deducted, true) = true
+          and coalesce(m.low_stock, 0) > 0
+          and coalesce(m.stock, 0) <= m.low_stock
+        order by (coalesce(m.stock,0) - m.low_stock) asc`,
+      [req.shopId]);
+    res.json({ count: rows.length, reorder: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
