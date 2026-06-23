@@ -498,6 +498,42 @@
         </div>
       </div>
 
+      <!-- ตัดของเสีย -->
+      <div class="glass-card" style="margin-top:24px;">
+        <h2><span class="ico" data-icon="trash-2"></span> ตัดของเสีย</h2>
+        <p style="color:var(--color-text-muted); font-size:13px; margin:-4px 0 12px;">ของเสีย / หมดอายุ / ทำผิดเมนู / ตกแตก — เลือกของ ใส่จำนวน เหตุผล แล้วบันทึก (หักสต๊อกจริง + เก็บประวัติ)</p>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; align-items:end;">
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">ของที่เสีย</label>
+            <select id="wasteItem" onchange="updateWasteUnitHint()" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">จำนวน <span id="wasteUnitHint"></span></label>
+            <input id="wasteQty" type="number" min="0" step="any" placeholder="0" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">เหตุผล</label>
+            <select id="wasteReason" style="width:100%;"></select>
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">ชื่อคนทำ</label>
+            <input id="wasteActor" list="wasteActorList" placeholder="ใครเป็นคนทำ" style="width:100%;">
+            <datalist id="wasteActorList"></datalist>
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">หมายเหตุ (ไม่บังคับ)</label>
+            <input id="wasteNote" placeholder="รายละเอียดเพิ่ม" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--color-text-muted);">วันที่</label>
+            <input id="wasteDate" type="date" style="width:100%;">
+          </div>
+          <div>
+            <button class="btn btn-danger" onclick="writeOffWaste()" style="width:100%; white-space:nowrap;"><span class="ico" data-icon="trash-2"></span> บันทึกตัดของเสีย</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ประวัติการปรับคลัง (ลบ/ปรับแก้ด้วยมือ) -->
       <div class="glass-card" style="margin-top:24px;">
         <h2><span class="ico" data-icon="pencil-ruler"></span> ประวัติการปรับคลัง</h2>
@@ -513,6 +549,27 @@
             </tr>
           </thead>
           <tbody id="adjLogList"></tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- ประวัติของเสีย -->
+      <div class="glass-card" style="margin-top:24px;">
+        <h2><span class="ico" data-icon="trash-2"></span> ประวัติของเสีย</h2>
+        <div id="wasteMonthSummary" style="font-size:13px; margin:-4px 0 12px;"></div>
+        <div class="table-scroll">
+        <table class="lst">
+          <thead>
+            <tr>
+              <th style="width:130px;">วันที่/เวลา</th>
+              <th>รายการ</th>
+              <th>เหตุผล</th>
+              <th>คนทำ</th>
+              <th class="r">จำนวน</th>
+              <th class="r">มูลค่า</th>
+            </tr>
+          </thead>
+          <tbody id="wasteLogList"></tbody>
         </table>
         </div>
       </div>
@@ -1871,7 +1928,18 @@ function startRealtimeClock() {
   setInterval(pollChanges, 4000); // R2 realtime: ดึงการเปลี่ยนแปลงจากเครื่องอื่นทุก 4 วิ
 }
 
-const KIND_LABEL = { adjust: 'ปรับคลัง', receive: 'รับเข้า', produce: 'ผลิต', sale: 'ขาย', 'cons-out': 'เบิกสิ้นเปลือง', 'cons-in': 'รับสิ้นเปลือง' };
+const KIND_LABEL = { adjust: 'ปรับคลัง', receive: 'รับเข้า', produce: 'ผลิต', sale: 'ขาย', waste: 'ตัดของเสีย', 'cons-out': 'เบิกสิ้นเปลือง', 'cons-in': 'รับสิ้นเปลือง' };
+// เหตุผลของเสีย (code → ไทย) สำหรับฟอร์ม + ประวัติ
+const WASTE_REASONS = [
+  { code: 'spoiled', th: 'ของเสีย / เน่าเสีย' },
+  { code: 'expired', th: 'หมดอายุ' },
+  { code: 'made_wrong', th: 'ทำเสีย / ทำผิดเมนู' },
+  { code: 'dropped', th: 'ตกหล่น / แตกหัก' },
+  { code: 'lost', th: 'สูญหาย' },
+  { code: 'tasting', th: 'ชิม / ทดสอบ' },
+  { code: 'other', th: 'อื่น ๆ' },
+];
+const wasteReasonTh = code => (WASTE_REASONS.find(r => r.code === code) || {}).th || code || '';
 
 // R2 realtime: ถามเซิร์ฟเวอร์ว่ามีอะไรเปลี่ยนตั้งแต่ครั้งก่อน → อัปเดตสต๊อก/ประวัติ + เด้ง popup ให้ทุกเครื่องเห็นพร้อมกัน
 async function pollChanges() {
@@ -2628,7 +2696,8 @@ function applyBootstrapData(data) {
       id: s.id, at: s.created_at, kind: s.kind, type: s.ref_type === 'recipe' ? 'fg' : 'mat',
       refType: s.ref_type, refId: s.ref_id, name: s.ref_name || '', unit: s.unit || '',
       old: Number(s.qty_before) || 0, newVal: Number(s.qty_after) || 0,
-      delta: Number(s.delta) || 0, note: s.note || ''
+      delta: Number(s.delta) || 0, note: s.note || '',
+      reason: s.consumption_category || '', actor: s.actor_name || ''
     }));
     lastChangeCheck = data.server_now || new Date().toISOString(); // R2: เริ่มนับ realtime จากเวลาเซิร์ฟเวอร์
     const displayName = settings.shopName + (window.RECIPRO_SHOP_OVERRIDE ? ' 👁' : '');
@@ -3652,7 +3721,7 @@ function renderMatList() {
       <td>${matTypeCell(m)}</td>
       <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
       <td class="r">${money(m.price)}</td>
-      <td class="r" style="color:var(--green);">${m.sellPrice ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
+      <td class="r" style="color:var(--green);">${(m.itemType === 'SALE' && m.sellPrice) ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
       <td class="r" style="font-size:12px; color:var(--color-text-muted);">${costPerBase} / ${baseU(m)}</td>
       <td style="font-size:12px;">${sp ? esc(sp.name) : '<span style="color:var(--color-text-muted)">—</span>'}${m.orderUrl ? ` <a href="${m.orderUrl}" target="_blank" title="ลิงก์สั่งซื้อ" style="color:var(--brand);">${icon('external-link')}</a>` : ''}</td>
       <td>
@@ -3686,7 +3755,7 @@ function renderMatList() {
         </div>
         <div class="item-card-stats">
           <div class="item-card-stat"><span>ต้นทุน/หน่วยย่อย</span><b>${costPerBase}/${baseU(m)}</b></div>
-          ${m.sellPrice ? `<div class="item-card-stat"><span>ราคาขาย</span><b style="color:var(--green)">${money(m.sellPrice)}</b></div>` : ''}
+          ${(m.itemType === 'SALE' && m.sellPrice) ? `<div class="item-card-stat"><span>ราคาขาย</span><b style="color:var(--green)">${money(m.sellPrice)}</b></div>` : ''}
           ${m.orderUrl ? `<a href="${m.orderUrl}" target="_blank" class="item-card-stat" style="color:var(--color-primary);text-decoration:none;"><span>สั่งซื้อ</span><b>${icon('external-link')}</b></a>` : ''}
         </div>
         <div class="item-card-actions">
@@ -4419,9 +4488,105 @@ function renderStockPage() {
   renderFgList();
   renderStockList();
   renderAlerts();
+  renderWasteForm();
   renderAdjLogs();
+  renderWasteLogs();
   renderReceiveLogs();
   renderProdLogs();
+}
+
+// ---- ตัดของเสีย (waste write-off) ----
+const recipeUnitCost = r => r ? (recipeCost(r.items) / (r.batchYield || 1)) : 0;
+function wasteUnitCost(l) {
+  if (l.refType === 'recipe') return recipeUnitCost(recById(l.refId));
+  const m = matById(l.refId);
+  return Number(l.price) || (m ? perBase(m) : 0);
+}
+function renderWasteForm() {
+  const sel = $('wasteItem'); if (!sel) return;
+  const prev = sel.value;
+  const mats = materials.filter(m => !m.isConsumable).slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+  const recs = recipes.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+  let html = '<option value="">— เลือกของที่เสีย —</option>';
+  if (mats.length) html += '<optgroup label="วัตถุดิบ">' + mats.map(m => `<option value="mat:${m.id}">${esc(m.name)}</option>`).join('') + '</optgroup>';
+  if (recs.length) html += '<optgroup label="สินค้า/ของกลาง (สต๊อกที่ผลิตแล้ว)">' + recs.map(r => `<option value="fg:${r.id}">${esc(r.name)}</option>`).join('') + '</optgroup>';
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+  const rs = $('wasteReason'); if (rs && !rs.options.length) rs.innerHTML = WASTE_REASONS.map(r => `<option value="${r.code}">${r.th}</option>`).join('');
+  const dl = $('wasteActorList');
+  if (dl) {
+    const names = [...new Set(movementSource().filter(l => l.kind === 'waste' && l.actor).map(l => l.actor))].slice(0, 20);
+    dl.innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
+  }
+  const d = $('wasteDate'); if (d && !d.value) d.value = new Date().toISOString().slice(0, 10);
+  updateWasteUnitHint();
+}
+function updateWasteUnitHint() {
+  const sel = $('wasteItem'), hint = $('wasteUnitHint'); if (!sel || !hint) return;
+  const v = sel.value; let unit = '', bal = null;
+  if (v.startsWith('mat:')) { const m = matById(v.slice(4)); if (m) { unit = baseU(m); bal = matStockBase(m); } }
+  else if (v.startsWith('fg:')) { const r = recById(v.slice(3)); if (r) { unit = r.yieldUnit || 'ชิ้น'; bal = Number(r.fgStock) || 0; } }
+  hint.textContent = unit ? `(${unit}${bal != null ? ' · เหลือ ' + bal.toLocaleString() : ''})` : '';
+}
+async function writeOffWaste() {
+  const sel = $('wasteItem'); const v = sel ? sel.value : '';
+  if (!v) { alert('เลือกของที่เสียก่อน'); return; }
+  const qty = Number($('wasteQty').value) || 0;
+  if (!(qty > 0)) { alert('ใส่จำนวนที่เสีย (มากกว่า 0)'); return; }
+  const reasonCode = $('wasteReason').value || 'other';
+  const actor = ($('wasteActor').value || '').trim();
+  const noteExtra = ($('wasteNote').value || '').trim();
+  const wdate = $('wasteDate').value || new Date().toISOString().slice(0, 10);
+  const isMat = v.startsWith('mat:');
+  const id = v.slice(isMat ? 4 : 3);
+  const refType = isMat ? 'material' : 'recipe';
+  let obj, name, unit, oldVal;
+  if (isMat) { obj = matById(id); if (!obj) return; name = obj.name; unit = baseU(obj); oldVal = matStockBase(obj); }
+  else { obj = recById(id); if (!obj) return; name = obj.name; unit = obj.yieldUnit || 'ชิ้น'; oldVal = Number(obj.fgStock) || 0; }
+  const newVal = Math.max(0, oldVal - qty);
+  const ok = await ui.confirm(`ตัดของเสีย "${name}" จำนวน ${qty} ${unit}?\nคงเหลือ ${oldVal.toLocaleString()} → ${newVal.toLocaleString()} ${unit}`, { okText: 'บันทึก', danger: true });
+  if (!ok) return;
+  const note = [wasteReasonTh(reasonCode), wdate, noteExtra].filter(Boolean).join(' · ');
+  if (isMockMode) {
+    if (isMat) obj.stock = newVal; else obj.fgStock = newVal;
+    pushMovement({ kind: 'waste', refType, refId: id, name, unit, old: oldVal, newVal, price: isMat ? perBase(obj) : recipeUnitCost(obj), note });
+    if (stockMovements[0]) { stockMovements[0].reason = reasonCode; stockMovements[0].actor = actor; }
+  } else {
+    try {
+      const res = await API.post('/api/stock/waste', { ref_type: refType, ref_id: id, qty, reason: reasonCode, note, unit, actor_name: actor || null });
+      if (!res || res.after == null) throw new Error('no result');
+      if (isMat) obj.stock = Number(res.after); else obj.fgStock = Number(res.after);
+      stockMovements.unshift({ id: res.movement_id || uid(), at: new Date().toISOString(), kind: 'waste', type: isMat ? 'mat' : 'fg', refType, refId: id, name, unit, old: oldVal, newVal: Number(res.after), delta: Number(res.after) - oldVal, note, reason: reasonCode, actor });
+    } catch (e) { alert('บันทึกตัดของเสียไม่สำเร็จ ลองใหม่อีกครั้ง'); return; }
+  }
+  $('wasteQty').value = ''; $('wasteNote').value = '';
+  saveAll();
+  render();
+}
+function renderWasteLogs() {
+  const el = $('wasteLogList'); if (!el) return;
+  const all = movementSource().filter(l => l.kind === 'waste');
+  const ym = new Date().toISOString().slice(0, 7);
+  const monthCost = all.filter(l => (l.at || '').slice(0, 7) === ym)
+    .reduce((s, l) => s + Math.abs((Number(l.old) || 0) - (Number(l.newVal) || 0)) * wasteUnitCost(l), 0);
+  const sumEl = $('wasteMonthSummary');
+  if (sumEl) sumEl.innerHTML = `ต้นทุนของเสียเดือนนี้: <b style="color:#dc2626;">${money(monthCost)}</b>`;
+  const logs = all.slice(0, 100);
+  if (!logs.length) { el.innerHTML = '<tr><td colspan="6" style="color:#999;text-align:center;padding:16px;">ยังไม่มีประวัติของเสีย</td></tr>'; return; }
+  el.innerHTML = logs.map(l => {
+    const dt = l.at ? new Date(l.at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const qtyW = Math.abs((Number(l.old) || 0) - (Number(l.newVal) || 0));
+    const cost = qtyW * wasteUnitCost(l);
+    const reasonTh = l.reason ? wasteReasonTh(l.reason) : ((l.note || '').split(' · ')[0] || '—');
+    return `<tr>
+      <td style="font-size:12px;color:var(--color-text-muted);white-space:nowrap;">${dt}</td>
+      <td><b>${esc(l.name)}</b> <span style="font-size:11px;color:var(--color-text-muted);">(${l.type === 'fg' ? 'สินค้า' : 'วัตถุดิบ'})</span></td>
+      <td style="font-size:12px;">${esc(reasonTh)}</td>
+      <td style="font-size:12px;">${esc(l.actor || '—')}</td>
+      <td class="r" style="color:#dc2626;font-weight:700;">-${qtyW.toLocaleString()} ${esc(l.unit)}</td>
+      <td class="r" style="font-size:12px;">${money(cost)}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ============================================================

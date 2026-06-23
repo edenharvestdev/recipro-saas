@@ -8,10 +8,10 @@ const TBL = { material: { table: 'materials', col: 'stock' }, recipe: { table: '
 
 async function logMove(c, shopId, userId, m) {
   const r = await c.query(
-    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note,consumption_category)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id`,
+    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note,consumption_category,actor_name)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
     [shopId, userId || null, m.kind, m.ref_type, m.ref_id, m.ref_name || null, m.unit || null,
-     m.before, m.after, (m.after - m.before), m.note || null, m.consumption_category || null]
+     m.before, m.after, (m.after - m.before), m.note || null, m.consumption_category || null, m.actor_name || null]
   );
   return r.rows[0].id;
 }
@@ -32,6 +32,33 @@ router.post('/stock/move', async (req, res) => {
       const after = Math.max(0, mode === 'set' ? v : before + v);
       await c.query(`update ${meta.table} set ${meta.col}=$1, updated_at=now() where id=$2`, [after, ref_id]);
       const movement_id = await logMove(c, req.shopId, req.userId, { kind: kind || 'adjust', ref_type, ref_id, ref_name: cur.rows[0].name, unit, before, after, note });
+      return { before, after, movement_id };
+    });
+    if (!out) return res.status(404).json({ error: 'not found in this shop' });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ตัดของเสีย — หักสต๊อก (วัตถุดิบ/สินค้าพร้อมขาย) + บันทึก movement kind='waste'
+// ของเสียได้ทุกหมวด (รวม ASSET/SALE) เพราะของชำรุด/เสียต้องหักได้จริง — ไม่ปรึกษา item_categories
+router.post('/stock/waste', async (req, res) => {
+  const { ref_type, ref_id, qty, reason, note, unit, actor_name } = req.body || {};
+  const meta = TBL[ref_type];
+  const amt = Number(qty) || 0;
+  if (!meta || !ref_id || !(amt > 0)) return res.status(400).json({ error: 'bad waste input' });
+  try {
+    const out = await tx(async (c) => {
+      const cur = await c.query(
+        `select id, name, ${meta.col} as q from ${meta.table} where id=$1 and shop_id=$2 for update`,
+        [ref_id, req.shopId]);
+      if (!cur.rowCount) return null;
+      const before = Number(cur.rows[0].q) || 0;
+      const after = Math.max(0, before - amt);
+      await c.query(`update ${meta.table} set ${meta.col}=$1, updated_at=now() where id=$2`, [after, ref_id]);
+      const movement_id = await logMove(c, req.shopId, req.userId, {
+        kind: 'waste', ref_type, ref_id, ref_name: cur.rows[0].name, unit,
+        before, after, note: note || null, consumption_category: reason || 'other', actor_name: actor_name || null,
+      });
       return { before, after, movement_id };
     });
     if (!out) return res.status(404).json({ error: 'not found in this shop' });
@@ -139,7 +166,9 @@ router.post('/pos/sell', async (req, res) => {
           [matId, req.shopId])).rows[0];
         if (!m) return;
         const cat = m.item_type ? cats[m.item_type] : null;
-        if (cat && cat.deducted === false) { // ASSET / SALE ฯลฯ → ไม่ตัดสต๊อกตัวเอง
+        // ASSET: ไม่หักตัวเองเสมอ · SALE: ข้ามเมื่อใช้เป็นส่วนผสมในสูตร (recipe_use) แต่ถ้า "ขายตรง" (on_sale) ให้หักสต๊อกตัวเอง
+        const isDirectSale = defaultCcat === 'on_sale';
+        if (cat && cat.deducted === false && !(m.item_type === 'SALE' && isDirectSale)) {
           results.push({ type: 'skip', ref_id: matId, item_type: m.item_type });
           return;
         }
