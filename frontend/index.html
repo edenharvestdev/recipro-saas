@@ -1124,6 +1124,7 @@
         </div>
       </div>
 
+      <div id="pettyCashSection"></div>
       <div id="recurringSection"></div>
 
       <!-- Expense list -->
@@ -1793,6 +1794,7 @@ function pushMovement(mv) {
 }
 let expenses = [];
 let recurringExpenses = [];   // A1: รายจ่ายประจำ (เทมเพลต)
+let cashTopups = [];          // A2: เงินสดย่อย (การเติมเงินก้อน)
 let optionGroups = []; // [{id, label, selectType, required, minSelect, maxSelect, sort, enabled, recipeIds:[], choices:[...]}]
 let allShops = [];
 let counter = 0;
@@ -2546,7 +2548,8 @@ function applyBootstrapData(data) {
       bank: sRow?.bank || '', acc: sRow?.account || '', holder: sRow?.holder || '', pp: sRow?.promptpay || '',
       logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro',
       categories: Array.isArray(sRow?.categories) ? sRow.categories : DEFAULT_CATEGORIES.slice(),
-      makeToOrder: sRow?.make_to_order || false
+      makeToOrder: sRow?.make_to_order || false,
+      usePettyCash: sRow?.use_petty_cash || false
     };
     prodLogs = (data.prod_logs || []).map(p => ({
       id: p.id, recipeId: p.recipe_id, recipeName: p.recipe_name || '',
@@ -2565,6 +2568,9 @@ function applyBootstrapData(data) {
       id: r.id, name: r.name || '', category: r.category || '',
       defaultAmount: Number(r.default_amount) || 0, dayOfMonth: Number(r.day_of_month) || 1,
       active: r.active !== false
+    }));
+    cashTopups = (data.cash_topups || []).map(c => ({
+      id: c.id, date: (c.topup_date || '').slice(0, 10), amount: Number(c.amount) || 0, note: c.note || ''
     }));
     const ogData = data.option_groups || [];
     const ocData = data.option_choices || [];
@@ -2800,6 +2806,9 @@ async function syncToSupabase() {
       id: t.id, name: t.name, category: t.category || null,
       default_amount: t.defaultAmount, day_of_month: t.dayOfMonth, active: t.active !== false
     })),
+    cash_topups: cashTopups.map(c => ({
+      id: c.id, topup_date: c.date, amount: c.amount, note: c.note || ''
+    })),
     option_groups: optionGroups.map((g, gi) => ({
       id: g.id, label: g.label, select_type: g.selectType, required: g.required,
       min_select: g.minSelect, max_select: g.maxSelect, sort: gi, enabled: g.enabled
@@ -2821,7 +2830,8 @@ async function syncToSupabase() {
       bank: settings.bank, account: settings.acc, holder: settings.holder, promptpay: settings.pp,
       logo_url: settings.logoData, theme: settings.theme,
       categories: settings.categories || DEFAULT_CATEGORIES.slice(),
-      make_to_order: settings.makeToOrder || false
+      make_to_order: settings.makeToOrder || false,
+      use_petty_cash: settings.usePettyCash || false
     },
     shop: { name: settings.shopName }
   };
@@ -6913,6 +6923,7 @@ function renderExpensePage() {
   const { from, to } = getExpDateRange();
   const catFilter = $('expCatFilter')?.value || '';
   const typeFilter = $('expTypeFilter')?.value || '';
+  if (typeof renderPettyCash === 'function') renderPettyCash();
   if (typeof renderRecurringSection === 'function') renderRecurringSection();
 
   const EXP_PERIOD_LABELS = { today: 'วันนี้', yesterday: 'เมื่อวาน', week: 'สัปดาห์นี้', month: 'เดือนนี้', lastmonth: 'เดือนก่อน', custom: 'ช่วงที่เลือก' };
@@ -7095,6 +7106,60 @@ function postRecurringThisMonth() {
   saveAll();
   renderExpensePage();
   ui.toast(n ? `ลงรายจ่ายประจำ ${n} รายการแล้ว — แก้ยอดได้ในรายการด้านล่าง` : 'ลงครบแล้วเดือนนี้');
+}
+
+// ============================================================
+// A2: เงินสดย่อย (petty cash) — เติมก้อน + ยอดคงเหลือ + เตือนใกล้หมด + เปิด/ปิด
+// ============================================================
+function pettyCashBalance() {
+  const topup = (cashTopups || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+  const spent = (expenses || []).filter(e => e.kind !== 'income' && e.payType === 'cash').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  return { topup, spent, balance: topup - spent };
+}
+function renderPettyCash() {
+  const el = $('pettyCashSection');
+  if (!el) return;
+  if (!settings.usePettyCash) {
+    el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);"><span class="ico" data-icon="wallet"></span> เงินสดย่อย — เติมเงินก้อนให้ร้านค่อย ๆ ตัดจ่ายรายวัน (ไม่บังคับ)</span>
+      <button class="btn btn-ghost btn-sm" onclick="togglePettyCash(true)">${icon('plus')} เปิดใช้</button></div>`;
+    renderIcons(el); return;
+  }
+  const { topup, spent, balance } = pettyCashBalance();
+  const low = topup > 0 && balance <= topup * 0.15;
+  const recent = (cashTopups || []).slice(0, 3).map(c => `+฿${Number(c.amount).toLocaleString('th-TH')} (${c.date})`).join(' · ');
+  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="wallet"></span> เงินสดย่อย</h3>
+      ${low ? '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ใกล้หมด เติมเงิน</span>' : ''}
+      <button class="btn btn-ghost btn-sm" onclick="togglePettyCash(false)" style="font-size:11px;">ปิดใช้</button>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px;">
+      <div><div style="font-size:12px;color:var(--color-text-muted);">เงินสดเหลือ</div>
+        <div style="font-size:24px;font-weight:800;color:${low ? '#dc2626' : '#16a34a'};">฿${balance.toLocaleString('th-TH')}</div></div>
+      <div style="font-size:12px;color:var(--color-text-muted);">เติมรวม ฿${topup.toLocaleString('th-TH')} · จ่ายเงินสด ฿${spent.toLocaleString('th-TH')}</div>
+    </div>
+    ${recent ? `<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">เติมล่าสุด: ${recent}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <input id="topupAmount" type="number" step="any" placeholder="เติมเงินก้อน เช่น 2000" style="flex:1;min-width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
+      <button class="btn btn-primary btn-sm" onclick="addCashTopup()">${icon('plus')} เติมเงิน</button>
+    </div>
+    <p style="font-size:11px;color:var(--color-text-muted);margin:6px 0 0;">รายจ่ายที่เลือกชำระด้วย "เงินสดย่อย" จะตัดจากยอดนี้อัตโนมัติ</p>
+  </div>`;
+  renderIcons(el);
+}
+function addCashTopup() {
+  const amount = parseFloat($('topupAmount')?.value) || 0;
+  if (amount <= 0) { ui.toast('ใส่จำนวนเงินที่เติม'); return; }
+  cashTopups.unshift({ id: uid(), date: new Date().toISOString().slice(0, 10), amount, note: '' });
+  saveAll();
+  renderPettyCash();
+  ui.toast('เติมเงินสดย่อยแล้ว ฿' + amount.toLocaleString('th-TH'));
+}
+function togglePettyCash(on) {
+  settings.usePettyCash = !!on;
+  saveAll();
+  renderPettyCash();
 }
 
 // ============================================================

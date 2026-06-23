@@ -9,7 +9,7 @@ router.get('/bootstrap', async (req, res) => {
     const shopId = req.shopId;
     if (!shopId) return res.json({ shop: null, role: req.role, isSuperadmin: req.isSuperadmin });
 
-    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives, expenses, ogRows, ocRows, oclRows, rogRows, smRows, itemCats, recurringExp] = await Promise.all([
+    const [shop, settings, suppliers, materials, recipes, recipeItems, bills, sub, prodLogs, stockReceives, expenses, ogRows, ocRows, oclRows, rogRows, smRows, itemCats, recurringExp, cashTopups] = await Promise.all([
       query('select * from shops where id = $1', [shopId]),
       query('select * from shop_settings where shop_id = $1', [shopId]),
       query('select * from suppliers where shop_id = $1', [shopId]),
@@ -33,6 +33,7 @@ router.get('/bootstrap', async (req, res) => {
       query('select * from stock_movements where shop_id = $1 order by created_at desc limit 200', [shopId]),
       query('select * from item_categories order by sort_order'),
       query('select * from recurring_expenses where shop_id = $1 order by day_of_month', [shopId]),
+      query('select * from cash_topups where shop_id = $1 order by topup_date desc limit 200', [shopId]),
     ]);
 
     res.json({
@@ -57,6 +58,7 @@ router.get('/bootstrap', async (req, res) => {
       stock_movements: smRows.rows,
       item_categories: itemCats.rows,
       recurring_expenses: recurringExp.rows,
+      cash_topups: cashTopups.rows,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

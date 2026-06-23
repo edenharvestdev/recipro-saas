@@ -74,7 +74,7 @@ router.post('/sync', async (req, res) => {
         const s = { ...b.shop_settings, shop_id: shopId };
         if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash'],
           [s], 'shop_id');
       }
 
@@ -85,6 +85,10 @@ router.post('/sync', async (req, res) => {
       await upsertRows(client, 'recurring_expenses',
         ['id', 'shop_id', 'name', 'category', 'default_amount', 'day_of_month', 'active'],
         withShop(b.recurring_expenses || []), 'id');
+
+      await upsertRows(client, 'cash_topups',
+        ['id', 'shop_id', 'topup_date', 'amount', 'note'],
+        withShop(b.cash_topups || []), 'id');
 
       // option_groups
       await upsertRows(client, 'option_groups',
