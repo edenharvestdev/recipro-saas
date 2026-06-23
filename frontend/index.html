@@ -3787,17 +3787,24 @@ async function delRecipe(id) {
 function cloneRecipe(id) {
   const r = recById(id);
   if (!r) return;
+  const newId = uid();
   const cloned = {
-    ...r,
-    id: uid(),
-    code: r.code + '-CLONE',
-    name: r.name + ' (โคลน)',
-    items: r.items.map(x => ({ ...x }))
+    ...r,                                    // ลอกทุกฟิลด์ (ราคา/ประเภท/หมวด/รูป/recipeType ฯลฯ)
+    id: newId,
+    code: r.code ? r.code + '-COPY' : '',
+    name: (r.name || 'สูตร') + ' (สำเนา)',
+    fgStock: 0,                              // เริ่มสต๊อกใหม่ ไม่ติดของเดิม
+    items: (r.items || []).map(x => ({ ...x }))   // ลอกส่วนผสม
   };
   recipes.push(cloned);
+  // ลอกการผูกกลุ่มตัวเลือก (options แบบใหม่) มาที่เมนูใหม่ด้วย
+  (typeof optionGroups !== 'undefined' ? optionGroups : []).forEach(g => {
+    if ((g.recipeIds || []).includes(id) && !g.recipeIds.includes(newId)) g.recipeIds.push(newId);
+  });
   saveAll();
   render();
-  alert('โคลนสูตรเรียบร้อย!');
+  if (window.ui && ui.toast) ui.toast('โคลนสูตรแล้ว — แก้ไขเป็นเมนูใหม่ได้เลย');
+  editRecipe(newId);                         // เปิดฟอร์มแก้ไขเมนูใหม่ทันที
 }
 
 function renderRecipeList() {
