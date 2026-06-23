@@ -3351,6 +3351,9 @@ function editMat(id) {
 async function delMat(id) {
   if (!(await ui.confirm('ลบวัตถุดิบนี้ออกจากระบบอย่างถาวร?', { okText: 'ลบ', danger: true }))) return;
   materials = materials.filter(m => m.id !== id);
+  // เก็บกวาดอ้างอิงที่ค้าง: เอาวัตถุดิบนี้ออกจากทุกสูตร + ลิงก์ตัวเลือก (กัน sync FK ค้าง/ระเบิด)
+  recipes.forEach(r => { if (r.items) r.items = r.items.filter(it => it.matId !== id); });
+  optionGroups.forEach(g => (g.choices || []).forEach(c => { if (c.links) c.links = c.links.filter(l => l.matId !== id); }));
   if (!isMockMode) {
     await API.del('/api/materials/' + id);
   }
@@ -3832,6 +3835,12 @@ function editRecipe(id) {
 async function delRecipe(id) {
   if (!(await ui.confirm('ลบสูตรนี้ทิ้งอย่างถาวร?', { okText: 'ลบ', danger: true }))) return;
   recipes = recipes.filter(r => r.id !== id);
+  // เก็บกวาดอ้างอิงสูตรนี้: sub-recipe ในสูตรอื่น + variant/recipeIds ในตัวเลือก (กัน sync FK ค้าง/ระเบิด)
+  recipes.forEach(r => { if (r.items) r.items = r.items.filter(it => it.subId !== id); });
+  optionGroups.forEach(g => {
+    if (g.recipeIds) g.recipeIds = g.recipeIds.filter(rid => rid !== id);
+    (g.choices || []).forEach(c => { if (c.variantRecipeId === id) c.variantRecipeId = null; });
+  });
   if (!isMockMode) {
     await API.del('/api/recipes/' + id);
   }
