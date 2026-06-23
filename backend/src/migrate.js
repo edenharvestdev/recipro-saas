@@ -20,6 +20,7 @@ const files = [
   '../db/schema-item-master.sql',
   '../db/schema-m1.sql',
   '../db/schema-m2.sql',
+  '../db/schema-a1.sql',
   '../db/seed.sql',
 ];
 

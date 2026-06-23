@@ -1124,6 +1124,8 @@
         </div>
       </div>
 
+      <div id="recurringSection"></div>
+
       <!-- Expense list -->
       <div class="glass-card">
         <div class="table-scroll"><table class="lst">
@@ -1790,6 +1792,7 @@ function pushMovement(mv) {
   }
 }
 let expenses = [];
+let recurringExpenses = [];   // A1: รายจ่ายประจำ (เทมเพลต)
 let optionGroups = []; // [{id, label, selectType, required, minSelect, maxSelect, sort, enabled, recipeIds:[], choices:[...]}]
 let allShops = [];
 let counter = 0;
@@ -2558,6 +2561,11 @@ function applyBootstrapData(data) {
       description: e.description, amount: Number(e.amount),
       payType: e.payment_type || 'cash', note: e.note || '', kind: e.kind || 'expense'
     }));
+    recurringExpenses = (data.recurring_expenses || []).map(r => ({
+      id: r.id, name: r.name || '', category: r.category || '',
+      defaultAmount: Number(r.default_amount) || 0, dayOfMonth: Number(r.day_of_month) || 1,
+      active: r.active !== false
+    }));
     const ogData = data.option_groups || [];
     const ocData = data.option_choices || [];
     const oclData = data.option_choice_links || [];
@@ -2787,6 +2795,10 @@ async function syncToSupabase() {
       id: e.id, expense_date: e.date, category: e.category || '',
       description: e.description, amount: e.amount,
       payment_type: e.payType || 'cash', note: e.note || '', kind: e.kind || 'expense'
+    })),
+    recurring_expenses: recurringExpenses.map(t => ({
+      id: t.id, name: t.name, category: t.category || null,
+      default_amount: t.defaultAmount, day_of_month: t.dayOfMonth, active: t.active !== false
     })),
     option_groups: optionGroups.map((g, gi) => ({
       id: g.id, label: g.label, select_type: g.selectType, required: g.required,
@@ -6901,6 +6913,7 @@ function renderExpensePage() {
   const { from, to } = getExpDateRange();
   const catFilter = $('expCatFilter')?.value || '';
   const typeFilter = $('expTypeFilter')?.value || '';
+  if (typeof renderRecurringSection === 'function') renderRecurringSection();
 
   const EXP_PERIOD_LABELS = { today: 'วันนี้', yesterday: 'เมื่อวาน', week: 'สัปดาห์นี้', month: 'เดือนนี้', lastmonth: 'เดือนก่อน', custom: 'ช่วงที่เลือก' };
   const pl = EXP_PERIOD_LABELS[expPeriod] || 'ช่วงนี้';
@@ -7015,6 +7028,73 @@ async function deleteExpense(id) {
   expenses = expenses.filter(e => e.id !== id);
   saveAll();
   renderExpensePage();
+}
+
+// ============================================================
+// A1: รายจ่ายประจำ (recurring) — ล็อกเทมเพลต + แก้ตัวเลขได้ + เตือนรายเดือน
+// ============================================================
+function currentRcrYM() { return new Date().toISOString().slice(0, 7); }
+function recurringPostedThisMonth(tid) {
+  const tag = '#rcr:' + tid + ':' + currentRcrYM();
+  return (expenses || []).some(e => (e.note || '').includes(tag));
+}
+function renderRecurringSection() {
+  const el = $('recurringSection');
+  if (!el) return;
+  const unposted = recurringExpenses.filter(t => t.active && !recurringPostedThisMonth(t.id));
+  const rows = recurringExpenses.length ? recurringExpenses.map(t => {
+    const done = recurringPostedThisMonth(t.id);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
+      <span style="flex:1;min-width:0;">${esc(t.name)} <span style="color:var(--color-text-muted);">· ฿${Number(t.defaultAmount).toLocaleString('th-TH')} · ทุกวันที่ ${t.dayOfMonth}</span>${done ? ' <span style="color:#16a34a;font-size:11px;white-space:nowrap;">✓ ลงแล้ว</span>' : ''}</span>
+      <button class="btn btn-ghost btn-sm" onclick="delRecurring('${t.id}')" style="padding:3px 8px;color:var(--color-danger,#e53e3e);">${icon('trash-2')}</button>
+    </div>`;
+  }).join('') : '<div style="color:var(--color-text-muted);font-size:13px;padding:6px 0;">ยังไม่มีรายจ่ายประจำ — เพิ่มด้านล่าง (เช่น ค่าเช่า เงินเดือน ค่าน้ำไฟ)</div>';
+  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="repeat"></span> รายจ่ายประจำ</h3>
+      ${unposted.length ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ยังไม่ลง ${unposted.length} รายการเดือนนี้</span>` : ''}
+    </div>
+    ${rows}
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+      <input id="rcrName" placeholder="ชื่อ เช่น ค่าเช่า" style="flex:2;min-width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
+      <input id="rcrAmount" type="number" step="any" placeholder="ยอด" style="flex:1;min-width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
+      <input id="rcrDay" type="number" min="1" max="31" value="1" title="วันที่ของเดือน" style="width:60px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
+      <button class="btn btn-ghost btn-sm" onclick="addRecurring()">${icon('plus')} เพิ่ม</button>
+    </div>
+    ${recurringExpenses.length ? `<button class="btn btn-primary btn-sm" onclick="postRecurringThisMonth()" style="margin-top:10px;width:100%;">${icon('check')} ลงรายจ่ายประจำเดือนนี้ (แก้ตัวเลขทีหลังได้)</button>` : ''}
+  </div>`;
+  renderIcons(el);
+}
+function addRecurring() {
+  const name = ($('rcrName')?.value || '').trim();
+  const amount = parseFloat($('rcrAmount')?.value) || 0;
+  const day = Math.min(31, Math.max(1, parseInt($('rcrDay')?.value) || 1));
+  if (!name) { ui.toast('ใส่ชื่อรายจ่ายประจำ'); return; }
+  recurringExpenses.push({ id: uid(), name, category: '', defaultAmount: amount, dayOfMonth: day, active: true });
+  saveAll();
+  renderRecurringSection();
+}
+async function delRecurring(id) {
+  if (!(await ui.confirm('ลบรายจ่ายประจำนี้?', { okText: 'ลบ', danger: true }))) return;
+  recurringExpenses = recurringExpenses.filter(t => t.id !== id);
+  saveAll();
+  renderRecurringSection();
+}
+function postRecurringThisMonth() {
+  const ym = currentRcrYM();
+  let n = 0;
+  recurringExpenses.filter(t => t.active && !recurringPostedThisMonth(t.id)).forEach(t => {
+    const dd = String(Math.min(28, t.dayOfMonth || 1)).padStart(2, '0');
+    expenses.unshift({
+      id: uid(), kind: 'expense', date: ym + '-' + dd, description: t.name,
+      amount: Number(t.defaultAmount) || 0, payType: 'transfer',
+      category: t.category || 'รายจ่ายประจำ', note: '#rcr:' + t.id + ':' + ym
+    });
+    n++;
+  });
+  saveAll();
+  renderExpensePage();
+  ui.toast(n ? `ลงรายจ่ายประจำ ${n} รายการแล้ว — แก้ยอดได้ในรายการด้านล่าง` : 'ลงครบแล้วเดือนนี้');
 }
 
 // ============================================================

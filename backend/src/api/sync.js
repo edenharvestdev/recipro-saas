@@ -82,6 +82,10 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'expense_date', 'category', 'description', 'amount', 'payment_type', 'note', 'kind'],
         withShop(b.expenses || []), 'id');
 
+      await upsertRows(client, 'recurring_expenses',
+        ['id', 'shop_id', 'name', 'category', 'default_amount', 'day_of_month', 'active'],
+        withShop(b.recurring_expenses || []), 'id');
+
       // option_groups
       await upsertRows(client, 'option_groups',
         ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled'],
