@@ -1595,7 +1595,7 @@
       <button class="drawer-close" onclick="closeDrawer()" title="ปิด" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
     </div>
     <div class="drawer-body">
-      <div class="grid-3" style="margin-bottom: 12px;">
+      <div class="grid-2" style="margin-bottom: 12px;">
         <div class="field">
           <label>รหัสสินค้า/สูตร</label>
           <input id="rCode" placeholder="R01">
@@ -1603,10 +1603,6 @@
         <div class="field">
           <label>ชื่อสูตร/เมนู</label>
           <input id="rName" placeholder="เช่น ครัวซองต์เนยสด">
-        </div>
-        <div class="field">
-          <label>ราคาขาย (฿)</label>
-          <input id="rSell" type="number" step="any" placeholder="0">
         </div>
       </div>
 
@@ -1623,11 +1619,23 @@
 
       <div class="field" style="margin-bottom: 15px;">
         <label>ผลลัพธ์การผลิต</label>
-        <select id="rOutputType" onchange="updateRecipeTotals()">
+        <select id="rOutputType" onchange="onRecipeOutputChange()">
           <option value="MAIN">Main — สินค้าขาย (เข้า POS ได้)</option>
           <option value="RAW">RAW — ของกลาง/กึ่งสำเร็จรูป (ใช้เป็นส่วนผสม · ไม่ขาย)</option>
         </select>
         <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">RAW ผลิตแล้วเข้า "สต๊อกกลาง" ไม่โผล่หน้าขาย · Main ผลิตแล้วเข้าหน้าขายได้เลย</p>
+      </div>
+
+      <div class="field" style="margin-bottom: 12px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+          <input type="checkbox" id="rOnMenu" onchange="updateRecipeMenuUI()" style="width:16px;height:16px;accent-color:var(--color-primary);">
+          นำขึ้นเมนู (ขายหน้าร้าน — ตั้งราคาขาย)
+        </label>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">ปิด = สูตรนี้เป็นของกลาง/ต้นทุนเท่านั้น (ไม่โผล่หน้าขาย) · เปิด = ขายหน้าร้านได้ ใส่ราคาด้านล่าง</p>
+      </div>
+      <div class="field" id="rSellField" style="margin-bottom: 15px;">
+        <label>ราคาขาย (เมนู) (฿)</label>
+        <input id="rSell" type="number" step="any" placeholder="0">
       </div>
 
       <h3><span class="ico" data-icon="soup"></span> ส่วนผสมในสูตร</h3>
@@ -2620,6 +2628,7 @@ function applyBootstrapData(data) {
       steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
       category: r.category || '', isSop: !!r.is_sop,
       recipeType: r.recipe_type || '', outputItemType: r.output_item_type || '',
+      onMenu: (typeof r.on_menu === 'boolean' ? r.on_menu : null),
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
       imgData: r.img_data || '',
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
@@ -2879,7 +2888,8 @@ async function syncToSupabase() {
       fg_stock: r.fgStock, fg_low: r.fgLow,
       category: r.category || null, opt_groups: r.optGroups || [],
       img_data: r.imgData || null, is_sop: r.isSop || false,
-      recipe_type: r.recipeType || null, output_item_type: r.outputItemType || null
+      recipe_type: r.recipeType || null, output_item_type: r.outputItemType || null,
+      on_menu: (typeof r.onMenu === 'boolean' ? r.onMenu : null)
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
       recipe_id: r.id, material_id: it.matId || null, amount: it.amount, role: it.role || '', sub_recipe_id: it.subId || null
@@ -3950,6 +3960,7 @@ function saveRecipe() {
   const batchYield = Math.max(0.0001, +$('rYield').value || 1);
   const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
   const isRaw = $('rOutputType').value === 'RAW';
+  const onMenu = $('rOnMenu') ? $('rOnMenu').checked : !isRaw; // ชั้นเมนู: สวิตช์ "นำขึ้นเมนู"
   // bridge: เชื่อม Main/RAW เดิม → taxonomy ใหม่ (Production/Menu + หมวดที่ผลิต)
   const recipeType = isRaw ? 'PRODUCTION' : 'MENU';
   const steps = $('rSteps').value;
@@ -3967,12 +3978,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData, recipeType, outputItemType: r.outputItemType || (isRaw ? 'PREP' : 'SALE') });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, isRaw, steps, items, category, optGroups, imgData, recipeType, onMenu, outputItemType: r.outputItemType || (isRaw ? 'PREP' : 'SALE') });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType, outputItemType: isRaw ? 'PREP' : 'SALE' });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType, onMenu, outputItemType: isRaw ? 'PREP' : 'SALE' });
   }
 
   saveAll();
@@ -3990,6 +4001,7 @@ function editRecipe(id) {
   $('rYield').value = r.batchYield || 1;
   $('rYieldUnit').value = r.yieldUnit || 'ชิ้น';
   $('rOutputType').value = r.isRaw ? 'RAW' : 'MAIN';
+  if ($('rOnMenu')) { $('rOnMenu').checked = (r.onMenu != null ? !!r.onMenu : !r.isRaw); updateRecipeMenuUI(); }
   $('rSteps').value = r.steps || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
   setRecipeImgPreview(r.imgData || '');
@@ -4124,6 +4136,19 @@ function renderRecipeList() {
     (_mainRecs.length ? `<optgroup label="ผลิตสินค้าขาย (Main)">${_mainRecs.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</optgroup>` : '');
 }
 
+// ชั้นเมนู: แสดง/ซ่อนช่องราคาตามสวิตช์ "นำขึ้นเมนู"
+function updateRecipeMenuUI() {
+  const on = $('rOnMenu') ? $('rOnMenu').checked : true;
+  const f = $('rSellField');
+  if (f) f.style.display = on ? '' : 'none';
+}
+// เปลี่ยนชนิดผลลัพธ์: RAW = ของกลาง (ปิดนำขึ้นเมนูอัตโนมัติ) · Main = ขายได้ (เปิด)
+function onRecipeOutputChange() {
+  const raw = $('rOutputType').value === 'RAW';
+  if ($('rOnMenu')) $('rOnMenu').checked = !raw;
+  updateRecipeMenuUI();
+  updateRecipeTotals();
+}
 function resetRecipeForm() {
   editRecipeId = null;
   $('rCode').value = '';
@@ -4132,6 +4157,7 @@ function resetRecipeForm() {
   $('rYield').value = 1;
   $('rYieldUnit').value = 'ชิ้น';
   $('rOutputType').value = 'MAIN';
+  if ($('rOnMenu')) { $('rOnMenu').checked = true; updateRecipeMenuUI(); }
   $('rSteps').value = '';
   if ($('rCategory')) $('rCategory').value = '';
   setRecipeImgPreview('');
@@ -4997,7 +5023,7 @@ function renderPosGrid() {
   renderPosCategoryBar();
   const grid = $('posProductGrid');
   if (!grid) return;
-  let sellable = recipes.filter(r => !r.isRaw);
+  let sellable = recipes.filter(r => r.onMenu != null ? !!r.onMenu : !r.isRaw);
   let mats = posSellableMats();
   if (posCategoryFilter) { sellable = sellable.filter(r => r.category === posCategoryFilter); mats = mats.filter(m => m.category === posCategoryFilter); }
   if (!sellable.length && !mats.length) {

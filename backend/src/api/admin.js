@@ -111,9 +111,9 @@ router.post('/clone-shop', async (req, res) => {
         // แทรกสูตรใหม่
         for (const r of srcRec) {
           await client.query(
-            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, fg_stock, fg_low, category, opt_groups, img_data, is_sop)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14)`,
-            [r.id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.fg_low||0, r.category||null, r.opt_groups||null, r.img_data||null, r.is_sop || false]
+            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, fg_stock, fg_low, category, opt_groups, img_data, is_sop, on_menu)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14,$15)`,
+            [r.id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.fg_low||0, r.category||null, r.opt_groups||null, r.img_data||null, r.is_sop || false, r.on_menu]
           );
         }
         // แทรก recipe_items พร้อม role + sub_recipe_id (SOP) — id สูตรคงเดิมจึงอ้างถึงกันได้
