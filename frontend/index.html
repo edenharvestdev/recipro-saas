@@ -2726,6 +2726,12 @@ window.addEventListener('resize', () => {
 
 function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
+  document.body.classList.toggle('role-staff', USER_ROLE === 'staff');   // พนักงาน: ซ่อนต้นทุน/กำไร + จำกัดหน้า
+  if (!document.getElementById('roleStaffStyle')) {
+    const st = document.createElement('style'); st.id = 'roleStaffStyle';
+    st.textContent = 'body.role-staff #menuMaterials,body.role-staff #menuRecipes,body.role-staff #menuConsumables,body.role-staff #menuReport,body.role-staff #menuExpense,body.role-staff #menuOptions,body.role-staff #dockMaterials,body.role-staff .admin-only{display:none !important;}';
+    document.head.appendChild(st);
+  }
   CURRENT_SHOP = data.shop ? data.shop.id : null;
   if (data.isSuperadmin) {
     $('menuAdmin').classList.remove('hidden');
@@ -3106,7 +3112,13 @@ async function handleSyncConflict() {
 // ============================================================
 // 4. NAVIGATION & TAB SWITCHER
 // ============================================================
+const STAFF_ALLOWED_TABS = ['dash', 'pos', 'stock', 'manual', 'account'];
 function switchTab(t) {
+  // พนักงาน (staff): เข้าได้แค่หน้าที่อนุญาต — กันเปิดหน้าที่มีต้นทุน/กำไร (สูตร/รายงาน/วัตถุดิบ/ตั้งค่า)
+  if (USER_ROLE === 'staff' && !STAFF_ALLOWED_TABS.includes(t)) {
+    if (typeof ui !== 'undefined' && ui.toast) ui.toast('หน้านี้สำหรับผู้ดูแลร้านเท่านั้น', 'warning');
+    t = 'pos';
+  }
   currentTab = t;
   if (!SUB_TABS.includes(t)) lastMainTab = t;
   const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account', 'manual'];
