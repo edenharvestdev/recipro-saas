@@ -102,6 +102,10 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'topup_date', 'amount', 'note'],
         withShop(b.cash_topups || []), 'id');
 
+      await upsertRows(client, 'customers',
+        ['id', 'shop_id', 'phone', 'name', 'points', 'visits', 'total_spent', 'note'],
+        withShop(b.customers || []), 'id', true);
+
       // option_groups
       await upsertRows(client, 'option_groups',
         ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled'],
