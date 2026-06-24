@@ -4002,6 +4002,7 @@ const recById = id => recipes.find(r => r.id === id);
 // อยู่ในเมนู (ขายหน้าร้าน) ไหม — ใช้ on_menu, fallback เป็น !isRaw สำหรับสูตรเก่าที่ยังไม่ตั้ง
 const recIsOnMenu = r => (r && r.onMenu != null) ? !!r.onMenu : !(r && r.isRaw);
 let recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
+let ingOpenIdx = -1, ingSearch = '';   // combobox ค้นหาวัตถุดิบในสูตร
 let editRecipeId = null;
 let recTypeFilter = '';        // '' ทั้งหมด · 'MAIN' สินค้าขาย · 'RAW' ของกลาง/ซ้อนสูตร
 let recPage = 1;
@@ -4018,14 +4019,25 @@ function renderRecTypeChips() {
 let recipeOptGroups = []; // [{ label, choices: string, required }]
 
 function addRecipeIng() {
-  recipeIng.push({ matId: materials[0]?.id || '', subId: null, amount: 0, role: '' });
+  recipeIng.push({ matId: '', subId: null, amount: 0, role: '' });
+  ingOpenIdx = recipeIng.length - 1; ingSearch = '';   // เปิดช่องค้นหาแถวใหม่ให้เลย
   renderRecipeForm();
 }
 
 function delRecipeIng(i) {
   recipeIng.splice(i, 1);
   if (!recipeIng.length) recipeIng.push({ matId: '', subId: null, amount: 0, role: '' });
+  ingOpenIdx = -1;
   renderRecipeForm();
+}
+
+// combobox ค้นหาวัตถุดิบ/ของกลาง ในแถวส่วนผสม
+function ingOpen(i) { ingOpenIdx = (ingOpenIdx === i ? -1 : i); ingSearch = ''; renderRecipeForm(); }
+function ingSearchInput(v) { ingSearch = v; renderRecipeForm(); }
+function ingPick(i, kind, id) {
+  if (kind === 'sop') { recipeIng[i].subId = id; recipeIng[i].matId = null; }
+  else { recipeIng[i].matId = id; recipeIng[i].subId = null; }
+  ingOpenIdx = -1; ingSearch = ''; renderRecipeForm();
 }
 
 // สูตรที่ใช้เป็น SOP ได้ (กึ่งสำเร็จรูป/ของกลาง) ตัดตัวเอง + ตัวที่จะเกิดลูป
@@ -4050,6 +4062,7 @@ function setIngCat(i, cat) {
   recipeIng[i]._cat = cat;
   if (cat === '_sop') { recipeIng[i].subId = recipeIng[i].subId || ''; recipeIng[i].matId = null; }
   else { recipeIng[i].matId = recipeIng[i].matId || ''; recipeIng[i].subId = null; }
+  ingOpenIdx = i; ingSearch = '';   // เปิดช่องค้นหาให้เลยหลังเลือกหมวด
   renderRecipeForm();
 }
 
@@ -4074,22 +4087,32 @@ function renderRecipeForm() {
     const m = matById(it.matId);
     const curCat = it._cat || (isSop ? '_sop' : '_all');
     const unitName = isSop ? (sub ? (sub.yieldUnit || 'หน่วย') : 'หน่วย') : (m ? baseU(m) : 'หน่วย');
-    let picker;
+    let cands;
     if (curCat === '_sop') {
-      picker = `<select onchange="recipeIng[${i}].subId=this.value; recipeIng[${i}].matId=null; renderRecipeForm();" style="flex:1;min-width:0;">
-           <option value="">— เลือกของกลาง/SOP —</option>
-           ${sops.map(r => `<option value="${r.id}"${r.id === it.subId ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}
-         </select>`;
+      cands = sops.map(r => ({ kind: 'sop', id: r.id, name: r.name }));
     } else {
       let list = nonCons;
       if (curCat === '_blank') list = nonCons.filter(x => !x.itemType);
       else if (curCat !== '_all') list = nonCons.filter(x => x.itemType === curCat);
-      if (m && !list.some(x => x.id === m.id)) list = [m, ...list]; // คงตัวที่เลือกไว้ให้เห็นเสมอแม้กรองหมวด
-      picker = `<select onchange="recipeIng[${i}].matId=this.value; recipeIng[${i}].subId=null; renderRecipeForm();" style="flex:1;min-width:0;">
-           <option value="">— เลือกวัตถุดิบ —</option>
-           ${list.map(mat => `<option value="${mat.id}"${mat.id === it.matId ? ' selected' : ''}>${esc(mat.name)}</option>`).join('')}
-         </select>`;
+      cands = list.map(x => ({ kind: 'mat', id: x.id, name: x.name }));
     }
+    const selName = curCat === '_sop' ? (sub ? sub.name : '') : (m ? m.name : '');
+    const isOpen = ingOpenIdx === i;
+    const term = (ingSearch || '').trim().toLowerCase();
+    const filtered = (isOpen && term) ? cands.filter(c => c.name.toLowerCase().includes(term)) : cands;
+    const shown = filtered.slice(0, 60);
+    const placeholder = curCat === '_sop' ? '— เลือกของกลาง/SOP —' : '— เลือกวัตถุดิบ —';
+    const panel = isOpen ? `<div style="position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:8px;margin-top:2px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;">
+        <input id="ingSearch${i}" value="${esc(ingSearch)}" oninput="ingSearchInput(this.value)" placeholder="พิมพ์ค้นหา…" style="width:100%;padding:7px 10px;border:none;border-bottom:1px solid var(--border-soft);background:transparent;color:var(--color-text-main);font-size:13px;outline:none;">
+        <div style="max-height:210px;overflow-y:auto;">
+          ${shown.length ? shown.map(c => `<div class="ing-opt" onclick="ingPick(${i},'${c.kind}','${c.id}')" style="padding:7px 10px;font-size:13px;cursor:pointer;color:var(--color-text-main);">${esc(c.name)}</div>`).join('') : '<div style="padding:8px 10px;font-size:12px;color:var(--color-text-muted);">ไม่พบรายการ</div>'}
+          ${filtered.length > 60 ? `<div style="padding:6px 10px;font-size:11px;color:var(--color-text-muted);">…แสดง 60 จาก ${filtered.length} — พิมพ์ค้นหาเพิ่ม</div>` : ''}
+        </div>
+      </div>` : '';
+    const picker = `<div style="position:relative;flex:1;min-width:0;">
+      <button type="button" onclick="ingOpen(${i})" style="width:100%;text-align:left;padding:6px 8px;border:1px solid var(--border-soft);border-radius:7px;background:var(--surface-1);color:var(--color-text-main);font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${selName ? esc(selName) : '<span style="color:var(--color-text-muted)">' + placeholder + '</span>'}<span style="float:right;color:var(--color-text-muted);">▾</span>
+      </button>${panel}</div>`;
     return `<div class="recipe-row">
       <div style="display:flex; gap:5px; align-items:center; min-width:0;">
         <select onchange="setIngCat(${i}, this.value)" style="flex:0 0 auto; width:128px; font-size:12px; padding:6px 4px;" title="เลือกหมวดเพื่อกรองรายการ — หาของง่ายขึ้น">
@@ -4105,6 +4128,8 @@ function renderRecipeForm() {
       <button class="btn btn-danger" onclick="delRecipeIng(${i})" style="padding:8px 10px;" title="ลบ">${icon('trash-2')}</button>
     </div>`;
   }).join('');
+  if (!document.getElementById('ingComboStyle')) { const st = document.createElement('style'); st.id = 'ingComboStyle'; st.textContent = '.ing-opt:hover{background:var(--surface-2)}'; document.head.appendChild(st); }
+  if (ingOpenIdx >= 0) { const si = document.getElementById('ingSearch' + ingOpenIdx); if (si) { si.focus(); const v = si.value; si.value = ''; si.value = v; } }
   updateRecipeTotals();
 }
 
