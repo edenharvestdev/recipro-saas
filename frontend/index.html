@@ -924,6 +924,16 @@
 
     <!-- 4. SETTINGS PAGE -->
     <section id="setPage" class="page-section hidden">
+      <div class="glass-card" style="margin-bottom:18px;">
+        <h2 style="margin:0 0 4px;"><span class="ico" data-icon="building-store"></span> ประเภทธุรกิจ</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">เลือกให้ตรงธุรกิจ → ระบบปรับ "คำเรียก" ในเมนูให้เหมาะ (เช่น วัตถุดิบ → วัสดุ/สต๊อกสินค้า)</p>
+        <select id="setBizType" onchange="setBusinessType(this.value)" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;min-width:240px;">
+          <option value="fnb">ร้านอาหาร / คาเฟ่ / เบเกอรี่</option>
+          <option value="service">ร้านบริการ (คิ้ว/เล็บ/สปา)</option>
+          <option value="retail">ร้านขายของ / รีเทล</option>
+          <option value="maker">โฮมเมด / ผลิตขาย</option>
+        </select>
+      </div>
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
         <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">พนักงาน (staff) เห็นแค่หน้าขาย/สต๊อก/สมาชิก — <b>ไม่เห็นต้นทุน/กำไร/สูตร</b> · เจ้าของ (owner) เห็นทุกอย่าง · <b id="stCount">ทีมงาน —/3</b></p>
@@ -2040,6 +2050,7 @@ function applyLang() {
   const btnEN = document.getElementById('langBtnEN');
   if (btnTH) { btnTH.className = 'btn ' + (LANG === 'th' ? 'btn-primary' : 'btn-ghost'); }
   if (btnEN) { btnEN.className = 'btn ' + (LANG === 'en' ? 'btn-primary' : 'btn-ghost'); }
+  if (typeof applyTerminology === 'function') applyTerminology();   // ทับคำตามประเภทธุรกิจ
 }
 function setLang(lang) {
   LANG = lang;
@@ -2812,6 +2823,23 @@ window.addEventListener('resize', () => {
 // 3. BOOT ENGINE & LOAD DATA
 // ============================================================
 
+// เทมเพลตประเภทธุรกิจ — คำเรียกเฉพาะแต่ละธุรกิจ (เลือกตอนสมัคร/ตั้งค่า)
+const BIZ_TEMPLATES = {
+  fnb:     { label: 'ร้านอาหาร / คาเฟ่ / เบเกอรี่', terms: { menu: 'เมนู', recipe: 'สูตร', ingredient: 'วัตถุดิบ', boh: 'ใบเข้าครัว' } },
+  service: { label: 'ร้านบริการ (คิ้ว/เล็บ/สปา)',   terms: { menu: 'บริการ', recipe: 'สูตรบริการ', ingredient: 'วัสดุ/อุปกรณ์', boh: 'ใบสั่งงาน' } },
+  retail:  { label: 'ร้านขายของ / รีเทล',          terms: { menu: 'สินค้า', recipe: 'ชุดสินค้า', ingredient: 'สต๊อกสินค้า', boh: 'ใบจัดของ' } },
+  maker:   { label: 'โฮมเมด / ผลิตขาย',            terms: { menu: 'สินค้า', recipe: 'สูตร', ingredient: 'วัตถุดิบ', boh: 'ใบผลิต' } },
+};
+function bizTerms() { return (BIZ_TEMPLATES[settings.businessType] || BIZ_TEMPLATES.fnb).terms; }
+function bt(key) { return bizTerms()[key] || BIZ_TEMPLATES.fnb.terms[key] || key; }   // business-term (อย่าชนกับ t() ของ i18n)
+// สลับคำเรียกในเมนูหลัก (nav) + dock ตามประเภทธุรกิจ — เรียกหลัง applyLang เพื่อทับคำให้ตรงธุรกิจ
+function applyTerminology() {
+  const setTxt = (id, txt) => { const el = document.getElementById(id); if (el) { const sp = el.querySelector('span:last-child'); if (sp) sp.textContent = txt; } };
+  setTxt('menuMaterials', bt('ingredient'));
+  setTxt('menuRecipes', bt('recipe') + '/' + bt('menu'));
+  const dm = document.getElementById('dockMaterials'); if (dm) { const sp = dm.querySelector('span:last-child'); if (sp) sp.textContent = bt('ingredient'); }
+}
+
 function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
   document.body.classList.toggle('role-staff', USER_ROLE === 'staff');   // พนักงาน: ซ่อนต้นทุน/กำไร + จำกัดหน้า
@@ -2878,8 +2906,10 @@ function applyBootstrapData(data) {
       orderPaymentMode: sRow?.order_payment_mode || 'postpay',
       publicSlug: sRow?.public_slug || '',
       kitchenTicketMode: sRow?.kitchen_ticket_mode || 'receipt',
+      businessType: sRow?.business_type || 'fnb',
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
+    applyTerminology();
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
       total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number,
@@ -3181,6 +3211,7 @@ async function syncToSupabase() {
       public_slug: settings.publicSlug || null,
       kitchen_ticket_mode: settings.kitchenTicketMode || 'receipt',
       member_config: settings.memberConfig || {},
+      business_type: settings.businessType || 'fnb',
       use_petty_cash: settings.usePettyCash || false,
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false
@@ -3271,7 +3302,7 @@ function switchTab(t) {
     adminLoadDashboard();
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
-  if (t === 'set') { loadLogs(); renderStaffSection(); }
+  if (t === 'set') { loadLogs(); renderStaffSection(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
@@ -8605,6 +8636,7 @@ async function setOrderPaid(id, paid) {
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
 function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
+function setBusinessType(v) { settings.businessType = v; saveAll(); applyTerminology(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('ปรับเป็น: ' + ((BIZ_TEMPLATES[v] || {}).label || v)); }
 
 // #1: แจ้งเตือนออเดอร์ออนไลน์ใหม่ — โพลทุก 30 วิ เมื่อเปิดเมนูออนไลน์ + เสียง/เด้งเตือน
 let _orderPoll = null, _seenOrderIds = null;
