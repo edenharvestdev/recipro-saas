@@ -18,13 +18,14 @@ router.get('/orders', async (req, res) => {
 // PATCH /api/orders/:id — อัปเดตสถานะ และ/หรือ จ่ายแล้ว (บังคับ shop_id เสมอ กันข้ามร้าน)
 router.patch('/orders/:id', async (req, res) => {
   if (!req.shopId) return res.status(400).json({ error: 'no shop' });
-  const { status, paid } = req.body || {};
+  const { status, paid, stock_deducted } = req.body || {};
   const assign = [], params = [];
   if (status != null) {
     if (!STATUSES.includes(status)) return res.status(400).json({ error: 'bad status' });
     params.push(status); assign.push('status = $' + params.length);
   }
   if (paid != null) { params.push(!!paid); assign.push('paid = $' + params.length); }
+  if (stock_deducted != null) { params.push(!!stock_deducted); assign.push('stock_deducted = $' + params.length); }
   if (!assign.length) return res.status(400).json({ error: 'nothing to update' });
   params.push(req.params.id); const idPos = params.length;
   params.push(req.shopId); const shopPos = params.length;

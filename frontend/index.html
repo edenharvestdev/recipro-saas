@@ -2763,7 +2763,7 @@ function applyBootstrapData(data) {
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
       total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number,
-      paid: !!o.paid, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json
+      paid: !!o.paid, stockDeducted: !!o.stock_deducted, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json
     }));
     prodLogs = (data.prod_logs || []).map(p => ({
       id: p.id, recipeId: p.recipe_id, recipeName: p.recipe_name || '',
@@ -8095,15 +8095,54 @@ async function refreshOrders() {
     orders = (d.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
       total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number,
-      paid: !!o.paid, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json
+      paid: !!o.paid, stockDeducted: !!o.stock_deducted, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json
     }));
     renderOnlineMenu();
     if (typeof ui !== 'undefined' && ui.toast) ui.toast('อัปเดตคิวแล้ว');
   } catch (e) { ui.alert('โหลดออเดอร์ไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 async function setOrderStatus(id, status) {
-  try { await API.patch('/api/orders/' + id, { status }); const o = orders.find(x => x.id === id); if (o) o.status = status; renderOnlineMenu(); }
-  catch (e) { ui.alert('อัปเดตสถานะไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+  const o = orders.find(x => x.id === id);
+  // กด "ลูกค้ารับแล้ว" = ปิดการขาย → ตัดสต๊อก + ลงยอดขาย (ครั้งเดียว) ก่อนเปลี่ยนสถานะ
+  if (status === 'collected' && o && !o.stockDeducted) {
+    const ok = await fulfillOrderSale(o);
+    if (!ok) return;   // ตัดสต๊อกไม่สำเร็จ → ไม่เปลี่ยนเป็นรับแล้ว
+  }
+  try {
+    const body = (status === 'collected') ? { status, stock_deducted: true } : { status };
+    await API.patch('/api/orders/' + id, body);
+    if (o) { o.status = status; if (status === 'collected') o.stockDeducted = true; }
+    renderOnlineMenu();
+  } catch (e) { ui.alert('อัปเดตสถานะไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+}
+// ตัดสต๊อก + ลงยอดขาย สำหรับออเดอร์ออนไลน์ (ใช้ engine /api/pos/sell เดียวกับหน้าร้าน)
+async function fulfillOrderSale(o) {
+  let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } d = d || {};
+  const items = d.items || [];
+  const lines = items.map(it => it.type === 'material'
+    ? { ref_type: 'material', ref_id: it.id, qty: Number(it.qty) || 1 }
+    : { ref_type: 'recipe', ref_id: it.id, qty: Number(it.qty) || 1 });
+  if (!lines.length) return true;
+  const billNo = 'QR-' + (o.orderNo || o.queue || o.id.slice(0, 6));
+  try {
+    const res = await API.post('/api/pos/sell', { lines, bill_no: billNo, make_to_order: !!settings.makeToOrder });
+    if (res && Array.isArray(res.results)) res.results.forEach(rr => {
+      if (rr.after == null) return;
+      if (rr.type === 'material') { const m = matById(rr.ref_id); if (m) m.stock = Number(rr.after); }
+      else if (rr.type === 'recipe_fg' || rr.type === 'sub_recipe') { const s = recById(rr.ref_id); if (s) s.fgStock = Number(rr.after); }
+    });
+    // ลงเป็นบิลขาย → เข้ารายงานยอดขาย
+    bills.unshift({
+      id: uid(), billNo, status: 'paid', date: o.date || new Date().toISOString().slice(0, 10),
+      cust: o.name || '', sender: settings.shopName, discV: 0, discT: '%', taxV: 0, taxT: '%', channel: 'qr',
+      items: items.map(it => ({ recipeId: it.type === 'material' ? null : it.id, matId: it.type === 'material' ? it.id : null, qty: Number(it.qty) || 1, price: Number(it.price) || 0, options: {} }))
+    });
+    saveAll();
+    return true;
+  } catch (e) {
+    ui.alert('ตัดสต๊อกไม่สำเร็จ: ' + e.message + ' — ยังไม่เปลี่ยนเป็น "รับแล้ว"', { icon: 'alert-triangle' });
+    return false;
+  }
 }
 async function setOrderPaid(id, paid) {
   try { await API.patch('/api/orders/' + id, { paid }); const o = orders.find(x => x.id === id); if (o) o.paid = paid; renderOnlineMenu(); }

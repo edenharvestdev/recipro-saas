@@ -4,3 +4,5 @@ alter table orders add column if not exists paid boolean default false;
 alter table shop_settings add column if not exists order_payment_mode text default 'postpay';
 -- slug ลิงก์เมนูแบบอ่านง่าย (ชื่อร้าน + suffix จาก token เพื่อกันซ้ำ) — public route รับได้ทั้ง token และ slug
 alter table shop_settings add column if not exists public_slug text;
+-- กันตัดสต๊อกซ้ำ: true เมื่อออเดอร์ถูกตัดสต๊อก+ลงยอดขายแล้ว (ตอนกด "ลูกค้ารับแล้ว")
+alter table orders add column if not exists stock_deducted boolean default false;
