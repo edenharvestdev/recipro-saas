@@ -4149,16 +4149,21 @@ function renderOptGroupRows() {
   let html = '';
   if (linked.length) {
     html += linked.map(g => `
-      <div style="display:flex;align-items:center;gap:8px;background:#E1F5EE;border:1px solid #5DCAA5;border-radius:8px;padding:7px 11px;margin-bottom:6px;">
+      <div onclick="editOptionGroupFromRecipe('${g.id}')" title="กดเพื่อแก้ตัวเลือกนี้" style="display:flex;align-items:center;gap:8px;background:#E1F5EE;border:1px solid #5DCAA5;border-radius:8px;padding:7px 11px;margin-bottom:6px;cursor:pointer;">
         <span class="ico" data-icon="sliders-horizontal" style="color:#0F6E56;"></span>
         <b style="color:#04342C;font-size:13px;flex:1;">${esc(g.label || '(ไม่มีชื่อ)')}</b>
         <span style="font-size:11px;color:#0F6E56;white-space:nowrap;">${(g.choices || []).length} ตัวเลือก</span>
         ${g.enabled === false ? '<span style="font-size:10px;color:#999;">(ปิด)</span>' : ''}
+        <span class="ico" data-icon="pencil" style="color:#0F6E56;"></span>
       </div>`).join('');
   } else {
-    html += `<p style="font-size:12px;color:var(--color-text-muted);padding:2px 0 8px;">${editRecipeId ? 'ยังไม่ได้ผูกตัวเลือกกับเมนูนี้' : 'บันทึกสูตรก่อน แล้วไปผูกตัวเลือกที่หน้า "ตัวเลือก"'}</p>`;
+    html += `<p style="font-size:12px;color:var(--color-text-muted);padding:2px 0 8px;">${editRecipeId ? 'ยังไม่ได้ผูกตัวเลือกกับเมนูนี้ — กดปุ่มด้านล่างเพื่อเพิ่ม' : 'บันทึกสูตรก่อน แล้วปุ่ม “เพิ่มตัวเลือก” จะผูกให้เมนูนี้อัตโนมัติ'}</p>`;
   }
-  html += `<button type="button" class="btn btn-primary btn-sm" onclick="goToOptionsPage()" style="width:100%;margin-top:2px;"><span class="ico" data-icon="sliders-horizontal"></span> จัดการ/เพิ่มตัวเลือก (หน้า "ตัวเลือก") →</button>`;
+  if (editRecipeId) {
+    html += `<button type="button" class="btn btn-primary btn-sm" onclick="addOptionForRecipe()" style="width:100%;margin-top:2px;"><span class="ico" data-icon="plus"></span> เพิ่มตัวเลือกให้เมนูนี้</button>`;
+  } else {
+    html += `<button type="button" class="btn btn-ghost btn-sm" onclick="goToOptionsPage()" style="width:100%;margin-top:2px;"><span class="ico" data-icon="sliders-horizontal"></span> ไปหน้าตัวเลือก</button>`;
+  }
   if ((recipeOptGroups || []).length) {
     html += `<div style="margin-top:8px;font-size:11px;color:#d97706;line-height:1.5;"><span class="ico" data-icon="alert-triangle"></span> มีตัวเลือกแบบเก่า ${recipeOptGroups.length} กลุ่ม (ใส่ได้แค่ชื่อ — ไม่ตัดสต๊อก/ไม่คิดเงิน) แนะนำสร้างใหม่ที่หน้า "ตัวเลือก"</div>`;
   }
@@ -4169,6 +4174,20 @@ function renderOptGroupRows() {
 function goToOptionsPage() {
   if (typeof closeDrawer === 'function') closeDrawer();
   switchTab('options');
+}
+// เพิ่มตัวเลือกใหม่ "ผูกกับเมนูนี้ให้เลย" — เปิดฟอร์มกลุ่ม + ติ๊กสูตรปัจจุบันอัตโนมัติ
+function addOptionForRecipe() {
+  if (!editRecipeId) { ui.alert('บันทึกสูตรก่อน แล้วเปิดสูตรนั้นอีกครั้ง จากนั้นกด “เพิ่มตัวเลือกให้เมนูนี้”', { icon: 'info' }); return; }
+  const rid = editRecipeId;
+  if (typeof closeDrawer === 'function') closeDrawer();
+  switchTab('options');
+  openGroupForm(null, [rid]);
+}
+// แก้กลุ่มตัวเลือกที่ผูกกับสูตรนี้ (จากในฟอร์มสูตร)
+function editOptionGroupFromRecipe(gid) {
+  if (typeof closeDrawer === 'function') closeDrawer();
+  switchTab('options');
+  openGroupForm(gid);
 }
 
 // ต้นทุนสูตร — รองรับ SOP (ส่วนผสมที่เป็นสูตรอื่น) แบบ recursive + กันวนลูป (path-based)
@@ -8080,7 +8099,7 @@ function renderOptionsPage() {
   renderIcons(el);
 }
 
-function openGroupForm(id) {
+function openGroupForm(id, preselect) {
   editGroupId = id || null;
   const g = id ? optionGroups.find(x => x.id === id) : null;
   editGroupChoices = g ? g.choices.map(c => ({ ...c, links: (c.links||[]).map(l=>({...l})) })) : [];
@@ -8089,7 +8108,7 @@ function openGroupForm(id) {
   $('ogRequired').checked = !!g?.required;
   $('ogEnabled').checked = g?.enabled !== false;
   renderGroupChoices();
-  renderGroupRecipePicker(g?.recipeIds || []);
+  renderGroupRecipePicker(g?.recipeIds || preselect || []);
   openDrawer('optGroupDrawer');
 }
 
