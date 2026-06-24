@@ -6349,6 +6349,15 @@ function renderDashboard() {
   }, 0);
   const monthProfit = monthSales - monthCost;
   const profitPct = monthSales > 0 ? Math.round(monthProfit / monthSales * 100) : 0;
+  const billCost = b => (b.items || []).reduce((cs, it) => {
+    let c = 0;
+    if (it.recipeId) { const r = recById(it.recipeId); c = r ? recipeCost(r.items) / Math.max(r.batchYield || 1, 1) : 0; }
+    else if (it.matId) { const m = matById(it.matId); c = m ? perBase(m) : 0; }
+    return cs + c * (it.qty || 0);
+  }, 0);
+  const todayCost = todayBills.reduce((s, b) => s + billCost(b), 0);
+  const todayProfit = todaySales - todayCost;
+  const todayPct = todaySales > 0 ? Math.round(todayProfit / todaySales * 100) : 0;
 
   const lowItems = materials.filter(m => !m.isConsumable && m.lowStock > 0 && m.stock <= m.lowStock);
 
@@ -6356,13 +6365,13 @@ function renderDashboard() {
   const kpis = [
     { label: 'ยอดขายวันนี้', value: money(todaySales), sub: todayBills.length + ' บิล', icon: 'sun', color: 'var(--color-primary)' },
     { label: 'ยอดขายเดือนนี้', value: money(monthSales), sub: monthBills.length + ' บิล', icon: 'calendar', color: 'var(--color-secondary)' },
-    { label: 'กำไรเดือนนี้', value: money(monthProfit), sub: profitPct + '% margin', icon: 'trending-up', color: monthProfit >= 0 ? '#22c55e' : '#e53e3e' },
+    { label: 'กำไรวันนี้', value: money(todayProfit), sub: 'วันนี้ ' + todayPct + '% · เดือนนี้ ' + money(monthProfit) + ' (' + profitPct + '%)', icon: 'trending-up', color: todayProfit >= 0 ? '#22c55e' : '#e53e3e', adminOnly: true },
     { label: 'สต๊อกต่ำ', value: String(lowItems.length), sub: 'รายการ', icon: 'alert-triangle', color: lowItems.length ? '#e53e3e' : '#22c55e' },
   ];
   const kpiEl = $('dashKpiRow');
   if (kpiEl) {
     kpiEl.innerHTML = kpis.map(k => `
-      <div class="glass-card" style="text-align:center;padding:16px 10px 14px;">
+      <div class="glass-card${k.adminOnly ? ' admin-only' : ''}" style="text-align:center;padding:16px 10px 14px;">
         <div style="font-size:10px;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;overflow:hidden;">
           <span class="ico" data-icon="${k.icon}"></span>${k.label}
         </div>
