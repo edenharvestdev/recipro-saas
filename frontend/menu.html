@@ -40,7 +40,7 @@
 
 <script>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
-let MENU = [], CART = {};
+let MENU = [], CART = {}, PAYMENT = { mode: 'postpay', promptpay: '' };
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -51,6 +51,7 @@ async function load(){
     const d = await r.json();
     document.getElementById('shopName').textContent = d.shop_name || 'เมนู';
     MENU = d.items || [];
+    if (d.payment) PAYMENT = d.payment;
     renderGrid();
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; }
 }
@@ -82,8 +83,8 @@ function openCart(){
     <div class="row" style="font-weight:800;border:none"><span style="flex:1">รวม</span><span>${fmt(cartTotal())}</span></div>
     <input id="cName" placeholder="ชื่อผู้สั่ง"><input id="cPhone" placeholder="เบอร์โทร (ไม่บังคับ)">
     <textarea id="cNote" rows="2" placeholder="หมายเหตุ เช่น หวานน้อย (ไม่บังคับ)"></textarea>
-    <button class="paybtn" onclick="submitOrder()">ยืนยันสั่ง · รับที่ร้าน</button>
-    <p class="muted" style="text-align:center;margin-top:8px">กดปิดด้านนอกเพื่อแก้ไขเพิ่ม</p>`;
+    <button class="paybtn" onclick="submitOrder()">${PAYMENT.mode === 'prepay' ? 'ยืนยันสั่ง · โอนเงิน' : 'ยืนยันสั่ง · รับที่ร้าน'}</button>
+    <p class="muted" style="text-align:center;margin-top:8px">${PAYMENT.mode === 'prepay' ? 'โอนก่อนรับของ — จะมี QR พร้อมเพย์หลังกดสั่ง' : 'จ่ายเงินตอนรับของที่ร้าน'}</p>`;
   document.getElementById('cartModal').classList.add('open');
 }
 document.getElementById('cartModal').onclick = e => { if(e.target.id==='cartModal') e.currentTarget.classList.remove('open'); };
@@ -94,10 +95,16 @@ async function submitOrder(){
     const r = await fetch('/public/order/'+TOKEN, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const d = await r.json();
     if(!r.ok){ alert(d.error||'สั่งไม่สำเร็จ'); return; }
+    const pay = d.payment || PAYMENT;
+    const prepay = pay.mode === 'prepay' && pay.promptpay;
+    const qrBlock = prepay
+      ? `<div style="margin:10px 0;"><img src="https://promptpay.io/${encodeURIComponent(pay.promptpay)}/${Number(d.total).toFixed(2)}.png" alt="PromptPay QR" style="width:200px;height:200px;border:1px solid #ddd;border-radius:10px;background:#fff;padding:6px;"></div>
+         <p class="muted">สแกนพร้อมเพย์เพื่อโอน ${fmt(d.total)} แล้วแจ้งสลิปกับร้าน · ร้านจะเริ่มทำเมื่อยืนยันยอด</p>`
+      : `<p class="muted">กรุณารอรับที่ร้าน · จ่ายเงินตอนรับของ · แจ้งหมายเลขคิวกับพนักงาน</p>`;
     document.getElementById('sheet').innerHTML = `<div class="done"><div>สั่งสำเร็จ! 🎉</div>
       <div class="qn">คิว ${d.queue_number}</div>
       <div>เลขออเดอร์ ${esc(d.order_no)}</div><div style="margin:8px 0">ยอดรวม ${fmt(d.total)}</div>
-      <p class="muted">กรุณารอรับที่ร้าน · แจ้งหมายเลขคิวกับพนักงาน</p>
+      ${qrBlock}
       <button class="paybtn" onclick="location.reload()">สั่งเพิ่ม</button></div>`;
     CART={}; updateBar();
   }catch(e){ alert('สั่งไม่สำเร็จ ลองใหม่'); }

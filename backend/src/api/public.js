@@ -7,7 +7,7 @@ const router = express.Router();
 async function shopByToken(token) {
   if (!token) return null;
   const r = await query(
-    `select s.id, s.name from shops s
+    `select s.id, s.name, ss.promptpay, coalesce(ss.order_payment_mode,'postpay') as order_payment_mode from shops s
        join shop_settings ss on ss.shop_id = s.id
       where ss.public_menu_token = $1 and ss.public_menu_enabled = true`,
     [token]);
@@ -31,7 +31,7 @@ router.get('/menu/:token', async (req, res) => {
       ...recs.map(r => ({ id: r.id, type: 'recipe', name: r.name, price: Number(r.sell_price) || 0, img: r.img_data || '', category: r.category || '' })),
       ...mats.map(m => ({ id: m.id, type: 'material', name: m.name, price: Number(m.sell_price) || 0, img: m.img_data || '', category: m.category || '' })),
     ];
-    res.json({ shop_name: shop.name, items });
+    res.json({ shop_name: shop.name, items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -57,7 +57,7 @@ router.post('/order/:token', async (req, res) => {
          JSON.stringify({ items: clean, note: String(note || '').slice(0, 200) }), total, qn]);
       return r.rows[0];
     });
-    res.json({ ok: true, order_no: out.order_no, queue_number: out.queue_number, total });
+    res.json({ ok: true, order_no: out.order_no, queue_number: out.queue_number, total, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
