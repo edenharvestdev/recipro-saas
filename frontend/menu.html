@@ -32,7 +32,7 @@
 </style>
 </head>
 <body>
-<header><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div></header>
+<header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div></header>
 <div class="grid" id="grid"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
 
@@ -53,6 +53,7 @@ async function load(){
     document.getElementById('shopName').textContent = d.shop_name || 'เมนู';
     MENU = d.items || [];
     if (d.payment) PAYMENT = d.payment;
+    if (d.logo) { const l = document.getElementById('shopLogo'); l.src = d.logo; l.style.display = 'block'; }
     renderGrid();
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; }
 }

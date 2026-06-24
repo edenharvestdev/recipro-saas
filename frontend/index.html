@@ -5974,6 +5974,7 @@ function showPosReceipt(b, total) {
   el.innerHTML = `
     <div class="pos-receipt" id="posReceiptContent">
       <div class="rc-header">
+        ${settings.logoData ? '<img src="' + esc(settings.logoData) + '" alt="" style="width:60px;height:60px;object-fit:contain;display:block;margin:0 auto 6px;border-radius:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' : ''}
         <div class="rc-shop">${esc(shopName)}</div>
         ${phoneLine}${ppLine}
         <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}${b.tableNo ? ' &nbsp;|&nbsp; คิว/โต๊ะ ' + esc(b.tableNo) : ''}</div>

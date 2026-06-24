@@ -7,7 +7,7 @@ const router = express.Router();
 async function shopByToken(token) {
   if (!token) return null;
   const r = await query(
-    `select s.id, s.name, ss.promptpay, coalesce(ss.order_payment_mode,'postpay') as order_payment_mode from shops s
+    `select s.id, s.name, ss.promptpay, ss.logo_url, coalesce(ss.order_payment_mode,'postpay') as order_payment_mode from shops s
        join shop_settings ss on ss.shop_id = s.id
       where (ss.public_menu_token = $1 or ss.public_slug = $1) and ss.public_menu_enabled = true`,
     [token]);
@@ -38,7 +38,7 @@ router.get('/menu/:token', async (req, res) => {
       ...recs.map(r => ({ id: r.id, type: 'recipe', name: r.name, price: Number(r.sell_price) || 0, img: r.img_data || '', category: r.category || '', options: (groupsByRecipe[r.id] || []).filter(g => g.choices.length) })),
       ...mats.map(m => ({ id: m.id, type: 'material', name: m.name, price: Number(m.sell_price) || 0, img: m.img_data || '', category: m.category || '', options: [] })),
     ];
-    res.json({ shop_name: shop.name, items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' } });
+    res.json({ shop_name: shop.name, logo: shop.logo_url || '', items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
