@@ -451,7 +451,7 @@
       <div class="grid-2">
         <!-- สต๊อกสินค้าสำเร็จรูป -->
         <div class="glass-card">
-          <h2><span class="ico" data-icon="package"></span> สต๊อกขนม / สินค้าพร้อมขาย</h2>
+          <h2><span class="ico" data-icon="package"></span> สต๊อกสินค้า &amp; ของกลาง (ที่ผลิตเข้าคลัง)</h2>
           <div class="table-scroll">
           <table class="lst">
             <thead>
@@ -4305,13 +4305,27 @@ function renderFgList() {
     const st = Number(r.fgStock) || 0;
     const lo = Number(r.fgLow) || 0;
     const isLow = lo > 0 && st <= lo;
+    const tag = recIsOnMenu(r)
+      ? '<span style="font-size:10px;padding:1px 7px;border-radius:999px;background:#E6F1FB;color:#185FA5;">ขาย</span>'
+      : '<span style="font-size:10px;padding:1px 7px;border-radius:999px;background:#FAEEDA;color:#854F0B;">ของกลาง</span>';
     return `<tr>
-      <td><b>${r.name}</b>${isLow ? ` <span style="color:#ef4444;">${icon('circle')}</span>` : ''}</td>
-      <td class="r"><b>${st.toLocaleString()}</b> ${r.yieldUnit}</td>
+      <td><b>${esc(r.name)}</b> ${tag}${isLow ? ` <span style="color:#ef4444;" title="ใกล้หมด">${icon('circle')}</span>` : ''}</td>
+      <td class="r"><b>${st.toLocaleString()}</b> ${esc(r.yieldUnit || '')}</td>
       <td class="r"><input type="number" min="0" value="${lo}" style="width:70px; text-align:right; padding:4px;" onchange="recById('${r.id}').fgLow=+this.value||0; saveAll(); renderAlerts();"></td>
-      <td class="r"><button class="btn btn-ghost btn-sm" onclick="adjFg('${r.id}')" style="padding:6px 10px;">${icon('pencil')} ปรับคลัง</button></td>
+      <td class="r" style="white-space:nowrap;">
+        <button class="btn btn-primary btn-sm" onclick="produceShortcut('${r.id}')" style="padding:6px 9px;" title="ผลิตเข้าคลัง">${icon('utensils')} ผลิต</button>
+        <button class="btn btn-ghost btn-sm" onclick="adjFg('${r.id}')" style="padding:6px 9px;" title="ปรับคลังด้วยมือ">${icon('pencil')}</button>
+      </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ยังไม่มีสินค้าเพื่อขาย</td></tr>';
+  }).join('') || '<tr><td colspan="4" style="color:#999; text-align:center;">ยังไม่มีสินค้า/ของกลาง</td></tr>';
+}
+// ผลิตด่วน: เลือกสูตรในฟอร์ม "สั่งผลิต" + เลื่อนไปให้กรอกจำนวนแล้วกดผลิต
+function produceShortcut(id) {
+  const sel = $('prodRecipe');
+  if (!sel) return;
+  sel.value = id;
+  if (typeof renderProdPreview === 'function') renderProdPreview();
+  sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function adjFg(id) {
