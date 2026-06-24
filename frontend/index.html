@@ -659,6 +659,21 @@
         </div>
       </div>
 
+      <div class="glass-card" style="margin-bottom:20px;">
+        <h2 style="margin:0 0 12px;"><span class="ico" data-icon="trending-up"></span> สรุปกำไรช่วงนี้ <span style="font-size:12px;color:var(--color-text-muted);font-weight:400;">— คิดจากต้นทุนวัตถุดิบจริง (สิ่งที่ POS ทั่วไปทำไม่ได้)</span></h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:140px;text-align:center;background:var(--surface-2);border-radius:10px;padding:12px;">
+            <div style="font-size:12px;color:var(--color-text-muted);">ยอดขายรวม</div><div id="rptSumRevenue" style="font-size:24px;font-weight:800;color:var(--color-secondary);">฿0</div></div>
+          <div style="flex:1;min-width:140px;text-align:center;background:var(--surface-2);border-radius:10px;padding:12px;">
+            <div style="font-size:12px;color:var(--color-text-muted);">ต้นทุนวัตถุดิบ (COGS)</div><div id="rptSumCost" style="font-size:24px;font-weight:800;color:#dc2626;">฿0</div></div>
+          <div style="flex:1;min-width:140px;text-align:center;background:#E1F5EE;border-radius:10px;padding:12px;">
+            <div style="font-size:12px;color:#0F6E56;">กำไรขั้นต้น</div><div id="rptSumProfit" style="font-size:24px;font-weight:800;color:#0F6E56;">฿0</div></div>
+          <div style="flex:1;min-width:140px;text-align:center;background:var(--surface-2);border-radius:10px;padding:12px;">
+            <div style="font-size:12px;color:var(--color-text-muted);">มาร์จิ้นเฉลี่ย</div><div id="rptSumMargin" style="font-size:24px;font-weight:800;color:var(--color-primary);">0%</div></div>
+        </div>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:8px 0 0;">* สินค้าที่ยังไม่ได้ใส่สูตร/ต้นทุน จะคิดต้นทุน = 0 (กำไรอาจดูสูงเกินจริง)</p>
+      </div>
+
       <div class="grid-2" style="margin-bottom:20px;">
         <!-- Best sellers (top 5 / all) -->
         <div class="glass-card">
@@ -668,7 +683,7 @@
           </div>
           <div class="table-scroll" style="max-height:340px; overflow-y:auto;">
             <table class="lst">
-              <thead><tr><th>สินค้า</th><th>หมวดหมู่</th><th class="r">จำนวน</th><th class="r">รายได้</th><th class="r">รายได้/วัน</th></tr></thead>
+              <thead><tr><th>สินค้า</th><th class="r">จำนวน</th><th class="r">รายได้</th><th class="r">กำไร</th><th class="r">มาร์จิ้น</th></tr></thead>
               <tbody id="rptTop5"></tbody>
             </table>
           </div>
@@ -5069,18 +5084,29 @@ function renderReportRankings() {
   paid.forEach(b => (b.items || []).forEach(it => {
     const key = it.matId ? ('m:' + it.matId) : (it.recipeId ? ('r:' + it.recipeId) : null);
     if (!key) return;
-    if (!productMap[key]) {
-      const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
-      productMap[key] = { qty: 0, revenue: 0, name: prod ? prod.name : key, category: (prod && prod.category) || '—' };
-    }
-    productMap[key].qty     += it.qty || 1;
-    productMap[key].revenue += (it.qty || 1) * (it.price || 0);
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    if (!productMap[key]) productMap[key] = { qty: 0, revenue: 0, cost: 0, name: prod ? prod.name : key, category: (prod && prod.category) || '—' };
+    const q = it.qty || 1;
+    const unitCost = it.matId ? (prod ? (perBase(prod) || 0) : 0)
+      : (prod ? (recipeCost(prod.items || []) / Math.max(1, Number(prod.batchYield) || 1)) : 0);
+    productMap[key].qty     += q;
+    productMap[key].revenue += q * (it.price || 0);
+    productMap[key].cost    += q * unitCost;
   }));
+  // สรุปกำไรช่วงนี้ (จุดแข็ง: ต้นทุนวัตถุดิบจริง)
+  let sumRev = 0, sumCost = 0;
+  Object.values(productMap).forEach(v => { sumRev += v.revenue; sumCost += v.cost; });
+  const sumProfit = sumRev - sumCost, sumMargin = sumRev > 0 ? (sumProfit / sumRev * 100) : 0;
+  if ($('rptSumRevenue')) $('rptSumRevenue').textContent = money(sumRev);
+  if ($('rptSumCost')) $('rptSumCost').textContent = money(sumCost);
+  if ($('rptSumProfit')) $('rptSumProfit').textContent = money(sumProfit);
+  if ($('rptSumMargin')) $('rptSumMargin').textContent = sumMargin.toFixed(0) + '%';
   let ranked = Object.entries(productMap).sort((a, b) => b[1].revenue - a[1].revenue);
   if (!showAllMenus) ranked = ranked.slice(0, 5);
   $('rptTop5').innerHTML = ranked.length ? ranked.map(([key, v], i) => {
     const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    return `<tr><td>${rank} ${esc(v.name)}</td><td><span class="cat-badge">${esc(v.category)}</span></td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary); font-weight:700;">${money(v.revenue)}</td><td class="r" style="color:var(--color-text-muted);">${money(v.revenue / days)}</td></tr>`;
+    const profit = v.revenue - v.cost, margin = v.revenue > 0 ? (profit / v.revenue * 100) : 0;
+    return `<tr><td>${rank} ${esc(v.name)}<br><span class="cat-badge" style="font-size:10px;">${esc(v.category)}</span></td><td class="r">${v.qty}</td><td class="r" style="color:var(--color-secondary);">${money(v.revenue)}</td><td class="r" style="color:#0F6E56; font-weight:700;">${money(profit)}</td><td class="r" style="color:${margin < 30 ? '#dc2626' : 'var(--color-text-muted)'};">${margin.toFixed(0)}%</td></tr>`;
   }).join('') : '<tr><td colspan="5" style="text-align:center; color:#999;">ยังไม่มีข้อมูลในช่วงนี้</td></tr>';
 
   // --- อันดับตัวเลือกที่ขาย (จาก options ใน bill items) ---
