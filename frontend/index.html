@@ -672,7 +672,15 @@
           <div style="flex:1;min-width:140px;text-align:center;background:var(--surface-2);border-radius:10px;padding:12px;">
             <div style="font-size:12px;color:var(--color-text-muted);">มาร์จิ้นเฉลี่ย</div><div id="rptSumMargin" style="font-size:24px;font-weight:800;color:var(--color-primary);">0%</div></div>
         </div>
-        <p style="font-size:11px;color:var(--color-text-muted);margin:8px 0 0;">* สินค้าที่ยังไม่ได้ใส่สูตร/ต้นทุน จะคิดต้นทุน = 0 (กำไรอาจดูสูงเกินจริง)</p>
+        <div style="margin-top:14px;border-top:1px solid var(--border-soft);padding-top:12px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px;"><span class="ico" data-icon="receipt-2"></span> งบกำไร–ขาดทุน (ช่วงนี้)</div>
+          <div style="font-size:13px;line-height:2;max-width:420px;">
+            <div style="display:flex;justify-content:space-between;"><span>กำไรขั้นต้น</span><span id="rptGross" style="font-weight:700;">฿0</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>− ค่าใช้จ่ายดำเนินงาน</span><span id="rptOpex" style="color:#dc2626;">฿0</span></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px dashed var(--border-soft);padding-top:4px;font-weight:800;"><span>= กำไรสุทธิ</span><span id="rptNet" style="color:#0F6E56;">฿0</span></div>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:8px 0 0;">* สินค้าที่ยังไม่ได้ใส่สูตร/ต้นทุน จะคิดต้นทุน = 0 (กำไรอาจดูสูงเกินจริง) · ค่าใช้จ่ายดึงจากหน้า "รายจ่าย"</p>
       </div>
 
       <div class="grid-2" style="margin-bottom:20px;">
@@ -5271,6 +5279,12 @@ function renderReportRankings() {
   if ($('rptSumCost')) $('rptSumCost').textContent = money(sumCost);
   if ($('rptSumProfit')) $('rptSumProfit').textContent = money(sumProfit);
   if ($('rptSumMargin')) $('rptSumMargin').textContent = sumMargin.toFixed(0) + '%';
+  // งบกำไร-ขาดทุน: หักค่าใช้จ่ายดำเนินงานในช่วงเดียวกัน → กำไรสุทธิ
+  const opex = (expenses || []).filter(e => e.kind !== 'income' && (e.date || '') >= from && (e.date || '') <= to).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const netProfit = sumProfit - opex;
+  if ($('rptGross')) $('rptGross').textContent = money(sumProfit);
+  if ($('rptOpex')) $('rptOpex').textContent = '฿' + opex.toLocaleString('th-TH');
+  if ($('rptNet')) { $('rptNet').textContent = money(netProfit); $('rptNet').style.color = netProfit >= 0 ? '#0F6E56' : '#dc2626'; }
   let ranked = Object.entries(productMap).sort((a, b) => b[1].revenue - a[1].revenue);
   if (!showAllMenus) ranked = ranked.slice(0, 5);
   $('rptTop5').innerHTML = ranked.length ? ranked.map(([key, v], i) => {
