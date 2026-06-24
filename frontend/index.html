@@ -1954,6 +1954,7 @@ let suppliers = [];
 let materials = [];
 let recipes = [];
 let bills = [];
+let dataVersion = 0;   // #2: optimistic-lock version (กันหลายแท็บเขียนทับ)
 let prodLogs = [];
 let stockReceiveLogs = [];
 let adjLogs = JSON.parse(localStorage.getItem('recipro_adj_logs') || '[]'); // โหมดจำลอง (localStorage)
@@ -2746,6 +2747,7 @@ function applyBootstrapData(data) {
       return isNaN(num) ? max : Math.max(max, num);
     }, 0);
     const sRow = data.settings;
+    dataVersion = Number(sRow?.data_version) || 0;   // #2: baseline version หลังโหลดข้อมูลล่าสุด
     settings = {
       shopName: data.shop?.name || 'ร้านของฉัน',
       phone: sRow?.phone || '', tax: sRow?.tax_id || '', addr: sRow?.address || '',
@@ -3057,11 +3059,26 @@ async function syncToSupabase() {
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false
     },
-    shop: { name: settings.shopName }
+    shop: { name: settings.shopName },
+    _base_version: dataVersion
   };
 
-  await API.post('/api/sync', payload);
-  updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+  try {
+    const res = await API.post('/api/sync', payload);
+    if (res && res.version != null) dataVersion = res.version;   // อัปเดต baseline
+    updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
+  } catch (e) {
+    if (e && e.status === 409) { handleSyncConflict(); return; }
+    throw e;
+  }
+}
+// #2: ข้อมูลถูกแก้จากแท็บ/เครื่องอื่น — โหลดล่าสุดทับ (กันเขียนข้อมูลเก่าทับของใหม่)
+let _conflictHandling = false;
+async function handleSyncConflict() {
+  if (_conflictHandling) return; _conflictHandling = true;
+  updateCloudStatus("ข้อมูลถูกแก้จากที่อื่น — กำลังโหลดล่าสุด", "alert-triangle");
+  try { await ui.alert('ข้อมูลถูกแก้ไขจากอุปกรณ์/แท็บอื่น\nระบบจะโหลดข้อมูลล่าสุดให้ (การแก้ที่ยังไม่ได้บันทึกในแท็บนี้จะถูกแทนที่)', { icon: 'alert-triangle' }); } catch (e) {}
+  location.reload();
 }
 
 // ============================================================

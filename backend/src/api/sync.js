@@ -26,9 +26,18 @@ router.post('/sync', async (req, res) => {
   if (!shopId) return res.status(400).json({ error: 'No current shop' });
   const b = req.body || {};
 
+  let newVersion = null;
   try {
     await tx(async (client) => {
       const withShop = (arr) => (arr || []).map((x) => ({ ...x, shop_id: shopId }));
+
+      // กันหลายแท็บเขียนทับ: ถ้า client ส่ง _base_version มาและไม่ตรงกับของจริง → conflict (ไม่เขียนทับ)
+      const vr = await client.query('select coalesce(data_version,0) v from shop_settings where shop_id = $1', [shopId]);
+      const current = vr.rows[0] ? Number(vr.rows[0].v) : 0;
+      if (b._base_version != null && Number(b._base_version) !== current) {
+        const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
+      }
+      newVersion = current + 1;
 
       await upsertRows(client, 'suppliers',
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
@@ -140,13 +149,18 @@ router.post('/sync', async (req, res) => {
       if (b.shop && b.shop.name) {
         await client.query('update shops set name = $1 where id = $2', [b.shop.name, shopId]);
       }
+      // เพิ่มเวอร์ชันข้อมูลหลังเขียนสำเร็จ (กันแท็บถัดไปเขียนทับด้วยข้อมูลเก่า)
+      await client.query('update shop_settings set data_version = coalesce(data_version,0) + 1 where shop_id = $1', [shopId]);
     });
     logEvent(shopId, req.userId, 'data.sync', {
       suppliers: (b.suppliers || []).length, materials: (b.materials || []).length,
       recipes: (b.recipes || []).length, bills: (b.bills || []).length,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, version: newVersion });
   } catch (e) {
+    if (e && e.code === 'CONFLICT') {
+      return res.status(409).json({ error: 'version_conflict', conflict: true, currentVersion: e.currentVersion });
+    }
     res.status(500).json({ error: e.message });
   }
 });

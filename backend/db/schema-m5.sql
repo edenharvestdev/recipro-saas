@@ -8,3 +8,5 @@ alter table shop_settings add column if not exists public_slug text;
 alter table orders add column if not exists stock_deducted boolean default false;
 -- รูปแบบใบส่งงานหลังร้าน: receipt = ใบรวม 80mm · sticker = สติกเกอร์ต่อแก้ว
 alter table shop_settings add column if not exists kitchen_ticket_mode text default 'receipt';
+-- เวอร์ชันข้อมูล (optimistic lock) กันหลายแท็บ/หลายเครื่องเขียนทับกัน
+alter table shop_settings add column if not exists data_version bigint default 0;
