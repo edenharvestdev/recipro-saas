@@ -761,6 +761,10 @@
                 <input id="posMemberPhone" placeholder="เบอร์ลูกค้า (ไม่บังคับ)" oninput="posMemberLookup()" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
               </div>
               <div id="posMemberInfo" style="font-size:11px;color:#0F6E56;text-align:right;margin-bottom:8px;min-height:14px;"></div>
+              <div id="posRedeemRow" style="display:none;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+                <span style="font-size:13px;color:var(--color-text-muted);">ใช้แต้มลด <span id="posRedeemMax" style="font-size:11px;"></span></span>
+                <input id="posRedeemPts" type="number" min="0" value="0" oninput="renderPosCart()" style="width:80px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+              </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
                 <span style="font-size:13px;color:var(--color-text-muted);">ส่วนลด</span>
                 <div style="display:flex;gap:4px;align-items:center;">
@@ -5894,15 +5898,41 @@ function posClearCart() {
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
+  if ($('posRedeemPts')) $('posRedeemPts').value = 0;
+  if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
   renderPosCart();
 }
 // M6: สมาชิกลูกค้า — สะสมแต้ม (1 แต้ม / 20฿)
 const POINTS_PER_BAHT = 20;
 function findCustomerByPhone(phone) { phone = (phone || '').trim(); return phone ? customers.find(c => c.phone === phone) : null; }
+const POINT_REDEEM_VALUE = 1;   // 1 แต้ม = 1 บาท ตอนแลก
+// คิดยอดรวมหน้าขาย (ใช้ทั้ง renderPosCart + posCheckout ให้ตรงกัน): รวมส่วนลด + แลกแต้ม
+function posComputeTotals() {
+  const grand = posCart.reduce((s, it) => s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0)), 0);
+  const discVal = parseFloat($('posDiscVal')?.value) || 0;
+  const discType = $('posDiscType')?.value || '%';
+  const disc = discType === '%' ? grand * discVal / 100 : discVal;
+  const afterDisc = Math.max(0, grand - disc);
+  const member = findCustomerByPhone($('posMemberPhone')?.value || '');
+  const maxRedeem = member ? Math.min(Number(member.points) || 0, Math.floor(afterDisc / POINT_REDEEM_VALUE)) : 0;
+  let redeemPts = Math.floor(parseFloat($('posRedeemPts')?.value) || 0);
+  if (redeemPts < 0) redeemPts = 0;
+  if (redeemPts > maxRedeem) redeemPts = maxRedeem;
+  const redeemDisc = redeemPts * POINT_REDEEM_VALUE;
+  const net = Math.max(0, afterDisc - redeemDisc);
+  return { grand, disc, afterDisc, member, maxRedeem, redeemPts, redeemDisc, net };
+}
 function posMemberLookup() {
   const el = $('posMemberInfo'); if (!el) return;
   const c = findCustomerByPhone($('posMemberPhone') ? $('posMemberPhone').value : '');
   el.textContent = c ? ('สมาชิก: ' + (c.name || c.phone) + ' · ' + c.points + ' แต้ม · มาแล้ว ' + c.visits + ' ครั้ง') : '';
+  const row = $('posRedeemRow');
+  if (row) {
+    const show = c && (Number(c.points) || 0) > 0;
+    row.style.display = show ? 'flex' : 'none';
+    if (!show && $('posRedeemPts')) $('posRedeemPts').value = 0;
+  }
+  renderPosCart();
 }
 function accrueMember(phone, spent) {
   phone = (phone || '').trim(); if (!phone) return null;
@@ -6026,27 +6056,27 @@ function renderPosCart() {
 
   if (footerEl) {
     footerEl.style.display = '';
-    const discVal = parseFloat($('posDiscVal')?.value) || 0;
-    const discType = $('posDiscType')?.value || '%';
-    const disc = discType === '%' ? grand * discVal / 100 : discVal;
-    const net = Math.max(0, grand - disc);
-    $('posCartGrand').textContent = money(net);
-    if (discVal > 0) {
-      $('posCartGrand').title = `ก่อนลด ${money(grand)} − ส่วนลด ${money(disc)}`;
-    }
+    const t = posComputeTotals();
+    // คุมค่า input แลกแต้มไม่ให้เกินสิทธิ์ + อัปเดตป้าย "มี X"
+    if ($('posRedeemPts') && Math.floor(parseFloat($('posRedeemPts').value) || 0) !== t.redeemPts) $('posRedeemPts').value = t.redeemPts;
+    if ($('posRedeemMax')) $('posRedeemMax').textContent = '(สูงสุด ' + t.maxRedeem + ')';
+    $('posCartGrand').textContent = money(t.net);
+    const parts = [];
+    if (t.disc > 0) parts.push('ส่วนลด ' + money(t.disc));
+    if (t.redeemDisc > 0) parts.push('แลกแต้ม ' + money(t.redeemDisc));
+    $('posCartGrand').title = parts.length ? ('ก่อนลด ' + money(t.grand) + ' − ' + parts.join(' − ')) : '';
   }
 }
 
 async function posCheckout() {
   if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
 
-  const sub = posCart.reduce((s, it) => {
-    return s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0));
-  }, 0);
+  const tt = posComputeTotals();
+  const sub = tt.grand;
   const discVal = parseFloat($('posDiscVal')?.value) || 0;
   const discType = $('posDiscType')?.value || '%';
-  const disc = discType === '%' ? sub * discVal / 100 : discVal;
-  const total = Math.max(0, sub - disc);
+  const total = tt.net;            // หักทั้งส่วนลด + แลกแต้มแล้ว
+  const redeemPts = tt.redeemPts;
 
   const confirmed = await ui.confirm(`ยืนยันการขาย ${money(total)}?`, { okText: 'ยืนยันชำระ', icon: 'banknote', variant: 'success' });
   if (!confirmed) return;
@@ -6060,6 +6090,7 @@ async function posCheckout() {
     sender: settings.shopName,
     tableNo: ($('posTableNo')?.value || '').trim(),
     memberPhone: ($('posMemberPhone')?.value || '').trim(),
+    redeemedPoints: redeemPts,
     discV: discVal, discT: discType,
     taxV: 0, taxT: '%',
     items: posCart.map(it => {
@@ -6128,12 +6159,18 @@ async function posCheckout() {
 
   bills.push(newBill);
   counter++;
-  if (newBill.memberPhone) { const mc = accrueMember(newBill.memberPhone, total); if (mc && typeof ui !== 'undefined' && ui.toast) ui.toast('สะสมแต้มให้สมาชิก · รวม ' + mc.points + ' แต้ม'); }
+  if (newBill.memberPhone) {
+    if (redeemPts > 0) { const rm = findCustomerByPhone(newBill.memberPhone); if (rm) rm.points = Math.max(0, (Number(rm.points) || 0) - redeemPts); }   // หักแต้มที่แลกก่อน
+    const mc = accrueMember(newBill.memberPhone, total);   // แล้วสะสมแต้มจากยอดที่จ่ายจริง
+    if (mc && typeof ui !== 'undefined' && ui.toast) ui.toast((redeemPts > 0 ? 'ใช้ ' + redeemPts + ' แต้ม · ' : '') + 'แต้มคงเหลือ ' + mc.points);
+  }
   saveAll();
   posCart = [];
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
+  if ($('posRedeemPts')) $('posRedeemPts').value = 0;
+  if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
   renderPosGrid();
   renderPosCart();
   render();
