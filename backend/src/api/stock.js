@@ -195,7 +195,7 @@ router.post('/pos/sell', async (req, res) => {
         if (opts.length) {
           const ids = opts.map((o) => o.choice_id);
           const qById = {}; opts.forEach((o) => { qById[o.choice_id] = Number(o.qty) || 1; });
-          const cr = (await c.query('select id, effect_type, target_role, variant_recipe_id, is_metadata_only, amount from option_choices where id = any($1::uuid[])', [ids])).rows;
+          const cr = (await c.query('select id, effect_type, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount from option_choices where id = any($1::uuid[])', [ids])).rows;
           const lr = (await c.query('select choice_id, material_id, amount from option_choice_links where choice_id = any($1::uuid[])', [ids])).rows;
           const byChoice = {}; lr.forEach((l) => { (byChoice[l.choice_id] = byChoice[l.choice_id] || []).push(l); });
           choices = cr.map((x) => ({ ...x, qty: qById[x.id] || 1, links: byChoice[x.id] || [] })).filter((x) => !x.is_metadata_only);
@@ -211,15 +211,15 @@ router.post('/pos/sell', async (req, res) => {
           e.amount += Number(it.amount) || 0; bom.set(it.material_id, e);
           if (it.role) roleIndex.set(it.role, it.material_id);
         }
-        for (const ch of choices) { // REPLACE
-          if (ch.effect_type !== 'REPLACE' || !ch.target_role) continue;
-          const oldId = roleIndex.get(ch.target_role);
-          if (oldId) { bom.delete(oldId); roleIndex.delete(ch.target_role); }
-          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += Number(l.amount) || 0; bom.set(l.material_id, e); roleIndex.set(ch.target_role, l.material_id); }
+        for (const ch of choices) { // REPLACE: เอาวัตถุดิบเป้าหมายออก (เลือกตรง target_material_id หรือผ่าน role) แล้วใส่ตัวใหม่จาก links
+          if (ch.effect_type !== 'REPLACE') continue;
+          const oldId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
+          if (oldId) { bom.delete(oldId); if (ch.target_role) roleIndex.delete(ch.target_role); }
+          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += Number(l.amount) || 0; bom.set(l.material_id, e); if (ch.target_role) roleIndex.set(ch.target_role, l.material_id); }
         }
-        for (const ch of choices) { // QUANTITY: ตั้งปริมาณวัตถุดิบของ role เป็นค่าสัมบูรณ์ (0 = ตัดออก) — มิเรอร์ resolveLineBOM
-          if (ch.effect_type !== 'QUANTITY' || !ch.target_role) continue;
-          const matId = roleIndex.get(ch.target_role);
+        for (const ch of choices) { // QUANTITY: ตั้งปริมาณวัตถุดิบเป้าหมายเป็นค่าสัมบูรณ์ (0 = ตัดออก) — มิเรอร์ resolveLineBOM
+          if (ch.effect_type !== 'QUANTITY') continue;
+          const matId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
           if (!matId) continue;
           const newAmt = Number(ch.amount) || 0;
           if (newAmt <= 0) { bom.delete(matId); }

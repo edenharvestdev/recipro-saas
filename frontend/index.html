@@ -2686,7 +2686,7 @@ function applyBootstrapData(data) {
         id: c.id, groupId: c.group_id, label: c.label, priceAdd: Number(c.price_add) || 0,
         effectType: c.effect_type || 'NONE', enabled: c.enabled !== false,
         isDefault: !!c.is_default, sort: c.sort || 0, maxQty: c.max_qty || 1,
-        targetRole: c.target_role || '', variantRecipeId: c.variant_recipe_id || null, amount: Number(c.amount) || 0, isMetadataOnly: !!c.is_metadata_only,
+        targetRole: c.target_role || '', targetMaterialId: c.target_material_id || null, variantRecipeId: c.variant_recipe_id || null, amount: Number(c.amount) || 0, isMetadataOnly: !!c.is_metadata_only,
         links: oclData.filter(l => l.choice_id === c.id).map(l => ({
           id: l.id, matId: l.material_id, amount: Number(l.amount)
         }))
@@ -2921,7 +2921,7 @@ async function syncToSupabase() {
       id: c.id, group_id: g.id, label: c.label, price_add: c.priceAdd || 0,
       effect_type: c.effectType || 'NONE', enabled: c.enabled !== false,
       is_default: c.isDefault || false, sort: ci, max_qty: c.maxQty || 1,
-      target_role: c.targetRole || '', variant_recipe_id: c.variantRecipeId || null, amount: c.amount || 0, is_metadata_only: c.isMetadataOnly || false
+      target_role: c.targetRole || '', target_material_id: c.targetMaterialId || null, variant_recipe_id: c.variantRecipeId || null, amount: c.amount || 0, is_metadata_only: c.isMetadataOnly || false
     }))),
     option_choice_links: optionGroups.flatMap(g => (g.choices || []).flatMap(c =>
       (c.links || []).map(l => ({ id: l.id, choice_id: c.id, material_id: l.matId, amount: l.amount }))
@@ -5318,11 +5318,11 @@ function resolveLineBOM(recipe, chosenChoicesWithQty) {
   });
   // Price
   chosenChoicesWithQty.forEach(({ choice, qty }) => { if (!choice.isMetadataOnly) priceAdd += (choice.priceAdd || 0) * (qty || 1); });
-  // REPLACE
+  // REPLACE — เอาวัตถุดิบเป้าหมายออก (เลือกตรง targetMaterialId หรือผ่าน role) แล้วใส่ตัวใหม่จาก links
   chosenChoicesWithQty.forEach(({ choice }) => {
-    if (choice.effectType !== 'REPLACE' || !choice.targetRole) return;
-    const oldId = roleIndex.get(choice.targetRole);
-    if (oldId) { bom.delete(oldId); roleIndex.delete(choice.targetRole); }
+    if (choice.effectType !== 'REPLACE') return;
+    const oldId = choice.targetMaterialId || (choice.targetRole ? roleIndex.get(choice.targetRole) : null);
+    if (oldId) { bom.delete(oldId); if (choice.targetRole) roleIndex.delete(choice.targetRole); }
     (choice.links || []).filter(l => l.matId).forEach(l => {
       const e = bom.get(l.matId) || { amount: 0, role: choice.targetRole };
       e.amount += Number(l.amount); bom.set(l.matId, e);
@@ -5331,8 +5331,8 @@ function resolveLineBOM(recipe, chosenChoicesWithQty) {
   });
   // QUANTITY
   chosenChoicesWithQty.forEach(({ choice }) => {
-    if (choice.effectType !== 'QUANTITY' || !choice.targetRole) return;
-    const matId = roleIndex.get(choice.targetRole);
+    if (choice.effectType !== 'QUANTITY') return;
+    const matId = choice.targetMaterialId || (choice.targetRole ? roleIndex.get(choice.targetRole) : null);
     if (!matId) return;
     const newAmt = Number(choice.amount) || 0;
     if (newAmt <= 0) bom.delete(matId);
@@ -7827,7 +7827,7 @@ function renderGroupChoices() {
     const isMeta = !!c.isMetadataOnly;
     const linksHtml = (!isMeta && (eff === 'ADD' || eff === 'REPLACE')) ? `
       <div style="margin-top:8px;">
-        <label style="font-size:11px;color:var(--color-text-muted);">วัตถุดิบที่เชื่อม:</label>
+        <label style="font-size:11px;color:${eff === 'REPLACE' ? 'var(--color-text-main);font-weight:600' : 'var(--color-text-muted)'};">${eff === 'REPLACE' ? '② ใส่แทนด้วย (วัตถุดิบใหม่ + จำนวน):' : 'วัตถุดิบที่เพิ่ม (+ จำนวน):'}</label>
         ${(c.links||[]).map((l,li)=>`
           <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
             <select onchange="editGroupChoices[${ci}].links[${li}].matId=this.value" style="flex:2;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
@@ -7839,19 +7839,26 @@ function renderGroupChoices() {
           </div>`).join('')}
         <button class="btn btn-ghost btn-sm" onclick="addChoiceLink(${ci})" style="margin-top:4px;font-size:11px;">+ เพิ่มวัตถุดิบ</button>
       </div>` : '';
-    const roleHtml = (!isMeta && (eff === 'REPLACE' || eff === 'QUANTITY')) ? `
+    const targetMatHtml = (!isMeta && (eff === 'REPLACE' || eff === 'QUANTITY')) ? `
+      <div style="margin-top:8px;">
+        <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">${eff === 'REPLACE' ? '① วัตถุดิบเดิมที่จะเอาออก:' : '① วัตถุดิบที่จะกำหนดปริมาณ:'}</label>
+        <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+          <option value="">— เลือกวัตถุดิบ —</option>
+          ${materials.filter(m=>!m.isConsumable).map(m=>`<option value="${m.id}"${m.id===c.targetMaterialId?' selected':''}>${esc(m.name)} (${baseU(m)})</option>`).join('')}
+        </select>
+      </div>` : '';
+    const roleHtml = (!isMeta && (eff === 'REPLACE' || eff === 'QUANTITY') && (allRoles.length || c.targetRole)) ? `
       <div style="margin-top:6px;">
-        <label style="font-size:11px;color:var(--color-text-muted);">Role เป้าหมาย (ตั้ง role ที่ส่วนผสมในสูตรก่อน):</label>
+        <label style="font-size:11px;color:var(--color-text-muted);">หรือเลือกตาม role (ขั้นสูง — ใช้กับหลายสูตรพร้อมกัน):</label>
         <select onchange="editGroupChoices[${ci}].targetRole=this.value" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
-          <option value="">— เลือก role —</option>
+          <option value="">— ไม่ใช้ role —</option>
           ${allRoles.map(role=>`<option value="${esc(role)}"${role===c.targetRole?' selected':''}>${esc(role)}</option>`).join('')}
           ${(c.targetRole && !allRoles.includes(c.targetRole)) ? `<option value="${esc(c.targetRole)}" selected>${esc(c.targetRole)} (เดิม)</option>` : ''}
         </select>
-        ${allRoles.length ? '' : '<p style="font-size:10px;color:#d97706;margin:2px 0 0;">ยังไม่มี role ในสูตรเลย — ไปตั้ง role ที่ส่วนผสมในสูตรก่อน</p>'}
       </div>` : '';
     const quantityHtml = (!isMeta && eff === 'QUANTITY') ? `
       <div style="margin-top:6px;">
-        <label style="font-size:11px;color:var(--color-text-muted);">ปริมาณใหม่ (0 = ตัดออก):</label>
+        <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">② ปริมาณใหม่ (0 = ตัดออก):</label>
         <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value" style="width:80px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
       </div>` : '';
     const variantHtml = (!isMeta && eff === 'RECIPE_VARIANT') ? `
@@ -7879,14 +7886,14 @@ function renderGroupChoices() {
         <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${c.enabled!==false?' checked':''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิด</label>
         <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:5px 7px;">${icon('trash-2')}</button>
       </div>
-      ${roleHtml}${quantityHtml}${variantHtml}${linksHtml}${maxQtyHtml}
+      ${targetMatHtml}${quantityHtml}${linksHtml}${roleHtml}${variantHtml}${maxQtyHtml}
     </div>`;
   }).join('');
   renderIcons(el);
 }
 
 function addChoiceRow() {
-  editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', variantRecipeId: null, links: [], amount: 0, isMetadataOnly: false });
+  editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', targetMaterialId: null, variantRecipeId: null, links: [], amount: 0, isMetadataOnly: false });
   renderGroupChoices();
 }
 function addChoiceLink(ci) {
