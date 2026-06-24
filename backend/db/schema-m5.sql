@@ -6,3 +6,5 @@ alter table shop_settings add column if not exists order_payment_mode text defau
 alter table shop_settings add column if not exists public_slug text;
 -- กันตัดสต๊อกซ้ำ: true เมื่อออเดอร์ถูกตัดสต๊อก+ลงยอดขายแล้ว (ตอนกด "ลูกค้ารับแล้ว")
 alter table orders add column if not exists stock_deducted boolean default false;
+-- รูปแบบใบส่งงานหลังร้าน: receipt = ใบรวม 80mm · sticker = สติกเกอร์ต่อแก้ว
+alter table shop_settings add column if not exists kitchen_ticket_mode text default 'receipt';

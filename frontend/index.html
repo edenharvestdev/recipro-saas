@@ -2758,7 +2758,8 @@ function applyBootstrapData(data) {
       publicMenuEnabled: sRow?.public_menu_enabled || false,
       useDelivery: sRow?.use_delivery || false,
       orderPaymentMode: sRow?.order_payment_mode || 'postpay',
-      publicSlug: sRow?.public_slug || ''
+      publicSlug: sRow?.public_slug || '',
+      kitchenTicketMode: sRow?.kitchen_ticket_mode || 'receipt'
     };
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
@@ -3051,6 +3052,7 @@ async function syncToSupabase() {
       make_to_order: settings.makeToOrder || false,
       order_payment_mode: settings.orderPaymentMode || 'postpay',
       public_slug: settings.publicSlug || null,
+      kitchen_ticket_mode: settings.kitchenTicketMode || 'receipt',
       use_petty_cash: settings.usePettyCash || false,
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false
@@ -5934,29 +5936,39 @@ function reprintReceipt(billId) {
   showPosReceipt(b, total);
 }
 
-// เฟส 2: ใบเข้าครัว (kitchen ticket) — พิมพ์รายการ + ตัวเลือก ให้ครัวทำ (เครื่องพิมพ์ใบเสร็จ 80mm)
-function printKitchen(billId) {
-  const b = bills.find(x => x.id === billId);
-  if (!b) { ui.alert('ไม่พบบิล', { icon: 'alert-triangle' }); return; }
+// ใบส่งงานหลังร้าน — รองรับ 2 แบบตาม settings.kitchenTicketMode: 'receipt' (ใบรวม 80mm) | 'sticker' (สติกเกอร์ต่อแก้ว 50×40)
+function printBackOfHouse(metaText, items) {
   const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const rows = (b.items || []).map(it => {
-    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
-    const name = prod ? prod.name : 'สินค้า';
-    const opts = Object.entries(it.options || {}).map(([k, v]) => e(k) + ': ' + e(v)).join(' · ');
-    return '<div class="kit"><div class="kq">' + it.qty + '×</div><div class="kn">' + e(name) + (opts ? '<div class="ko">' + opts + '</div>' : '') + '</div></div>';
-  }).join('');
-  const css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
-    + 'body{width:80mm;padding:4mm 3mm}.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
-    + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
-    + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}';
-  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>'
-    + '<div class="kh">ใบส่งงานหลังร้าน</div>'
-    + '<div class="km">บิล: ' + e(b.billNo || '') + '<br>เวลา: ' + new Date().toLocaleString('th-TH') + (b.cust ? '<br>ลูกค้า: ' + e(b.cust) : '') + '</div>'
-    + rows
-    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},250)}<\/scr' + 'ipt></body></html>';
+  const mode = settings.kitchenTicketMode || 'receipt';
+  let css, body;
+  if (mode === 'sticker') {
+    const labels = []; items.forEach(it => { for (let k = 0; k < (it.qty || 1); k++) labels.push(it); });
+    css = '@page{size:50mm 40mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{margin:0}'
+      + '.lb{width:50mm;height:40mm;padding:2.5mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;overflow:hidden}'
+      + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0}.lo{font-size:11px;line-height:1.2}';
+    body = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
+  } else {
+    css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+      + 'body{width:80mm;padding:4mm 3mm}.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
+      + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
+      + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}';
+    const rows = items.map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name) + (it.opts ? '<div class="ko">' + e(it.opts) + '</div>' : '') + '</div></div>').join('');
+    body = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;
+  }
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>' + body
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
   const w = window.open('', '_blank');
   if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
   w.document.write(html); w.document.close();
+}
+function printKitchen(billId) {
+  const b = bills.find(x => x.id === billId);
+  if (!b) { ui.alert('ไม่พบบิล', { icon: 'alert-triangle' }); return; }
+  const items = (b.items || []).map(it => {
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    return { qty: it.qty, name: prod ? prod.name : 'สินค้า', opts: Object.entries(it.options || {}).map(([k, v]) => k + ': ' + v).join(' · ') };
+  });
+  printBackOfHouse('บิล: ' + (b.billNo || '') + ' · ' + new Date().toLocaleString('th-TH') + (b.cust ? ' · ' + b.cust : ''), items);
 }
 
 // ============================================================
@@ -8078,6 +8090,13 @@ function renderOnlineMenu() {
           </select>
           ${isPrepay && !settings.pp ? '<span style="font-size:11px;color:#d97706;">⚠ ยังไม่ตั้งเบอร์พร้อมเพย์ในตั้งค่า</span>' : ''}
         </div>
+        <div style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="color:var(--color-text-muted);">ใบหลังร้าน:</span>
+          <select onchange="setKitchenTicketMode(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+            <option value="receipt"${(settings.kitchenTicketMode || 'receipt') !== 'sticker' ? ' selected' : ''}>ใบรวม 80mm</option>
+            <option value="sticker"${settings.kitchenTicketMode === 'sticker' ? ' selected' : ''}>สติกเกอร์ต่อแก้ว (50×40)</option>
+          </select>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;margin-bottom:2px;">
@@ -8149,26 +8168,15 @@ async function setOrderPaid(id, paid) {
   catch (e) { ui.alert('อัปเดตการจ่ายเงินไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
+function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
 // ใบเข้าครัวสำหรับออเดอร์ออนไลน์ (80mm) — สร้างจาก items_json ของออเดอร์
 function printKitchenOrder(orderId) {
   const o = (orders || []).find(x => x.id === orderId);
   if (!o) { ui.alert('ไม่พบออเดอร์', { icon: 'alert-triangle' }); return; }
   let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } d = d || {};
-  const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const rows = (d.items || []).map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name || '') + '</div></div>').join('');
-  const noteHtml = d.note ? '<div style="margin-top:6px;font-size:13px;font-weight:700;">หมายเหตุ: ' + e(d.note) + '</div>' : '';
-  const css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{width:80mm;padding:4mm 3mm}'
-    + '.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
-    + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
-    + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}';
-  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>'
-    + '<div class="kh">ใบส่งงานหลังร้าน (ออนไลน์)</div>'
-    + '<div class="km">คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + e(o.name || 'ลูกค้า') + '<br>เวลา: ' + new Date().toLocaleString('th-TH') + '</div>'
-    + rows + noteHtml
-    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},250)}<\/scr' + 'ipt></body></html>';
-  const w = window.open('', '_blank');
-  if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
-  w.document.write(html); w.document.close();
+  const items = (d.items || []).map(it => ({ qty: it.qty || 1, name: it.name || '', opts: Array.isArray(it.options) ? it.options.map(x => (x && x.label) || x).join(' · ') : '' }));
+  const meta = 'ออนไลน์ · คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + (o.name || 'ลูกค้า') + (d.note ? ' · หมายเหตุ: ' + d.note : '');
+  printBackOfHouse(meta, items);
 }
 function togglePublicMenu(on) {
   settings.publicMenuEnabled = !!on;
