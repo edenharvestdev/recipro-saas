@@ -9,7 +9,7 @@ async function shopByToken(token) {
   const r = await query(
     `select s.id, s.name, ss.promptpay, coalesce(ss.order_payment_mode,'postpay') as order_payment_mode from shops s
        join shop_settings ss on ss.shop_id = s.id
-      where ss.public_menu_token = $1 and ss.public_menu_enabled = true`,
+      where (ss.public_menu_token = $1 or ss.public_slug = $1) and ss.public_menu_enabled = true`,
     [token]);
   return r.rows[0] || null;
 }

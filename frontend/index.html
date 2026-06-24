@@ -2757,7 +2757,8 @@ function applyBootstrapData(data) {
       publicMenuToken: sRow?.public_menu_token || '',
       publicMenuEnabled: sRow?.public_menu_enabled || false,
       useDelivery: sRow?.use_delivery || false,
-      orderPaymentMode: sRow?.order_payment_mode || 'postpay'
+      orderPaymentMode: sRow?.order_payment_mode || 'postpay',
+      publicSlug: sRow?.public_slug || ''
     };
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
@@ -3049,6 +3050,7 @@ async function syncToSupabase() {
       categories: settings.categories || DEFAULT_CATEGORIES.slice(),
       make_to_order: settings.makeToOrder || false,
       order_payment_mode: settings.orderPaymentMode || 'postpay',
+      public_slug: settings.publicSlug || null,
       use_petty_cash: settings.usePettyCash || false,
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false
@@ -8015,7 +8017,11 @@ function renderOnlineMenu() {
   const el = $('onlineMenuSection');
   if (!el) return;
   const token = settings.publicMenuToken || '';
-  const url = location.origin + '/menu/' + token;
+  // ลิงก์อ่านง่าย = ชื่อร้าน + suffix จาก token (กันซ้ำข้ามร้าน); public route รับได้ทั้ง slug และ token
+  const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const wantSlug = token ? ((slugify(settings.shopName) || 'shop') + '-' + token.slice(0, 6)) : '';
+  if (token && settings.publicSlug !== wantSlug) { settings.publicSlug = wantSlug; saveAll(); }
+  const url = location.origin + '/menu/' + (settings.publicSlug || token);
   if (!settings.publicMenuEnabled) {
     el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);"><span class="ico" data-icon="qr-code"></span> เมนูออนไลน์ (QR) — ให้ลูกค้าสแกนสั่งเอง รับที่ร้าน (ไม่บังคับ)</span>
