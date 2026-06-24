@@ -8140,7 +8140,8 @@ async function fulfillOrderSale(o) {
   const items = d.items || [];
   const lines = items.map(it => it.type === 'material'
     ? { ref_type: 'material', ref_id: it.id, qty: Number(it.qty) || 1 }
-    : { ref_type: 'recipe', ref_id: it.id, qty: Number(it.qty) || 1 });
+    : { ref_type: 'recipe', ref_id: it.id, qty: Number(it.qty) || 1,
+        chosen_options: (it.options || []).filter(o => o.choice_id).map(o => ({ choice_id: o.choice_id, qty: 1 })) });
   if (!lines.length) return true;
   const billNo = 'QR-' + (o.orderNo || o.queue || o.id.slice(0, 6));
   try {
