@@ -8437,6 +8437,15 @@ function renderOnlineMenu() {
             <option value="sticker"${settings.kitchenTicketMode === 'sticker' ? ' selected' : ''}>สติกเกอร์ต่อแก้ว (50×40)</option>
           </select>
         </div>
+        <div style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="color:var(--color-text-muted);">เสียงเตือนออเดอร์ใหม่:</span>
+          <select onchange="setOrderSound(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+            <option value="on"${orderSoundOn() ? ' selected' : ''}>เปิด</option>
+            <option value="off"${!orderSoundOn() ? ' selected' : ''}>ปิด</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="playOrderBeep()"><span class="ico" data-icon="volume-2"></span> ทดสอบเสียง</button>
+          <span style="font-size:10px;color:var(--color-text-muted);">(ตั้งแยกแต่ละเครื่อง)</span>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;margin-bottom:2px;">
@@ -8535,11 +8544,29 @@ async function pollNewOrders() {
     }
   } catch (e) {}
 }
-function notifyNewOrder(n) {
+// ตั้งค่าเสียงเตือน (ต่อเครื่อง — เก็บใน localStorage)
+function orderSoundOn() { return localStorage.getItem('recipro_order_sound') !== 'off'; }
+function setOrderSound(v) { localStorage.setItem('recipro_order_sound', v === 'off' ? 'off' : 'on'); if (typeof ui !== 'undefined' && ui.toast) ui.toast(v === 'off' ? 'ปิดเสียงเตือนแล้ว' : 'เปิดเสียงเตือนแล้ว'); if (v !== 'off') playOrderBeep(); }
+function playOrderBeep() {
   try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) { const ac = new AC(); const o = ac.createOscillator(), g = ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value = 880; g.gain.value = 0.12; o.start(); setTimeout(() => { o.frequency.value = 1175; }, 150); setTimeout(() => { o.stop(); ac.close(); }, 340); }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const ac = new AC(); const now = ac.currentTime;
+    // 3 โทนสดใสนุ่ม ๆ (G5→B5→E6) แบบเสียงแจ้งเตือน Grab/LINE MAN — sine + envelope กันเสียงแตก
+    const notes = [{ f: 784, t: 0 }, { f: 988, t: 0.15 }, { f: 1319, t: 0.30 }];
+    notes.forEach(n => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = n.f; o.connect(g); g.connect(ac.destination);
+      const s = now + n.t;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(0.2, s + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.28);
+      o.start(s); o.stop(s + 0.30);
+    });
+    setTimeout(() => { try { ac.close(); } catch (e) {} }, 900);
   } catch (e) {}
+}
+function notifyNewOrder(n) {
+  if (orderSoundOn()) playOrderBeep();
   if (typeof ui !== 'undefined' && ui.toast) ui.toast('🔔 มีออเดอร์ออนไลน์ใหม่ ' + n + ' รายการ');
   try { if (window.Notification && Notification.permission === 'granted') new Notification('ออเดอร์ออนไลน์ใหม่', { body: n + ' รายการ — เปิดหน้าขายเพื่อดูคิว' }); } catch (e) {}
 }
