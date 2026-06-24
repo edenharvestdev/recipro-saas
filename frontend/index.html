@@ -8135,6 +8135,7 @@ function renderOnlineMenu() {
     <div>${orderRows}</div>
   </div>`;
   renderIcons(el);
+  startOrderPolling();
 }
 // เฟส 3: จัดการออเดอร์ออนไลน์ฝั่งร้าน
 async function refreshOrders() {
@@ -8199,6 +8200,38 @@ async function setOrderPaid(id, paid) {
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
 function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
+
+// #1: แจ้งเตือนออเดอร์ออนไลน์ใหม่ — โพลทุก 30 วิ เมื่อเปิดเมนูออนไลน์ + เสียง/เด้งเตือน
+let _orderPoll = null, _seenOrderIds = null;
+function startOrderPolling() {
+  if (_orderPoll || !settings.publicMenuEnabled) return;
+  _seenOrderIds = new Set((orders || []).map(o => o.id));
+  if (window.Notification && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) {} }
+  _orderPoll = setInterval(pollNewOrders, 30000);
+}
+async function pollNewOrders() {
+  if (!settings.publicMenuEnabled) return;
+  try {
+    const d = await API.get('/api/orders');
+    const list = d.orders || [];
+    const fresh = list.filter(o => _seenOrderIds && !_seenOrderIds.has(o.id) && (o.status || 'pending') === 'pending');
+    if (!_seenOrderIds) _seenOrderIds = new Set();
+    list.forEach(o => _seenOrderIds.add(o.id));
+    if (fresh.length) {
+      orders = list.map(o => ({ id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '', total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number, paid: !!o.paid, stockDeducted: !!o.stock_deducted, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json }));
+      if (typeof currentTab !== 'undefined' && currentTab === 'pos') renderOnlineMenu();
+      notifyNewOrder(fresh.length);
+    }
+  } catch (e) {}
+}
+function notifyNewOrder(n) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) { const ac = new AC(); const o = ac.createOscillator(), g = ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value = 880; g.gain.value = 0.12; o.start(); setTimeout(() => { o.frequency.value = 1175; }, 150); setTimeout(() => { o.stop(); ac.close(); }, 340); }
+  } catch (e) {}
+  if (typeof ui !== 'undefined' && ui.toast) ui.toast('🔔 มีออเดอร์ออนไลน์ใหม่ ' + n + ' รายการ');
+  try { if (window.Notification && Notification.permission === 'granted') new Notification('ออเดอร์ออนไลน์ใหม่', { body: n + ' รายการ — เปิดหน้าขายเพื่อดูคิว' }); } catch (e) {}
+}
 // ใบเข้าครัวสำหรับออเดอร์ออนไลน์ (80mm) — สร้างจาก items_json ของออเดอร์
 function printKitchenOrder(orderId) {
   const o = (orders || []).find(x => x.id === orderId);
