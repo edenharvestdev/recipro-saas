@@ -6171,6 +6171,7 @@ function showPosReceipt(b, total) {
       </table>
       <div class="rc-divider"></div>
       <div class="rc-total">รวม <span>${money(total)}</span></div>
+      ${(() => { const mc = b.memberPhone ? findCustomerByPhone(b.memberPhone) : null; return mc ? `<div class="rc-sub" style="text-align:center;margin-top:4px;">สมาชิก ${esc(mc.name || mc.phone)} · แต้มสะสม ${mc.points}</div>` : ''; })()}
       <div class="rc-footer">ขอบคุณที่ใช้บริการ</div>
       <div class="rc-actions no-print">
         <button class="btn btn-primary" onclick="window.print()"><span class="ico" data-icon="printer"></span> พิมพ์ใบเสร็จ</button>
