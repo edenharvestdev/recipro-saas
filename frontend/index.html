@@ -8177,8 +8177,8 @@ function renderGroupChoices() {
         <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value" placeholder="ชื่อตัวเลือก" style="flex:2;min-width:100px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
         ${isMeta ? '<span style="font-size:11px;color:var(--color-text-muted);white-space:nowrap;">ฟรี · ไม่ตัดสต๊อก</span>' : `
         <input type="number" step="any" value="${c.priceAdd||0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value" placeholder="+ราคา" style="width:72px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-        <select onchange="editGroupChoices[${ci}].effectType=this.value;renderGroupChoices();" style="font-size:12px;padding:5px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-          ${['NONE','ADD','REPLACE','QUANTITY','RECIPE_VARIANT'].map(e=>`<option value="${e}"${e===eff?' selected':''}>${e}</option>`).join('')}
+        <select onchange="setChoiceEffect(${ci}, this.value)" style="font-size:12px;padding:5px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          ${[['NONE','ไม่มีผล'],['ADD','เพิ่มของ (ADD)'],['REPLACE','เปลี่ยนของ (REPLACE)'],['QUANTITY','กำหนดปริมาณ'],['RECIPE_VARIANT','สลับสูตร']].map(([v,t])=>`<option value="${v}"${v===eff?' selected':''}>${t}</option>`).join('')}
         </select>`}
         <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${isMeta?' checked':''} onchange="editGroupChoices[${ci}].isMetadataOnly=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> ข้อมูลเท่านั้น</label>
         <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${c.enabled!==false?' checked':''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิด</label>
@@ -8188,6 +8188,17 @@ function renderGroupChoices() {
     </div>`;
   }).join('');
   renderIcons(el);
+}
+
+// เปลี่ยน effect ของตัวเลือก — ถ้าเป็น ADD/REPLACE ให้ขึ้นช่องเลือกวัตถุดิบ 1 แถวทันที (กัน "ขึ้นไม่ครบ")
+function setChoiceEffect(ci, val) {
+  const c = editGroupChoices[ci];
+  if (!c) return;
+  c.effectType = val;
+  if ((val === 'ADD' || val === 'REPLACE') && (!c.links || !c.links.length)) {
+    c.links = [{ id: uid(), matId: '', amount: 0 }];
+  }
+  renderGroupChoices();
 }
 
 function addChoiceRow() {
