@@ -306,7 +306,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
           <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="carrot"></span> รายการวัตถุดิบ</h2>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn btn-ghost btn-sm" onclick="printPriceTags()"><span class="ico" data-icon="printer"></span> ป้ายราคา</button>
+            <button class="btn btn-ghost btn-sm" onclick="openLabelPrint()"><span class="ico" data-icon="tag"></span> พิมพ์ฉลาก</button>
             <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
           </div>
         </div>
@@ -1500,6 +1500,18 @@
     <div class="drawer-footer">
       <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
       <button class="btn btn-primary" id="consSaveBtn" onclick="saveCons()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div>
+  </aside>
+
+  <aside class="drawer" id="labelDrawer" role="dialog" aria-label="พิมพ์ฉลาก">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="tag"></span> พิมพ์ฉลาก (เครื่องพิมพ์ความร้อน)</h3>
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body" id="lblBody"></div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()">ปิด</button>
+      <button class="btn btn-primary" onclick="printLabel()"><span class="ico" data-icon="printer"></span> พิมพ์ฉลาก</button>
     </div>
   </aside>
 
@@ -3221,6 +3233,118 @@ function printPriceTags() {
   const w = window.open('', '_blank');
   if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
   w.document.write(html); w.document.close();
+}
+
+// ============================================================
+// Label v2: พิมพ์ฉลากเครื่องพิมพ์ความร้อน (thermal) — ออกทีละดวง กำหนดขนาด+จำนวนเอง
+// ============================================================
+const LABEL_SIZES = { '40x30': [40, 30], '50x30': [50, 30], '32x25': [32, 25], '60x40': [60, 40], '100x150': [100, 150] };
+let labelState = null;
+
+function openLabelPrint(presetItemId) {
+  labelState = { type: 'price', itemId: '', name: '', price: '', code: '', sender: '', recvName: '', recvAddr: '', recvPhone: '', sizeKey: '40x30', w: 40, h: 30, qty: 1, codeType: 'none' };
+  labelState.sender = [settings.shopName, settings.addr, settings.phone].filter(Boolean).join('\n');
+  if (presetItemId) fillLabelFromItem(presetItemId);
+  renderLabelForm();
+  openDrawer('labelDrawer');
+}
+function labelItemOptions() {
+  const opts = [];
+  (materials || []).forEach(m => { if (m.itemType === 'SALE' || m.saleType === 'SELLABLE') opts.push({ id: 'm:' + m.id, name: m.name, price: Number(m.sellPrice || m.price) || 0, code: m.sku || '' }); });
+  (recipes || []).forEach(r => { if (recIsOnMenu(r)) opts.push({ id: 'r:' + r.id, name: r.name, price: Number(r.sell) || 0, code: r.code || '' }); });
+  return opts;
+}
+function fillLabelFromItem(id) {
+  const it = labelItemOptions().find(x => x.id === id);
+  if (it) { labelState.itemId = id; labelState.name = it.name; labelState.price = it.price; labelState.code = it.code; }
+}
+function lblSet(k, v) { if (labelState) labelState[k] = v; }
+function lblPickItem(id) { fillLabelFromItem(id); renderLabelForm(); }
+function lblPickSize(k) { labelState.sizeKey = k; if (k !== 'custom') { labelState.w = LABEL_SIZES[k][0]; labelState.h = LABEL_SIZES[k][1]; } renderLabelForm(); }
+function lblSetType(t) { labelState.type = t; renderLabelForm(); }
+
+function renderLabelForm() {
+  const el = $('lblBody'); if (!el) return;
+  const s = labelState;
+  const sizeOpts = Object.keys(LABEL_SIZES).map(k => `<option value="${k}"${s.sizeKey === k ? ' selected' : ''}>${k.replace('x', '×')} มม.${k === '100x150' ? ' (พัสดุ)' : ''}</option>`).join('')
+    + `<option value="custom"${s.sizeKey === 'custom' ? ' selected' : ''}>กำหนดเอง…</option>`;
+  let body = `
+    <div class="field"><label>ประเภทฉลาก</label>
+      <select onchange="lblSetType(this.value)">
+        <option value="price"${s.type === 'price' ? ' selected' : ''}>ฉลากราคา / สินค้า</option>
+        <option value="shipping"${s.type === 'shipping' ? ' selected' : ''}>ที่อยู่จัดส่งพัสดุ</option>
+      </select></div>
+    <div class="grid-2">
+      <div class="field"><label>ขนาดฉลาก</label><select onchange="lblPickSize(this.value)">${sizeOpts}</select></div>
+      <div class="field"><label>จำนวนดวง</label><input type="number" min="1" value="${s.qty}" oninput="lblSet('qty',Math.max(1,+this.value||1))"></div>
+    </div>
+    ${s.sizeKey === 'custom' ? `<div class="grid-2">
+      <div class="field"><label>กว้าง (มม.)</label><input type="number" value="${s.w}" oninput="lblSet('w',+this.value||0)"></div>
+      <div class="field"><label>สูง (มม.)</label><input type="number" value="${s.h}" oninput="lblSet('h',+this.value||0)"></div></div>` : ''}`;
+  if (s.type === 'price') {
+    const itemOpts = `<option value="">— เลือกสินค้า (หรือพิมพ์เอง) —</option>`
+      + labelItemOptions().map(o => `<option value="${o.id}"${o.id === s.itemId ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+    body += `
+      <div class="field"><label>เลือกสินค้า</label><select onchange="lblPickItem(this.value)">${itemOpts}</select></div>
+      <div class="field"><label>ชื่อสินค้า</label><input value="${esc(s.name)}" oninput="lblSet('name',this.value)"></div>
+      <div class="grid-2">
+        <div class="field"><label>ราคา (฿)</label><input value="${esc(String(s.price))}" oninput="lblSet('price',this.value)"></div>
+        <div class="field"><label>โค้ด / SKU</label><input value="${esc(s.code)}" oninput="lblSet('code',this.value)"></div>
+      </div>
+      <div class="field"><label>บาร์โค้ด / QR</label>
+        <select onchange="lblSet('codeType',this.value)">
+          <option value="none"${s.codeType === 'none' ? ' selected' : ''}>ไม่ใส่</option>
+          <option value="barcode"${s.codeType === 'barcode' ? ' selected' : ''}>บาร์โค้ด (Code128)</option>
+          <option value="qr"${s.codeType === 'qr' ? ' selected' : ''}>QR Code</option>
+        </select></div>`;
+  } else {
+    body += `
+      <div class="field"><label>ผู้ส่ง (ร้าน)</label><textarea rows="3" oninput="lblSet('sender',this.value)" style="width:100%;">${esc(s.sender)}</textarea></div>
+      <div class="field"><label>ผู้รับ — ชื่อ</label><input value="${esc(s.recvName)}" oninput="lblSet('recvName',this.value)"></div>
+      <div class="field"><label>ผู้รับ — ที่อยู่</label><textarea rows="3" oninput="lblSet('recvAddr',this.value)" style="width:100%;">${esc(s.recvAddr)}</textarea></div>
+      <div class="field"><label>ผู้รับ — เบอร์โทร</label><input value="${esc(s.recvPhone)}" oninput="lblSet('recvPhone',this.value)"></div>`;
+  }
+  el.innerHTML = body;
+}
+
+function printLabel() {
+  const s = labelState; if (!s) return;
+  const w = Math.max(10, s.w || 40), h = Math.max(10, s.h || 30), qty = Math.max(1, s.qty || 1);
+  const e = str => String(str == null ? '' : str).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let inner = '';
+  if (s.type === 'price') {
+    if (!s.name) { ui.alert('ใส่ชื่อสินค้าก่อน', { icon: 'tag' }); return; }
+    const codeBlock = s.codeType === 'barcode' ? '<svg class="bc" data-code="' + e(s.code || s.name) + '"></svg>'
+      : s.codeType === 'qr' ? '<div class="qr" data-code="' + e(s.code || s.name) + '"></div>' : '';
+    inner = '<div class="lname">' + e(s.name) + '</div>'
+      + '<div class="lprice">฿' + e(Number(s.price || 0).toLocaleString('th-TH')) + '</div>'
+      + codeBlock + (s.code ? '<div class="lcode">' + e(s.code) + '</div>' : '');
+  } else {
+    if (!s.recvName) { ui.alert('ใส่ชื่อผู้รับก่อน', { icon: 'tag' }); return; }
+    inner = '<div class="lblock"><span class="lt">ผู้ส่ง</span><div>' + e(s.sender).replace(/\n/g, '<br>') + '</div></div>'
+      + '<div class="lblock lto"><span class="lt">ผู้รับ</span><div class="lname">' + e(s.recvName) + '</div><div>' + e(s.recvAddr).replace(/\n/g, '<br>') + '</div>'
+      + (s.recvPhone ? '<div>โทร. ' + e(s.recvPhone) + '</div>' : '') + '</div>';
+  }
+  const labels = Array.from({ length: qty }, () => '<div class="label">' + inner + '</div>').join('');
+  const needBC = s.type === 'price' && s.codeType === 'barcode';
+  const needQR = s.type === 'price' && s.codeType === 'qr';
+  const libs = (needBC ? '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/scr' + 'ipt>' : '')
+    + (needQR ? '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"><\/scr' + 'ipt>' : '');
+  const css = '@page{size:' + w + 'mm ' + h + 'mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+    + 'body{margin:0}.label{width:' + w + 'mm;height:' + h + 'mm;padding:2mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden}'
+    + '.lname{font-size:13px;font-weight:700;line-height:1.15}.lprice{font-size:20px;font-weight:800;margin:1mm 0}.lcode{font-size:9px;color:#444;margin-top:1mm}'
+    + '.bc{width:90%;height:10mm}.qr img{width:16mm;height:16mm}'
+    + '.lblock{width:100%;text-align:left;font-size:11px;line-height:1.3;padding:1mm 0;border-bottom:1px dashed #999}.lblock.lto{border-bottom:none}'
+    + '.lt{font-size:8px;color:#666}.lto .lname{font-size:15px;text-align:left}';
+  const render = 'function(){try{'
+    + 'document.querySelectorAll(".bc").forEach(function(el){if(window.JsBarcode)JsBarcode(el,el.getAttribute("data-code"),{format:"CODE128",displayValue:false,margin:0,height:36});});'
+    + 'document.querySelectorAll(".qr").forEach(function(el){if(window.qrcode){var q=qrcode(0,"M");q.addData(el.getAttribute("data-code"));q.make();el.innerHTML=q.createImgTag(3,0);}});'
+    + '}catch(err){}setTimeout(function(){window.print()},400);}';
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ฉลาก</title>' + libs + '<style>' + css + '</style></head><body>'
+    + labels + '<scr' + 'ipt>window.onload=' + render + '<\/scr' + 'ipt></body></html>';
+  const win = window.open('', '_blank');
+  if (!win) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
+  win.document.write(html); win.document.close();
 }
 
 // เปิดฟอร์ม "เพิ่มแหล่งซื้อ" แบบล้างค่าใหม่
