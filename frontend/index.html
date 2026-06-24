@@ -1884,7 +1884,11 @@
       </div>
 
       <div class="field">
-        <label>วิธีทำ/ขั้นตอนการผลิต</label>
+        <label>รายละเอียด/คำอธิบายสินค้า <span style="color:var(--color-text-muted);font-size:11px;">— โชว์หน้าขาย + เมนูออนไลน์ให้ลูกค้าเห็น</span></label>
+        <textarea id="rDetail" rows="2" placeholder="เช่น ชาเขียวเข้มข้น หอมนม หวานกำลังดี (ไม่บังคับ)"></textarea>
+      </div>
+      <div class="field">
+        <label>วิธีทำ/ขั้นตอนการผลิต <span style="color:var(--color-text-muted);font-size:11px;">— สำหรับหลังร้าน</span></label>
         <textarea id="rSteps" rows="3" placeholder="ระบุวิธีผสม อุณหภูมิอบ และเวลาผลิต..."></textarea>
       </div>
 
@@ -2873,7 +2877,7 @@ function applyBootstrapData(data) {
     recipes = (data.recipes || []).map(r => ({
       id: r.id, code: r.code, name: r.name, sell: Number(r.sell_price),
       batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
-      steps: r.steps, fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
+      steps: r.steps, detail: r.detail || '', fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
       category: r.category || '', isSop: !!r.is_sop,
       recipeType: r.recipe_type || '', outputItemType: r.output_item_type || '',
       onMenu: (typeof r.on_menu === 'boolean' ? r.on_menu : null),
@@ -3143,7 +3147,7 @@ async function syncToSupabase() {
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
-      batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps,
+      batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps, detail: r.detail || '',
       fg_stock: r.fgStock, fg_low: r.fgLow,
       category: r.category || null, opt_groups: r.optGroups || [],
       img_data: r.imgData || null, is_sop: r.isSop || false,
@@ -4471,6 +4475,7 @@ function saveRecipe() {
   const yieldUnit = $('rYieldUnit').value || 'ชิ้น';
   const onMenu = $('rOnMenu') ? $('rOnMenu').checked : true; // ชั้นเมนู: สวิตช์ "นำขึ้นเมนู" (แทน Main/RAW เดิม)
   const steps = $('rSteps').value;
+  const detail = ($('rDetail')?.value || '').trim();
   const category = ($('rCategory')?.value || '').trim();
   const imgData = window._rImgData || '';
   const optGroups = recipeOptGroups.filter(g => g.label.trim()).map(g => ({
@@ -4485,12 +4490,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, steps, items, category, optGroups, imgData, onMenu });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, steps, detail, items, category, optGroups, imgData, onMenu });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw: false, steps, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType: 'MENU', onMenu, outputItemType: 'SALE' });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw: false, steps, detail, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType: 'MENU', onMenu, outputItemType: 'SALE' });
   }
 
   saveAll();
@@ -4509,6 +4514,7 @@ function editRecipe(id) {
   $('rYieldUnit').value = r.yieldUnit || 'ชิ้น';
   if ($('rOnMenu')) { $('rOnMenu').checked = (r.onMenu != null ? !!r.onMenu : !r.isRaw); updateRecipeMenuUI(); }
   $('rSteps').value = r.steps || '';
+  if ($('rDetail')) $('rDetail').value = r.detail || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
   setRecipeImgPreview(r.imgData || '');
   recipeOptGroups = (r.optGroups || []).map(g => ({
@@ -4654,6 +4660,7 @@ function resetRecipeForm() {
   $('rYieldUnit').value = 'ชิ้น';
   if ($('rOnMenu')) { $('rOnMenu').checked = true; updateRecipeMenuUI(); }
   $('rSteps').value = '';
+  if ($('rDetail')) $('rDetail').value = '';
   if ($('rCategory')) $('rCategory').value = '';
   setRecipeImgPreview('');
   recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
@@ -5614,6 +5621,7 @@ function renderPosGrid() {
       return `<div class="pos-product-card${!canMake ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
+        ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
         <div class="ppc-price">${money(r.sell)}</div>
         <div class="ppc-stock">${stockLine}</div>
       </div>`;

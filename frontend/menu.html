@@ -10,12 +10,15 @@
   header{background:#fff;padding:16px;position:sticky;top:0;z-index:5;box-shadow:0 1px 6px rgba(0,0,0,.06)}
   header h1{font-size:20px} header .sub{font-size:12px;color:#777;margin-top:2px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:14px}
-  .card{background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06);display:flex;flex-direction:column}
-  .card .img{height:110px;background:#eee center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:30px}
-  .card .b{padding:10px;flex:1;display:flex;flex-direction:column;gap:6px}
-  .card .nm{font-size:14px;font-weight:600;line-height:1.2}
-  .card .pr{font-size:16px;font-weight:800;color:#16a34a}
-  .add{margin-top:auto;border:none;background:#7c3aed;color:#fff;border-radius:10px;padding:8px;font-size:14px;font-weight:700;cursor:pointer}
+  .card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.07);display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s}
+  .card:active{transform:scale(.98)}
+  .card .img{height:128px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;justify-content:flex-end;font-size:34px;position:relative}
+  .card .swatch{position:absolute;left:10px;bottom:8px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 3px rgba(0,0,0,.35);opacity:.9}
+  .card .b{padding:11px 12px 12px;flex:1;display:flex;flex-direction:column;gap:5px}
+  .card .nm{font-size:15px;font-weight:700;line-height:1.25;color:#1a1a1a}
+  .card .desc{font-size:11px;color:#888;line-height:1.35;max-height:30px;overflow:hidden}
+  .card .pr{font-size:18px;font-weight:800;color:#16a34a}
+  .add{margin-top:auto;border:none;background:#7c3aed;color:#fff;border-radius:12px;padding:9px;font-size:14px;font-weight:700;cursor:pointer}
   .cat{padding:4px 14px 0;font-size:13px;font-weight:700;color:#7c3aed;grid-column:1/-1}
   .cartbar{position:fixed;left:0;right:0;bottom:0;background:#fff;box-shadow:0 -2px 10px rgba(0,0,0,.1);padding:12px 16px;display:flex;gap:10px;align-items:center}
   .cartbar b{flex:1;font-size:15px}
@@ -44,6 +47,7 @@ let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
 let pendingItem = null, pendingSel = {};
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hueOf = s => { let h=0; for(let i=0;i<String(s).length;i++) h=(h*31+String(s).charCodeAt(i))%360; return h; };
 
 async function load(){
   try{
@@ -61,10 +65,16 @@ function renderGrid(){
   const g = document.getElementById('grid'); let html=''; let lastCat=null;
   MENU.forEach(it=>{
     if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
-    const img = it.img ? `style="background-image:url('${esc(it.img)}')"` : '';
-    html+=`<div class="card"><div class="img" ${img}>${it.img?'':'🍽️'}</div><div class="b">
-      <div class="nm">${esc(it.name)}</div><div class="pr">${fmt(it.price)}</div>
-      <button class="add" onclick="addItem('${it.id}')">+ เพิ่ม</button></div></div>`;
+    const h = hueOf(it.name || 'x');
+    const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 58% 62%),hsl(${(h + 45) % 360} 62% 50%))`;
+    html += `<div class="card">
+      <div class="img" style="${bg}"><span class="swatch">${esc(it.category || 'เมนู')}</span></div>
+      <div class="b">
+        <div class="nm">${esc(it.name)}</div>
+        ${it.detail ? `<div class="desc">${esc(it.detail)}</div>` : ''}
+        <div class="pr">${fmt(it.price)}</div>
+        <button class="add" onclick="addItem('${it.id}')">+ เพิ่ม</button>
+      </div></div>`;
   });
   g.innerHTML = html || '<p class="muted" style="grid-column:1/-1;text-align:center;padding:30px">ยังไม่มีเมนู</p>';
 }
