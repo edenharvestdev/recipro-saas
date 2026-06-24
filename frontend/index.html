@@ -1260,6 +1260,7 @@
 
       <div id="onlineMenuSection"></div>
       <div id="deliverySection"></div>
+      <div id="cashDrawerSection"></div>
       <div id="pettyCashSection"></div>
       <div id="recurringSection"></div>
 
@@ -2079,6 +2080,7 @@ let materials = [];
 let recipes = [];
 let bills = [];
 let customers = [];    // M6: สมาชิกลูกค้า (สะสมแต้ม)
+let cashSessions = []; // M10: ลิ้นชักเงินสด (กะเงิน)
 let dataVersion = 0;   // #2: optimistic-lock version (กันหลายแท็บเขียนทับ)
 let prodLogs = [];
 let stockReceiveLogs = [];
@@ -2923,6 +2925,12 @@ function applyBootstrapData(data) {
       id: c.id, phone: c.phone || '', name: c.name || '', points: Number(c.points) || 0,
       visits: Number(c.visits) || 0, totalSpent: Number(c.total_spent) || 0, note: c.note || ''
     }));
+    cashSessions = (data.cash_sessions || []).map(s => ({
+      id: s.id, bizDate: (s.biz_date || '').slice(0, 10), openingFloat: Number(s.opening_float) || 0,
+      cashIn: Number(s.cash_in) || 0, cashOut: Number(s.cash_out) || 0, expectedSales: Number(s.expected_sales) || 0,
+      counted: Number(s.counted) || 0, status: s.status || 'closed', note: s.note || '',
+      openedAt: s.opened_at, closedAt: s.closed_at
+    }));
     prodLogs = (data.prod_logs || []).map(p => ({
       id: p.id, recipeId: p.recipe_id, recipeName: p.recipe_name || '',
       rounds: Number(p.rounds), made: Number(p.made), date: p.log_date
@@ -3188,6 +3196,11 @@ async function syncToSupabase() {
     customers: customers.map(c => ({
       id: c.id, phone: c.phone || '', name: c.name || '', points: c.points || 0,
       visits: c.visits || 0, total_spent: c.totalSpent || 0, note: c.note || ''
+    })),
+    cash_sessions: cashSessions.map(s => ({
+      id: s.id, biz_date: s.bizDate || null, opening_float: s.openingFloat || 0,
+      cash_in: s.cashIn || 0, cash_out: s.cashOut || 0, expected_sales: s.expectedSales || 0,
+      counted: s.counted || 0, status: s.status || 'open', note: s.note || '', closed_at: s.closedAt || null
     })),
     option_groups: optionGroups.map((g, gi) => ({
       id: g.id, label: g.label, select_type: g.selectType, required: g.required,
@@ -8117,6 +8130,7 @@ function renderExpensePage() {
   const typeFilter = $('expTypeFilter')?.value || '';
   if (typeof renderOnlineMenu === 'function') renderOnlineMenu();
   if (typeof renderDeliveryReconcile === 'function') renderDeliveryReconcile();
+  if (typeof renderCashDrawer === 'function') renderCashDrawer();
   if (typeof renderPettyCash === 'function') renderPettyCash();
   if (typeof renderRecurringSection === 'function') renderRecurringSection();
 
@@ -8337,6 +8351,81 @@ function pettyCashBalance() {
   const topup = (cashTopups || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
   const spent = (expenses || []).filter(e => e.kind !== 'income' && e.payType === 'cash').reduce((s, e) => s + (Number(e.amount) || 0), 0);
   return { topup, spent, balance: topup - spent };
+}
+// M10: ลิ้นชักเงินสด / กะเงิน
+function currentTill() { return cashSessions.find(s => s.status === 'open'); }
+function tillCashSales(date) { return bills.filter(b => b.status === 'paid' && b.date === date && b.channel !== 'qr').reduce((s, b) => s + billTotal(b), 0); }
+function renderCashDrawer() {
+  const el = $('cashDrawerSection'); if (!el) return;
+  const open = currentTill();
+  const inp = 'padding:8px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;';
+  if (!open) {
+    const recent = cashSessions.filter(s => s.status === 'closed').slice(0, 5).map(s => {
+      const diff = (Number(s.counted) || 0) - (s.openingFloat + s.expectedSales + s.cashIn - s.cashOut);
+      const c = diff === 0 ? 'var(--color-text-muted)' : diff > 0 ? '#16a34a' : '#dc2626';
+      return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border-soft);"><span>${s.bizDate || ''}</span><span>นับได้ ${money(s.counted)}</span><span style="color:${c};">${diff === 0 ? 'พอดี' : (diff > 0 ? 'เกิน ' : 'ขาด ') + money(Math.abs(diff))}</span></div>`;
+    }).join('') || '<p style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีประวัติกะ</p>';
+    el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+      <h2 style="margin:0 0 6px;"><span class="ico" data-icon="wallet"></span> ลิ้นชักเงินสด (กะเงิน)</h2>
+      <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">เปิดกะตอนเริ่มวัน → ระบบรวมยอดขายเงินสด → ปิดกะนับเงินจริงเทียบยอด (ขาด/เกิน)</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:13px;">เงินทอนตั้งต้น</span>
+        <input id="tillFloat" type="number" step="any" placeholder="0" style="${inp}width:120px;text-align:right;">
+        <button class="btn btn-primary" onclick="openTill()"><span class="ico" data-icon="lock-open"></span> เปิดกะ</button>
+      </div>
+      <div style="margin-top:12px;"><b style="font-size:13px;">ประวัติกะล่าสุด</b>${recent}</div>
+    </div>`;
+    renderIcons(el); return;
+  }
+  const sales = tillCashSales(open.bizDate || new Date().toISOString().slice(0, 10));
+  const expected = open.openingFloat + sales + open.cashIn - open.cashOut;
+  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <h2 style="margin:0;flex:1;"><span class="ico" data-icon="wallet"></span> ลิ้นชักเงินสด — กะเปิดอยู่</h2>
+      <span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:12px;">เปิดกะ ${(open.bizDate || '')}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px;">
+      <div style="background:var(--surface-2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:var(--color-text-muted);">เงินทอนตั้งต้น</div><b>${money(open.openingFloat)}</b></div>
+      <div style="background:var(--surface-2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:var(--color-text-muted);">ขายเงินสดวันนี้</div><b style="color:var(--color-secondary);">${money(sales)}</b></div>
+      <div style="background:var(--surface-2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:var(--color-text-muted);">เติม / เบิก</div><b>+${money(open.cashIn)} / -${money(open.cashOut)}</b></div>
+      <div style="background:#E1F5EE;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:#0F6E56;">ควรมีในลิ้นชัก</div><b style="color:#0F6E56;font-size:18px;">${money(expected)}</b></div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <input id="tillAdj" type="number" step="any" placeholder="จำนวนเงิน" style="${inp}width:120px;text-align:right;">
+      <button class="btn btn-ghost btn-sm" onclick="tillAdjust(1)">+ เติมเงิน</button>
+      <button class="btn btn-ghost btn-sm" onclick="tillAdjust(-1)">− เบิกเงิน</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border-soft);padding-top:10px;">
+      <span style="font-size:13px;">ปิดกะ — นับเงินจริง</span>
+      <input id="tillCounted" type="number" step="any" placeholder="0" style="${inp}width:120px;text-align:right;">
+      <button class="btn btn-primary" onclick="closeTill()"><span class="ico" data-icon="lock"></span> ปิดกะ</button>
+    </div>
+  </div>`;
+  renderIcons(el);
+}
+function openTill() {
+  if (currentTill()) { ui.toast('มีกะเปิดอยู่แล้ว', 'warning'); return; }
+  const f = Number($('tillFloat')?.value) || 0;
+  cashSessions.unshift({ id: uid(), bizDate: new Date().toISOString().slice(0, 10), openingFloat: f, cashIn: 0, cashOut: 0, expectedSales: 0, counted: 0, status: 'open', note: '', openedAt: new Date().toISOString(), closedAt: null });
+  saveAll(); renderCashDrawer();
+}
+function tillAdjust(sign) {
+  const t = currentTill(); if (!t) return;
+  const amt = Number($('tillAdj')?.value) || 0; if (amt <= 0) { ui.toast('ใส่จำนวนเงิน', 'warning'); return; }
+  if (sign > 0) t.cashIn = (t.cashIn || 0) + amt; else t.cashOut = (t.cashOut || 0) + amt;
+  saveAll(); renderCashDrawer();
+}
+async function closeTill() {
+  const t = currentTill(); if (!t) return;
+  const counted = Number($('tillCounted')?.value) || 0;
+  const sales = tillCashSales(t.bizDate);
+  const expected = t.openingFloat + sales + t.cashIn - t.cashOut;
+  const diff = counted - expected;
+  const msg = diff === 0 ? 'พอดีเป๊ะ' : diff > 0 ? ('เงินเกิน ' + money(diff)) : ('เงินขาด ' + money(Math.abs(diff)));
+  if (!(await ui.confirm('ปิดกะ?\nควรมี ' + money(expected) + ' · นับได้ ' + money(counted) + '\n→ ' + msg, { okText: 'ปิดกะ', icon: 'lock' }))) return;
+  t.expectedSales = sales; t.counted = counted; t.status = 'closed'; t.closedAt = new Date().toISOString();
+  saveAll(); renderCashDrawer();
+  if (ui.toast) ui.toast('ปิดกะแล้ว · ' + msg);
 }
 function renderPettyCash() {
   const el = $('pettyCashSection');
