@@ -8225,19 +8225,27 @@ function renderGroupChoices() {
         สั่งซ้ำได้สูงสุด:
         <input type="number" min="1" value="${c.maxQty||1}" oninput="editGroupChoices[${ci}].maxQty=+this.value||1" style="width:50px;font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-left:4px;">
       </div>` : '';
-    return `<div style="background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:8px;">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value" placeholder="ชื่อตัวเลือก" style="flex:2;min-width:100px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-        ${isMeta ? '<span style="font-size:11px;color:var(--color-text-muted);white-space:nowrap;">ฟรี · ไม่ตัดสต๊อก</span>' : `
-        <input type="number" step="any" value="${c.priceAdd||0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value" placeholder="+ราคา" style="width:72px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-        <select onchange="setChoiceEffect(${ci}, this.value)" style="font-size:12px;padding:5px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-          ${[['NONE','ไม่มีผล'],['ADD','เพิ่มของ (ADD)'],['REPLACE','เปลี่ยนของ (REPLACE)'],['QUANTITY','กำหนดปริมาณ'],['RECIPE_VARIANT','สลับสูตร']].map(([v,t])=>`<option value="${v}"${v===eff?' selected':''}>${t}</option>`).join('')}
-        </select>`}
-        <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${isMeta?' checked':''} onchange="editGroupChoices[${ci}].isMetadataOnly=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> ข้อมูลเท่านั้น</label>
-        <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;white-space:nowrap;"><input type="checkbox"${c.enabled!==false?' checked':''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิด</label>
-        <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:5px 7px;">${icon('trash-2')}</button>
+    const effOpts = [['NONE', 'ไม่มีผลต่อสต๊อก'], ['ADD', 'เพิ่มของ + ตัดสต๊อก'], ['REPLACE', 'เปลี่ยนวัตถุดิบ'], ['QUANTITY', 'กำหนดปริมาณ'], ['RECIPE_VARIANT', 'สลับสูตร (ร้อน/เย็น)']];
+    return `<div style="background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value" placeholder="ชื่อตัวเลือก เช่น เพิ่มไข่มุก / เปลี่ยนนมโอ๊ต" style="flex:1;min-width:80px;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:6px 8px;">${icon('trash-2')}</button>
       </div>
+      ${isMeta ? '' : `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+        <span style="font-size:12px;font-weight:700;color:var(--color-text-main);">ประเภท:</span>
+        <select onchange="setChoiceEffect(${ci}, this.value)" style="flex:1;min-width:160px;font-size:13px;padding:6px 8px;border-radius:7px;border:1px solid ${eff === 'NONE' ? '#d97706' : 'var(--border-soft)'};background:var(--surface-1);color:var(--color-text-main);">
+          ${effOpts.map(([v, t]) => `<option value="${v}"${v === eff ? ' selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <span style="font-size:11px;color:var(--color-text-muted);">+ราคา</span>
+        <input type="number" step="any" value="${c.priceAdd || 0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value" placeholder="0" style="width:64px;font-size:13px;padding:6px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+      </div>
+      ${eff === 'NONE' ? '<div style="font-size:11px;color:#d97706;margin-top:5px;"><span class="ico" data-icon="arrow-up"></span> เลือก "ประเภท" เพื่อให้ตัดสต๊อก: เพิ่มของ · เปลี่ยนวัตถุดิบ · กำหนดปริมาณ · สลับสูตร</div>' : ''}`}
       ${targetMatHtml}${quantityHtml}${linksHtml}${roleHtml}${variantHtml}${maxQtyHtml}
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${isMeta ? ' checked' : ''} onchange="editGroupChoices[${ci}].isMetadataOnly=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> ข้อมูลเท่านั้น (ฟรี ไม่ตัดสต๊อก)</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.enabled !== false ? ' checked' : ''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิดใช้</label>
+      </div>
     </div>`;
   }).join('');
   renderIcons(el);
