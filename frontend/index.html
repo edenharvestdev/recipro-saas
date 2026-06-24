@@ -1659,7 +1659,8 @@
 
       <div class="field" style="margin-top:16px;">
         <label>หมวดหมู่เมนู (สำหรับกรองใน POS)</label>
-        <input id="rCategory" placeholder="เช่น เครื่องดื่ม, อาหาร, ขนม">
+        <input id="rCategory" list="rCategoryList" placeholder="เลือกหมวดเดิม หรือพิมพ์เพิ่มใหม่ (เช่น เครื่องดื่ม, อาหาร, ขนม)">
+        <datalist id="rCategoryList"></datalist>
       </div>
 
       <div style="margin-top:16px;">
@@ -3830,6 +3831,8 @@ function setIngCat(i, cat) {
 
 function renderRecipeForm() {
   const sops = sopCandidates();
+  const catDl = $('rCategoryList');
+  if (catDl) catDl.innerHTML = [...new Set(recipes.map(r => r.category).filter(Boolean))].sort().map(c => `<option value="${esc(c)}"></option>`).join('');
   const cats = itemCategories();
   const nonCons = materials.filter(m => !m.isConsumable);
   const presentCodes = new Set(nonCons.filter(m => m.itemType).map(m => m.itemType));
@@ -5050,17 +5053,30 @@ function renderPosGrid() {
   grid.innerHTML = sellable.map(r => {
     const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
     if (settings.makeToOrder) {
-      const canMake = (r.items || []).length === 0 || (r.items || []).every(ri => {
-        if (ri.subId) { const s = recById(ri.subId); return s && (Number(s.fgStock) || 0) >= ri.amount; }
-        const mat = matById(ri.matId);
-        return mat && (Number(mat.stock) || 0) >= ri.amount;
-      });
+      // ทำสดตอนสั่ง: ดูสถานะจาก "วัตถุดิบในสูตร" ไม่ใช่ fgStock — เตือนทั้งใกล้หมด (ต่ำกว่าลิมิต) และไม่พอ
+      let canMake = true, lowIng = false;
+      for (const ri of (r.items || [])) {
+        if (ri.subId) {
+          const s = recById(ri.subId); const have = s ? (Number(s.fgStock) || 0) : 0;
+          if (!s || have < ri.amount) canMake = false;
+          if (s && Number(s.fgLow) > 0 && have <= Number(s.fgLow)) lowIng = true;
+        } else {
+          const mat = matById(ri.matId); const have = mat ? (Number(mat.stock) || 0) : 0;
+          if (!mat || have < ri.amount) canMake = false;
+          if (mat && Number(mat.lowStock) > 0 && have <= Number(mat.lowStock)) lowIng = true;
+        }
+      }
+      const stockLine = !canMake
+        ? '<span style="color:#e53e3e;font-weight:600;">⚠ วัตถุดิบไม่พอ</span>'
+        : lowIng
+          ? '<span style="color:#d97706;font-weight:600;">⚠ วัตถุดิบใกล้หมด</span>'
+          : '<span style="color:#16a34a;">พร้อมขาย</span>';
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
       return `<div class="pos-product-card${!canMake ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         <div class="ppc-price">${money(r.sell)}</div>
-        <div class="ppc-stock">${!canMake ? '<span style="color:var(--color-danger,#e53e3e)">⚠ วัตถุดิบไม่พอ</span>' : 'สั่งผลิต'}</div>
+        <div class="ppc-stock">${stockLine}</div>
       </div>`;
     }
     const stock = Number(r.fgStock) || 0;
