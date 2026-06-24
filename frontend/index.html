@@ -5856,6 +5856,7 @@ function showPosReceipt(b, total) {
       <div class="rc-footer">ขอบคุณที่ใช้บริการ</div>
       <div class="rc-actions no-print">
         <button class="btn btn-primary" onclick="window.print()"><span class="ico" data-icon="printer"></span> พิมพ์ใบเสร็จ</button>
+        <button class="btn btn-secondary" onclick="printKitchen('${b.id}')"><span class="ico" data-icon="chef-hat"></span> ใบเข้าครัว</button>
         <button class="btn btn-secondary" onclick="closePosReceipt(); switchPosTab('log');"><span class="ico" data-icon="history"></span> ดูบิล</button>
         <button class="btn btn-ghost" onclick="closePosReceipt()">ปิด</button>
       </div>
@@ -5894,6 +5895,9 @@ function renderSalesLog() {
         <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;" onclick="reprintReceipt('${b.id}')">
           <span class="ico" data-icon="printer"></span> พิมพ์ซ้ำ
         </button>
+        <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;" onclick="printKitchen('${b.id}')">
+          <span class="ico" data-icon="chef-hat"></span> ใบเข้าครัว
+        </button>
       </div>
     </div>`;
   }).join('');
@@ -5905,6 +5909,31 @@ function reprintReceipt(billId) {
   if (!b) return;
   const total = (b.items || []).reduce((s, it) => s + (it.qty * (it.price || 0)), 0);
   showPosReceipt(b, total);
+}
+
+// เฟส 2: ใบเข้าครัว (kitchen ticket) — พิมพ์รายการ + ตัวเลือก ให้ครัวทำ (เครื่องพิมพ์ใบเสร็จ 80mm)
+function printKitchen(billId) {
+  const b = bills.find(x => x.id === billId);
+  if (!b) { ui.alert('ไม่พบบิล', { icon: 'alert-triangle' }); return; }
+  const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const rows = (b.items || []).map(it => {
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    const name = prod ? prod.name : 'สินค้า';
+    const opts = Object.entries(it.options || {}).map(([k, v]) => e(k) + ': ' + e(v)).join(' · ');
+    return '<div class="kit"><div class="kq">' + it.qty + '×</div><div class="kn">' + e(name) + (opts ? '<div class="ko">' + opts + '</div>' : '') + '</div></div>';
+  }).join('');
+  const css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+    + 'body{width:80mm;padding:4mm 3mm}.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
+    + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
+    + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}';
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบเข้าครัว</title><style>' + css + '</style></head><body>'
+    + '<div class="kh">ใบเข้าครัว</div>'
+    + '<div class="km">บิล: ' + e(b.billNo || '') + '<br>เวลา: ' + new Date().toLocaleString('th-TH') + (b.cust ? '<br>ลูกค้า: ' + e(b.cust) : '') + '</div>'
+    + rows
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},250)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank');
+  if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ============================================================
