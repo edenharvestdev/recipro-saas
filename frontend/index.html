@@ -3248,7 +3248,7 @@ const LABEL_SIZES = { '40x30': [40, 30], '50x30': [50, 30], '32x25': [32, 25], '
 let labelState = null;
 
 function openLabelPrint(presetItemId) {
-  labelState = { type: 'price', itemId: '', name: '', price: '', code: '', sender: '', recvName: '', recvAddr: '', recvPhone: '', sizeKey: '40x30', w: 40, h: 30, qty: 1, codeType: 'none' };
+  labelState = { type: 'price', itemId: '', name: '', price: '', code: '', sender: '', recvName: '', recvAddr: '', recvPhone: '', prodDate: new Date().toISOString().slice(0, 10), expDate: '', sizeKey: '40x30', w: 40, h: 30, qty: 1, codeType: 'none' };
   labelState.sender = [settings.shopName, settings.addr, settings.phone].filter(Boolean).join('\n');
   if (presetItemId) fillLabelFromItem(presetItemId);
   renderLabelForm();
@@ -3278,6 +3278,7 @@ function renderLabelForm() {
     <div class="field"><label>ประเภทฉลาก</label>
       <select onchange="lblSetType(this.value)">
         <option value="price"${s.type === 'price' ? ' selected' : ''}>ฉลากราคา / สินค้า</option>
+        <option value="product"${s.type === 'product' ? ' selected' : ''}>ฉลากอาหาร (วันผลิต/หมดอายุ)</option>
         <option value="shipping"${s.type === 'shipping' ? ' selected' : ''}>ที่อยู่จัดส่งพัสดุ</option>
       </select></div>
     <div class="grid-2">
@@ -3303,6 +3304,26 @@ function renderLabelForm() {
           <option value="barcode"${s.codeType === 'barcode' ? ' selected' : ''}>บาร์โค้ด (Code128)</option>
           <option value="qr"${s.codeType === 'qr' ? ' selected' : ''}>QR Code</option>
         </select></div>`;
+  } else if (s.type === 'product') {
+    const itemOptsP = `<option value="">— เลือกสินค้า (หรือพิมพ์เอง) —</option>`
+      + labelItemOptions().map(o => `<option value="${o.id}"${o.id === s.itemId ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+    body += `
+      <div class="field"><label>เลือกสินค้า</label><select onchange="lblPickItem(this.value)">${itemOptsP}</select></div>
+      <div class="field"><label>ชื่อสินค้า</label><input value="${esc(s.name)}" oninput="lblSet('name',this.value)"></div>
+      <div class="grid-2">
+        <div class="field"><label>วันผลิต</label><input type="date" value="${esc(s.prodDate)}" oninput="lblSet('prodDate',this.value)"></div>
+        <div class="field"><label>วันหมดอายุ</label><input type="date" value="${esc(s.expDate)}" oninput="lblSet('expDate',this.value)"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>ราคา (฿ ไม่บังคับ)</label><input value="${esc(String(s.price))}" oninput="lblSet('price',this.value)"></div>
+        <div class="field"><label>โค้ด / SKU</label><input value="${esc(s.code)}" oninput="lblSet('code',this.value)"></div>
+      </div>
+      <div class="field"><label>บาร์โค้ด / QR</label>
+        <select onchange="lblSet('codeType',this.value)">
+          <option value="none"${s.codeType === 'none' ? ' selected' : ''}>ไม่ใส่</option>
+          <option value="barcode"${s.codeType === 'barcode' ? ' selected' : ''}>บาร์โค้ด (Code128)</option>
+          <option value="qr"${s.codeType === 'qr' ? ' selected' : ''}>QR Code</option>
+        </select></div>`;
   } else {
     body += `
       <div class="field"><label>ผู้ส่ง (ร้าน)</label><textarea rows="3" oninput="lblSet('sender',this.value)" style="width:100%;">${esc(s.sender)}</textarea></div>
@@ -3318,12 +3339,19 @@ function printLabel() {
   const w = Math.max(10, s.w || 40), h = Math.max(10, s.h || 30), qty = Math.max(1, s.qty || 1);
   const e = str => String(str == null ? '' : str).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   let inner = '';
+  const codeBlock = s.codeType === 'barcode' ? '<svg class="bc" data-code="' + e(s.code || s.name) + '"></svg>'
+    : s.codeType === 'qr' ? '<div class="qr" data-code="' + e(s.code || s.name) + '"></div>' : '';
   if (s.type === 'price') {
     if (!s.name) { ui.alert('ใส่ชื่อสินค้าก่อน', { icon: 'tag' }); return; }
-    const codeBlock = s.codeType === 'barcode' ? '<svg class="bc" data-code="' + e(s.code || s.name) + '"></svg>'
-      : s.codeType === 'qr' ? '<div class="qr" data-code="' + e(s.code || s.name) + '"></div>' : '';
     inner = '<div class="lname">' + e(s.name) + '</div>'
       + '<div class="lprice">฿' + e(Number(s.price || 0).toLocaleString('th-TH')) + '</div>'
+      + codeBlock + (s.code ? '<div class="lcode">' + e(s.code) + '</div>' : '');
+  } else if (s.type === 'product') {
+    if (!s.name) { ui.alert('ใส่ชื่อสินค้าก่อน', { icon: 'tag' }); return; }
+    inner = '<div class="lname">' + e(s.name) + '</div>'
+      + (Number(s.price) ? '<div class="lprice" style="font-size:15px;">฿' + e(Number(s.price).toLocaleString('th-TH')) + '</div>' : '')
+      + (s.prodDate ? '<div class="ld">ผลิต: ' + e(s.prodDate) + '</div>' : '')
+      + (s.expDate ? '<div class="ld" style="font-weight:700;">หมดอายุ: ' + e(s.expDate) + '</div>' : '')
       + codeBlock + (s.code ? '<div class="lcode">' + e(s.code) + '</div>' : '');
   } else {
     if (!s.recvName) { ui.alert('ใส่ชื่อผู้รับก่อน', { icon: 'tag' }); return; }
@@ -3332,13 +3360,14 @@ function printLabel() {
       + (s.recvPhone ? '<div>โทร. ' + e(s.recvPhone) + '</div>' : '') + '</div>';
   }
   const labels = Array.from({ length: qty }, () => '<div class="label">' + inner + '</div>').join('');
-  const needBC = s.type === 'price' && s.codeType === 'barcode';
-  const needQR = s.type === 'price' && s.codeType === 'qr';
+  const withCode = s.type === 'price' || s.type === 'product';
+  const needBC = withCode && s.codeType === 'barcode';
+  const needQR = withCode && s.codeType === 'qr';
   const libs = (needBC ? '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/scr' + 'ipt>' : '')
     + (needQR ? '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"><\/scr' + 'ipt>' : '');
   const css = '@page{size:' + w + 'mm ' + h + 'mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
     + 'body{margin:0}.label{width:' + w + 'mm;height:' + h + 'mm;padding:2mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden}'
-    + '.lname{font-size:13px;font-weight:700;line-height:1.15}.lprice{font-size:20px;font-weight:800;margin:1mm 0}.lcode{font-size:9px;color:#444;margin-top:1mm}'
+    + '.lname{font-size:13px;font-weight:700;line-height:1.15}.lprice{font-size:20px;font-weight:800;margin:1mm 0}.lcode{font-size:9px;color:#444;margin-top:1mm}.ld{font-size:10px;line-height:1.3}'
     + '.bc{width:90%;height:10mm}.qr img{width:16mm;height:16mm}'
     + '.lblock{width:100%;text-align:left;font-size:11px;line-height:1.3;padding:1mm 0;border-bottom:1px dashed #999}.lblock.lto{border-bottom:none}'
     + '.lt{font-size:8px;color:#666}.lto .lname{font-size:15px;text-align:left}';
