@@ -21,7 +21,7 @@ router.get('/menu/:token', async (req, res) => {
     if (!shop) return res.status(404).json({ error: 'menu not found or disabled' });
     const recs = (await query(
       `select id, name, sell_price, img_data, category from recipes
-        where shop_id = $1 and coalesce(is_raw,false) = false and coalesce(sell_price,0) > 0
+        where shop_id = $1 and coalesce(on_menu, not coalesce(is_raw,false)) = true and coalesce(sell_price,0) > 0
         order by category nulls last, name`, [shop.id])).rows;
     const mats = (await query(
       `select id, name, coalesce(sell_price, price) as sell_price, img_data, category from materials
