@@ -752,6 +752,10 @@
             </div>
             <div id="posCartFooter" class="pos-cart-footer" style="display:none;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+                <span style="font-size:13px;color:var(--color-text-muted);">คิว / โต๊ะ</span>
+                <input id="posTableNo" placeholder="เช่น 5, A2 (ไม่บังคับ)" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
                 <span style="font-size:13px;color:var(--color-text-muted);">ส่วนลด</span>
                 <div style="display:flex;gap:4px;align-items:center;">
                   <input type="number" id="posDiscVal" min="0" placeholder="0" oninput="renderPosCart()" style="width:68px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
@@ -3023,7 +3027,7 @@ async function syncToSupabase() {
     bills: bills.map(b => ({
       id: b.id, number: b.billNo, status: b.status,
       items_json: {
-        items: b.items, cust: b.cust, sender: b.sender,
+        items: b.items, cust: b.cust, sender: b.sender, tableNo: b.tableNo || '',
         discV: b.discV, discT: b.discT, taxV: b.taxV, taxT: b.taxT, date: b.date
       }
     })),
@@ -5800,6 +5804,7 @@ function posChangeQty(cartIdx, delta) {
 
 function posClearCart() {
   posCart = [];
+  if ($('posTableNo')) $('posTableNo').value = '';
   renderPosCart();
 }
 
@@ -5872,6 +5877,7 @@ async function posCheckout() {
     date: new Date().toISOString().slice(0, 10),
     cust: '',
     sender: settings.shopName,
+    tableNo: ($('posTableNo')?.value || '').trim(),
     discV: discVal, discT: discType,
     taxV: 0, taxT: '%',
     items: posCart.map(it => {
@@ -5942,6 +5948,7 @@ async function posCheckout() {
   counter++;
   saveAll();
   posCart = [];
+  if ($('posTableNo')) $('posTableNo').value = '';
   renderPosGrid();
   renderPosCart();
   render();
@@ -5969,7 +5976,7 @@ function showPosReceipt(b, total) {
       <div class="rc-header">
         <div class="rc-shop">${esc(shopName)}</div>
         ${phoneLine}${ppLine}
-        <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}</div>
+        <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}${b.tableNo ? ' &nbsp;|&nbsp; คิว/โต๊ะ ' + esc(b.tableNo) : ''}</div>
       </div>
       <div class="rc-divider"></div>
       <table class="rc-items">
@@ -6068,7 +6075,7 @@ function printKitchen(billId) {
     const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
     return { qty: it.qty, name: prod ? prod.name : 'สินค้า', opts: Object.entries(it.options || {}).map(([k, v]) => k + ': ' + v).join(' · ') };
   });
-  printBackOfHouse('บิล: ' + (b.billNo || '') + ' · ' + new Date().toLocaleString('th-TH') + (b.cust ? ' · ' + b.cust : ''), items);
+  printBackOfHouse((b.tableNo ? 'คิว/โต๊ะ ' + b.tableNo + ' · ' : '') + 'บิล: ' + (b.billNo || '') + ' · ' + new Date().toLocaleString('th-TH') + (b.cust ? ' · ' + b.cust : ''), items);
 }
 
 // ============================================================
