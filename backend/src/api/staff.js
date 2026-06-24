@@ -38,6 +38,9 @@ router.post('/staff', async (req, res) => {
     }
     const ex = (await query('select 1 from memberships where user_id=$1 and shop_id=$2', [u.id, req.shopId])).rowCount;
     if (ex) return res.status(409).json({ error: 'ผู้ใช้นี้อยู่ในร้านนี้แล้ว' });
+    // จำกัดทีมงานไม่เกิน 3 คนต่อร้าน (รวมแอดมินหลัก) — นับเฉพาะ owner/staff
+    const teamN = (await query("select count(*)::int n from memberships where shop_id=$1 and role in ('owner','staff')", [req.shopId])).rows[0].n;
+    if (teamN >= 3) return res.status(400).json({ error: 'ทีมงานครบ 3 คนแล้ว (สูงสุดต่อร้าน) — เอาคนเดิมออกก่อนถ้าจะเพิ่ม' });
     await query('insert into memberships (user_id, shop_id, role) values ($1,$2,$3)', [u.id, req.shopId, role]);
     res.json({ ok: true, user_id: u.id, email, role });
   } catch (e) { res.status(500).json({ error: e.message }); }

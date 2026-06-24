@@ -922,7 +922,7 @@
     <section id="setPage" class="page-section hidden">
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
-        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">พนักงาน (staff) เห็นแค่หน้าขาย/สต๊อก/สมาชิก — <b>ไม่เห็นต้นทุน/กำไร/สูตร</b> · เจ้าของ (owner) เห็นทุกอย่าง</p>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">พนักงาน (staff) เห็นแค่หน้าขาย/สต๊อก/สมาชิก — <b>ไม่เห็นต้นทุน/กำไร/สูตร</b> · เจ้าของ (owner) เห็นทุกอย่าง · <b id="stCount">ทีมงาน —/3</b></p>
         <div class="grid-2" style="margin-bottom:10px;">
           <div class="field"><label>อีเมลพนักงาน</label><input id="stEmail" placeholder="staff@example.com" autocomplete="off"></div>
           <div class="field"><label>รหัสผ่าน (ตั้งให้ครั้งแรก ถ้าเป็นผู้ใช้ใหม่)</label><input id="stPass" type="text" placeholder="อย่างน้อย 6 ตัว" autocomplete="off"></div>
@@ -5962,6 +5962,8 @@ async function renderStaffSection() {
   try {
     const d = await API.get('/api/staff');
     const me = CURRENT_USER && CURRENT_USER.id;
+    const team = (d.staff || []).filter(s => s.role === 'owner' || s.role === 'staff').length;
+    const cnt = $('stCount'); if (cnt) { cnt.textContent = 'ทีมงาน ' + team + '/3'; cnt.style.color = team >= 3 ? '#dc2626' : ''; }
     el.innerHTML = (d.staff || []).map(s => {
       const isSelf = s.user_id === me;
       const roleTh = s.role === 'owner' ? 'เจ้าของ/ผู้ดูแล' : s.role === 'superadmin' ? 'Super Admin' : 'พนักงาน';
