@@ -734,6 +734,9 @@
 
       <!-- ===== QUICK SELL PANEL ===== -->
       <div id="posQuickSell">
+        <div style="padding:10px 12px 0;">
+          <input id="posScanBox" placeholder="สแกนบาร์โค้ด / พิมพ์ชื่อหรือรหัสสินค้า แล้วกด Enter" oninput="posSearchInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();posScanEnter(this);}" autocomplete="off" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;">
+        </div>
         <!-- category filter bar -->
         <div id="posCategoryBar" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px 4px;"></div>
         <div class="pos-qs-layout">
@@ -5357,6 +5360,26 @@ function renderBillList() {
 // ============================================================
 let posCart = []; // [{ recipeId, qty, options: {groupLabel: choice} }]
 let posCategoryFilter = '';
+let posSearch = '';   // ค้นหา/สแกนบาร์โค้ดในหน้าขายด่วน
+function posSearchInput(v) { posSearch = String(v || '').trim().toLowerCase(); renderPosGrid(); }
+// สแกนบาร์โค้ด (เครื่องสแกนพิมพ์รหัส + Enter) หรือพิมพ์รหัส/ชื่อ แล้ว Enter → หาตรง ๆ + ใส่ตะกร้า
+function posScanEnter(inp) {
+  const raw = String(inp.value || '').trim(); if (!raw) return;
+  const q = raw.toLowerCase();
+  const rec = recipes.find(r => (r.onMenu != null ? !!r.onMenu : !r.isRaw) && (r.code || '').toLowerCase() === q);
+  const mat = posSellableMats().find(m => (m.sku || '').toLowerCase() === q);
+  let hit = null;
+  if (rec) { addToCart(rec.id); hit = rec.name; }
+  else if (mat) { addMatToCart(mat.id); hit = mat.name; }
+  else {
+    // ไม่เจอรหัสตรง — ถ้ากรองชื่อแล้วเหลือตัวเดียว ใส่ตัวนั้น
+    const recs = recipes.filter(r => (r.onMenu != null ? !!r.onMenu : !r.isRaw) && ((r.name || '').toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q)));
+    const mms = posSellableMats().filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
+    if (recs.length + mms.length === 1) { if (recs[0]) { addToCart(recs[0].id); hit = recs[0].name; } else { addMatToCart(mms[0].id); hit = mms[0].name; } }
+  }
+  if (hit) { inp.value = ''; posSearch = ''; renderPosGrid(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เพิ่ม: ' + hit); }
+  else if (typeof ui !== 'undefined' && ui.toast) ui.toast('ไม่พบสินค้า "' + raw + '"', 'warning');
+}
 
 function switchPosTab(tab) {
   const isQuick = tab === 'quick';
@@ -5396,6 +5419,11 @@ function renderPosGrid() {
   let sellable = recipes.filter(r => r.onMenu != null ? !!r.onMenu : !r.isRaw);
   let mats = posSellableMats();
   if (posCategoryFilter) { sellable = sellable.filter(r => r.category === posCategoryFilter); mats = mats.filter(m => m.category === posCategoryFilter); }
+  if (posSearch) {
+    const q = posSearch;
+    sellable = sellable.filter(r => (r.name || '').toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q));
+    mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
+  }
   if (!sellable.length && !mats.length) {
     grid.innerHTML = `<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">${posCategoryFilter ? 'ไม่มีสินค้าในหมวดนี้' : 'ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู หรือตั้งวัตถุดิบเป็น "ขายได้เลย"'}</p>`;
     return;
