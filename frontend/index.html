@@ -198,6 +198,7 @@
         <a class="nav-item" id="menuExpense" onclick="switchTab('expense')" title="รายจ่าย/เงินสดย่อย"><span class="ico" data-icon="wallet"></span><span>รายจ่าย</span></a>
         <a class="nav-item" id="menuOptions" onclick="switchTab('options')" title="ตัวเลือกสินค้า & BOM"><span class="ico" data-icon="sliders-horizontal"></span><span>ตัวเลือก</span></a>
         <a class="nav-item" id="menuPos" onclick="switchTab('pos')" title="ขาย & ออกบิล"><span class="ico" data-icon="receipt"></span><span data-lang-key="nav_pos">ขาย &amp; ออกบิล</span></a>
+        <a class="nav-item" id="menuManual" onclick="switchTab('manual')" title="คู่มือการใช้งาน"><span class="ico" data-icon="book-open"></span><span>คู่มือ</span></a>
         <a class="nav-item hidden" id="menuAdmin" onclick="switchTab('admin')" title="ควบคุมระบบ"><span class="ico" data-icon="crown"></span><span data-lang-key="nav_admin">ควบคุมระบบ</span></a>
       </nav>
     </div>
@@ -1127,6 +1128,7 @@
         <button class="account-page-item" onclick="switchTab('expense')"><span class="ico" data-icon="wallet"></span><span>รายรับ-รายจ่าย</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
         <button class="account-page-item" onclick="switchTab('consumables')"><span class="ico" data-icon="package-plus"></span><span>ของใช้สิ้นเปลือง</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
         <button class="account-page-item" onclick="switchTab('options')"><span class="ico" data-icon="sliders-horizontal"></span><span>ตัวเลือกสินค้า</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
+        <button class="account-page-item" onclick="switchTab('manual')"><span class="ico" data-icon="book-open"></span><span>คู่มือการใช้งาน</span><span class="ico apg-chev" data-icon="chevron-right"></span></button>
       </div>
 
       <div class="glass-card account-page-list">
@@ -1266,6 +1268,104 @@
           <thead><tr><th>วันที่/เวลา</th><th>รายการ</th><th>ประเภท</th><th class="r">ก่อน</th><th class="r">หลัง</th><th class="r">เปลี่ยน</th></tr></thead>
           <tbody id="consLogList"></tbody>
         </table></div>
+      </div>
+    </section>
+
+    <section id="manualPage" class="page-section hidden">
+      <div class="glass-card" style="margin-bottom:16px;">
+        <h2 style="margin:0 0 6px;"><span class="ico" data-icon="book-open"></span> คู่มือการใช้งาน — ฉบับร้านคาเฟ่</h2>
+        <p style="font-size:13px;color:var(--color-text-muted);margin:0;line-height:1.7;">รวมขั้นตอนทั้งหมดของระบบ สำหรับน้องหน้าร้านและคนทำสูตร — กดหัวข้อเพื่อดูรายละเอียด</p>
+        <div style="background:var(--surface-2);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--color-text-main);line-height:1.8;">
+          <b><span class="ico" data-icon="route"></span> ลำดับการทำงานของระบบ</b><br>
+          วัตถุดิบ <span style="color:var(--color-text-muted);">(ซื้อเข้า/ตั้งหมวด)</span> → สูตร <span style="color:var(--color-text-muted);">(ส่วนผสม + ต้นทุน)</span> → นำขึ้นเมนู + ตัวเลือก → ขายหน้า POS → ระบบตัดสต๊อกวัตถุดิบให้อัตโนมัติ
+        </div>
+      </div>
+
+      <div class="glass-card" style="display:flex;flex-direction:column;gap:8px;">
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="carrot"></span> 1. วัตถุดิบ & หมวดสินค้า</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            <b>เพิ่มวัตถุดิบ:</b> หน้า "วัตถุดิบ" → กด "เพิ่มวัตถุดิบ" → ใส่ชื่อ ราคา/หน่วย คงเหลือ จุดเตือนใกล้หมด แล้วเลือก <b>หมวดสินค้า</b><br>
+            <b>หมวดที่ใช้บ่อย:</b><br>
+            • <b>RAW (วัตถุดิบ)</b> — ของที่ใช้ในสูตร เช่น นม ผงชา ไซรัป → ตัดสต๊อกตอนขายผ่านสูตร<br>
+            • <b>SALE (ของขาย)</b> — ขายตรงไม่ผ่านสูตร เช่น ขนมซื้อมาขายต่อ น้ำขวด → ตัดสต๊อกเองตอนขาย + คิดกำไร<br>
+            • <b>PACKAGING (แพ็กเกจ)</b> — แก้ว ฝา หลอด<br>
+            • <b>ASSET (ทรัพย์สิน)</b> — เครื่องมือ ไม่ตัดสต๊อกตอนขาย<br>
+            <span style="color:#d97706;"><span class="ico" data-icon="info"></span> ใส่หมวดให้ถูก ระบบถึงจะตัดสต๊อก/คิดต้นทุนถูก</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="utensils"></span> 2. ทำสูตร & ของกลาง (ครัวทำเอง)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            <b>สูตรเมนู:</b> หน้า "สูตร/เมนู" → "สร้างสูตร" → ใส่ชื่อ + ส่วนผสม (เลือกวัตถุดิบ + จำนวนต่อแก้ว) → ระบบคิดต้นทุนให้อัตโนมัติ → เปิด "นำขึ้นเมนู" เพื่อให้ขายได้<br>
+            <b>ของกลาง (เช่น Topping Cream Cheese, ซอสที่ครัวทำเอง):</b><br>
+            1. สร้างเป็น "สูตร" ของมันเอง (แต่ <u>ไม่ต้อง</u> นำขึ้นเมนู)<br>
+            2. ผลิตเก็บสต๊อกที่หน้า "สต๊อก/ผลิต" → กด "ผลิต" (ปุ่มลัดข้างรายการ)<br>
+            3. เอาของกลางนี้ไปใส่เป็น "ส่วนผสม" ในสูตรเมนูอื่นได้เลย → เวลาขายจะตัดจากสต๊อกของกลาง
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="sliders-horizontal"></span> 3. ตัวเลือก (หวาน/ขนาด/เปลี่ยนนม/ท็อปปิ้ง)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ตั้งที่หน้า <b>"ตัวเลือก"</b> เท่านั้น (ในฟอร์มสูตรมีปุ่มลัด "จัดการ/เพิ่มตัวเลือก →")<br>
+            กด "สร้างกลุ่มตัวเลือก" → ตั้งชื่อกลุ่ม → "เพิ่มตัวเลือก" → เลือก effect แล้ว "ใช้กับเมนู" (ติ๊กสูตรที่ใช้):<br>
+            • <b>ข้อมูลเท่านั้น</b> — แค่บอก เช่น ร้อน/เย็น (ฟรี ไม่ตัดสต๊อก)<br>
+            • <b>ADD</b> — เพิ่มของ + ตัดสต๊อก เช่น เพิ่มไข่มุก ช็อตเอสเพรสโซ<br>
+            • <b>REPLACE</b> — เปลี่ยนวัตถุดิบ เช่น นมสด→นมโอ๊ต<br>
+            &nbsp;&nbsp;&nbsp;① เลือก "วัตถุดิบเดิมที่จะเอาออก" → ② กด "+ เพิ่มวัตถุดิบ" เลือกตัวใหม่ + จำนวน<br>
+            • <b>QUANTITY</b> — กำหนดปริมาณ เช่น หวาน 0/5/8g → เลือกวัตถุดิบ (น้ำตาล) + ใส่จำนวน (0 = ไม่ใส่)<br>
+            • <b>RECIPE_VARIANT</b> — สลับทั้งสูตร เช่น ร้อน/เย็น ที่ใช้สูตร+แก้วต่างกัน<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> ช่อง "role (ขั้นสูง)" ข้ามได้เลย — ใช้เฉพาะเวลาอยากใช้ตัวเลือกเดียวกับหลายสูตรพร้อมกัน · "+ราคา" = ค่าเพิ่มเฉพาะตัวเลือกนั้น</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="receipt"></span> 4. ขายหน้าร้าน (POS)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "ขาย & ออกบิล" → กดเมนู → เลือกตัวเลือก (ถ้ามี) → ใส่ตะกร้า → รับเงิน/ออกบิล<br>
+            ระบบจะ <b>ตัดสต๊อกวัตถุดิบ</b> ตามสูตร + ตัวเลือกให้อัตโนมัติ<br>
+            <b>คำเตือนวัตถุดิบ:</b> ถ้าวัตถุดิบในเมนูใกล้หมด/หมด จะขึ้นเตือนที่ปุ่มเมนู<br>
+            <span style="color:#d97706;"><span class="ico" data-icon="alert-triangle"></span> ต้องเปิด "ทำสดตอนสั่ง" ในหน้าตั้งค่าก่อน ระบบถึงจะอ่านวัตถุดิบ+ตัดสต๊อกตอนขาย (ถ้าปิด เมนูจะขึ้น "หมดสต๊อก")</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="trash-2"></span> 5. ตัดของเสีย</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "สต๊อก" → ที่รายการวัตถุดิบ เลือก "ตัดของเสีย" → ใส่จำนวน + <b>เหตุผล</b> (ทำหก/ทำผิดเมนู/หมดอายุ) + <b>ชื่อคนทำ</b><br>
+            ระบบจะหักออกจากสต๊อกและเก็บประวัติไว้ (ดูได้ในประวัติการเคลื่อนไหว)
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="package"></span> 6. สต๊อก · รับของเข้า · แจ้งเตือนใกล้หมด</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            <b>รับของเข้า:</b> หน้า "สต๊อก" → ใส่จำนวนที่ซื้อเข้าในช่อง "รับเข้า" → ยอดคงเหลือเพิ่มให้อัตโนมัติ<br>
+            <b>แจ้งเตือนใกล้หมด:</b> ตั้ง "จุดเตือน" ที่วัตถุดิบแต่ละตัว → พอต่ำกว่าจะขึ้นเตือนให้สั่งซื้อ (รวมของขาย SALE ด้วย)<br>
+            <b>ของกลาง:</b> กด "ผลิต" เพื่อเติมสต๊อกของที่ครัวทำเอง
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="wallet"></span> 7. รายรับ-รายจ่าย & เงินสดย่อย</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "รายจ่าย" → บันทึกค่าใช้จ่าย (ค่าวัตถุดิบ ค่าเช่า ค่าจ้าง ฯลฯ) เลือกหมวด + แนบสลิปได้<br>
+            ตั้ง "รายจ่ายประจำ" (ค่าเช่า/เน็ต) ให้เตือนทุกเดือน · จัดการ "เงินสดย่อย" (petty cash) ได้<br>
+            ยอดขายจาก POS เข้ารายงานอัตโนมัติ → ดูกำไร/ขาดทุนได้ที่หน้า "รายงาน"
+          </div>
+        </details>
+
+        <details open style="border:1px solid #5DCAA5;border-radius:10px;padding:4px 14px;background:#E1F5EE;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;color:#04342C;"><span class="ico" data-icon="alert-triangle"></span> 8. ข้อควรระวัง (อ่านก่อนใช้!)</summary>
+          <div style="font-size:13px;color:#0F6E56;line-height:2;padding:4px 0 12px;">
+            <b>1. เปิดแท็บเดียว</b> — อย่าเปิดระบบหลายแท็บ/หลายเครื่องพร้อมกันแล้วแก้ข้อมูล จะเขียนทับกัน ข้อมูลหาย<br>
+            <b>2. หลังมีอัปเดตระบบ กด Ctrl + F5</b> ทุกเครื่อง เพื่อโหลดเวอร์ชันใหม่<br>
+            <b>3. เปิด "ทำสดตอนสั่ง"</b> ในหน้าตั้งค่า ระบบถึงจะตัดสต๊อกวัตถุดิบตอนขาย<br>
+            <b>4. ใส่หมวดสินค้าให้ถูก</b> — เป็นหัวใจของการตัดสต๊อก+คิดต้นทุน
+          </div>
+        </details>
       </div>
     </section>
 
@@ -2952,7 +3052,7 @@ async function syncToSupabase() {
 function switchTab(t) {
   currentTab = t;
   if (!SUB_TABS.includes(t)) lastMainTab = t;
-  const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account'];
+  const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account', 'manual'];
   tabs.forEach(k => {
     const el = $(k + 'Page');
     if (el) {
@@ -2987,7 +3087,8 @@ function switchTab(t) {
     set: 'ตั้งค่าร้านค้า & บัญชีรับโอนเงิน',
     admin: 'แผงควบคุมหลัก Super Admin',
     billing: 'จัดการสมาชิก & ชำระเงินรายปี',
-    account: 'บัญชีของฉัน'
+    account: 'บัญชีของฉัน',
+    manual: 'คู่มือการใช้งาน'
   };
   $('currentPageTitle').textContent = titles[t] || '';
 
