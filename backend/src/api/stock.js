@@ -195,7 +195,7 @@ router.post('/pos/sell', async (req, res) => {
         if (opts.length) {
           const ids = opts.map((o) => o.choice_id);
           const qById = {}; opts.forEach((o) => { qById[o.choice_id] = Number(o.qty) || 1; });
-          const cr = (await c.query('select id, effect_type, target_role, variant_recipe_id, is_metadata_only from option_choices where id = any($1::uuid[])', [ids])).rows;
+          const cr = (await c.query('select id, effect_type, target_role, variant_recipe_id, is_metadata_only, amount from option_choices where id = any($1::uuid[])', [ids])).rows;
           const lr = (await c.query('select choice_id, material_id, amount from option_choice_links where choice_id = any($1::uuid[])', [ids])).rows;
           const byChoice = {}; lr.forEach((l) => { (byChoice[l.choice_id] = byChoice[l.choice_id] || []).push(l); });
           choices = cr.map((x) => ({ ...x, qty: qById[x.id] || 1, links: byChoice[x.id] || [] })).filter((x) => !x.is_metadata_only);
@@ -216,6 +216,14 @@ router.post('/pos/sell', async (req, res) => {
           const oldId = roleIndex.get(ch.target_role);
           if (oldId) { bom.delete(oldId); roleIndex.delete(ch.target_role); }
           for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += Number(l.amount) || 0; bom.set(l.material_id, e); roleIndex.set(ch.target_role, l.material_id); }
+        }
+        for (const ch of choices) { // QUANTITY: ตั้งปริมาณวัตถุดิบของ role เป็นค่าสัมบูรณ์ (0 = ตัดออก) — มิเรอร์ resolveLineBOM
+          if (ch.effect_type !== 'QUANTITY' || !ch.target_role) continue;
+          const matId = roleIndex.get(ch.target_role);
+          if (!matId) continue;
+          const newAmt = Number(ch.amount) || 0;
+          if (newAmt <= 0) { bom.delete(matId); }
+          else { const e = bom.get(matId) || { amount: 0 }; e.amount = newAmt; bom.set(matId, e); }
         }
         for (const ch of choices) { // ADD
           if (ch.effect_type !== 'ADD') continue;

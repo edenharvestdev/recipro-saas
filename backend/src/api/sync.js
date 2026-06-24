@@ -101,12 +101,12 @@ router.post('/sync', async (req, res) => {
       // option_choices
       for (const c of (b.option_choices || [])) {
         await client.query(
-          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12)
-           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12`,
+          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only,amount)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12,$13)
+           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12,amount=$13`,
           [c.id, c.group_id, c.label, c.price_add ?? 0, c.effect_type || 'NONE',
            c.enabled ?? true, c.is_default ?? false, c.sort ?? 0, c.max_qty ?? 1,
-           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false]);
+           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false, c.amount ?? 0]);
       }
 
       // option_choice_links: delete+reinsert for all groups synced

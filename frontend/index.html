@@ -2687,7 +2687,7 @@ function applyBootstrapData(data) {
         id: c.id, groupId: c.group_id, label: c.label, priceAdd: Number(c.price_add) || 0,
         effectType: c.effect_type || 'NONE', enabled: c.enabled !== false,
         isDefault: !!c.is_default, sort: c.sort || 0, maxQty: c.max_qty || 1,
-        targetRole: c.target_role || '', variantRecipeId: c.variant_recipe_id || null,
+        targetRole: c.target_role || '', variantRecipeId: c.variant_recipe_id || null, amount: Number(c.amount) || 0,
         links: oclData.filter(l => l.choice_id === c.id).map(l => ({
           id: l.id, matId: l.material_id, amount: Number(l.amount)
         }))
@@ -2922,7 +2922,7 @@ async function syncToSupabase() {
       id: c.id, group_id: g.id, label: c.label, price_add: c.priceAdd || 0,
       effect_type: c.effectType || 'NONE', enabled: c.enabled !== false,
       is_default: c.isDefault || false, sort: ci, max_qty: c.maxQty || 1,
-      target_role: c.targetRole || '', variant_recipe_id: c.variantRecipeId || null
+      target_role: c.targetRole || '', variant_recipe_id: c.variantRecipeId || null, amount: c.amount || 0
     }))),
     option_choice_links: optionGroups.flatMap(g => (g.choices || []).flatMap(c =>
       (c.links || []).map(l => ({ id: l.id, choice_id: c.id, material_id: l.matId, amount: l.amount }))
