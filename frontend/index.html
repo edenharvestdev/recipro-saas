@@ -1679,10 +1679,9 @@
       </div>
 
       <div style="margin-top:20px;">
-        <h3 style="margin-bottom:10px;"><span class="ico" data-icon="sliders-horizontal"></span> กลุ่มตัวเลือก (ตัวเลือกเสริม)</h3>
-        <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">เช่น ความหวาน, ขนาด, ความเย็น — จะแสดงให้เลือกเมื่อกดสั่งใน POS</p>
+        <h3 style="margin-bottom:10px;"><span class="ico" data-icon="sliders-horizontal"></span> ตัวเลือกของเมนูนี้</h3>
+        <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px;">ความหวาน · ขนาด · เปลี่ยนนม · ท็อปปิ้ง — ตั้งที่หน้า "ตัวเลือก" เพื่อให้ <b>ตัดสต๊อก + คิดเงินได้จริง</b></p>
         <div id="optGroupRows"></div>
-        <button class="btn btn-ghost btn-sm" onclick="addOptGroup()" style="margin-top:4px;"><span class="ico" data-icon="plus"></span> เพิ่มกลุ่มตัวเลือก</button>
       </div>
     </div>
     <div class="drawer-footer">
@@ -3895,27 +3894,31 @@ function delOptGroup(i) {
 function renderOptGroupRows() {
   const el = $('optGroupRows');
   if (!el) return;
-  if (!recipeOptGroups.length) {
-    el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีตัวเลือก</p>';
-    return;
+  // กลุ่มตัวเลือกจากระบบเต็ม (หน้า "ตัวเลือก") ที่ผูกกับสูตรนี้ — ตัวจริงที่ตัดสต๊อก+คิดเงิน
+  const linked = editRecipeId ? optionGroups.filter(g => (g.recipeIds || []).includes(editRecipeId)) : [];
+  let html = '';
+  if (linked.length) {
+    html += linked.map(g => `
+      <div style="display:flex;align-items:center;gap:8px;background:#E1F5EE;border:1px solid #5DCAA5;border-radius:8px;padding:7px 11px;margin-bottom:6px;">
+        <span class="ico" data-icon="sliders-horizontal" style="color:#0F6E56;"></span>
+        <b style="color:#04342C;font-size:13px;flex:1;">${esc(g.label || '(ไม่มีชื่อ)')}</b>
+        <span style="font-size:11px;color:#0F6E56;white-space:nowrap;">${(g.choices || []).length} ตัวเลือก</span>
+        ${g.enabled === false ? '<span style="font-size:10px;color:#999;">(ปิด)</span>' : ''}
+      </div>`).join('');
+  } else {
+    html += `<p style="font-size:12px;color:var(--color-text-muted);padding:2px 0 8px;">${editRecipeId ? 'ยังไม่ได้ผูกตัวเลือกกับเมนูนี้' : 'บันทึกสูตรก่อน แล้วไปผูกตัวเลือกที่หน้า "ตัวเลือก"'}</p>`;
   }
-  el.innerHTML = recipeOptGroups.map((g, i) => `
-    <div style="background:var(--surface-2,#f9f9f9);border:1px solid var(--border-soft);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
-      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-        <input value="${esc(g.label)}" placeholder="ชื่อกลุ่ม เช่น ความหวาน"
-          oninput="recipeOptGroups[${i}].label=this.value"
-          style="flex:1;padding:7px 10px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer;">
-          <input type="checkbox" ${g.required ? 'checked' : ''} onchange="recipeOptGroups[${i}].required=this.checked" style="width:auto;margin:0;"> บังคับเลือก
-        </label>
-        <button class="btn btn-danger btn-sm" onclick="delOptGroup(${i})" style="padding:6px 8px;">${icon('trash-2')}</button>
-      </div>
-      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">ตัวเลือก (คั่นด้วยจุลภาค)</div>
-      <input value="${esc(g.choices)}" placeholder="เช่น น้อย, ปกติ, มาก"
-        oninput="recipeOptGroups[${i}].choices=this.value"
-        style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
-    </div>`).join('');
+  html += `<button type="button" class="btn btn-primary btn-sm" onclick="goToOptionsPage()" style="width:100%;margin-top:2px;"><span class="ico" data-icon="sliders-horizontal"></span> จัดการ/เพิ่มตัวเลือก (หน้า "ตัวเลือก") →</button>`;
+  if ((recipeOptGroups || []).length) {
+    html += `<div style="margin-top:8px;font-size:11px;color:#d97706;line-height:1.5;"><span class="ico" data-icon="alert-triangle"></span> มีตัวเลือกแบบเก่า ${recipeOptGroups.length} กลุ่ม (ใส่ได้แค่ชื่อ — ไม่ตัดสต๊อก/ไม่คิดเงิน) แนะนำสร้างใหม่ที่หน้า "ตัวเลือก"</div>`;
+  }
+  el.innerHTML = html;
   renderIcons(el);
+}
+// ไปหน้า "ตัวเลือก" ตัวจริง (ปิด drawer สูตรก่อน)
+function goToOptionsPage() {
+  if (typeof closeDrawer === 'function') closeDrawer();
+  switchTab('options');
 }
 
 // ต้นทุนสูตร — รองรับ SOP (ส่วนผสมที่เป็นสูตรอื่น) แบบ recursive + กันวนลูป (path-based)
