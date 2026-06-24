@@ -1431,6 +1431,25 @@
         <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;">สะสมแต้มอัตโนมัติตอนขาย (ใส่เบอร์ลูกค้าในหน้าขาย) · 1 แต้ม / 20฿</p>
         <input id="memberSearch" placeholder="ค้นหาชื่อ/เบอร์…" oninput="renderMembersPage()" style="width:100%;margin-top:10px;padding:9px 12px;border-radius:10px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;">
       </div>
+      <div class="glass-card admin-only" id="memberConfigCard" style="margin-bottom:16px;">
+        <details>
+          <summary style="font-weight:700;cursor:pointer;font-size:15px;"><span class="ico" data-icon="gift"></span> ตั้งค่าสิทธิประโยชน์สมาชิก</summary>
+          <div style="padding-top:12px;">
+            <div class="grid-2" style="margin-bottom:10px;">
+              <div class="field"><label>ส่วนลดสมาชิก (% ทุกครั้ง)</label><input id="mcDiscPct" type="number" min="0" max="100" placeholder="0" onchange="saveMemberConfig()"></div>
+              <div class="field"><label>แสตมป์: ซื้อครบกี่ครั้ง</label><input id="mcStampEvery" type="number" min="0" placeholder="0 = ไม่ใช้" onchange="saveMemberConfig()"></div>
+            </div>
+            <div class="field" style="margin-bottom:10px;"><label>แสตมป์ครบแล้วแถม</label><input id="mcStampItem" placeholder="เช่น เครื่องดื่ม 1 แก้ว" onchange="saveMemberConfig()"></div>
+            <label style="font-weight:700;font-size:13px;display:block;margin-bottom:6px;"><span class="ico" data-icon="award"></span> ของรางวัลแลกแต้ม</label>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+              <input id="mcRwName" placeholder="ชื่อของรางวัล" style="flex:2;min-width:140px;padding:8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+              <input id="mcRwPts" type="number" min="1" placeholder="แต้ม" style="width:90px;padding:8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+              <button class="btn btn-ghost btn-sm" onclick="addReward()"><span class="ico" data-icon="plus"></span> เพิ่ม</button>
+            </div>
+            <div id="mcRewardList"></div>
+          </div>
+        </details>
+      </div>
       <div class="glass-card">
         <div class="table-scroll"><table class="lst">
           <thead><tr><th>ชื่อ</th><th>เบอร์</th><th class="r">แต้ม</th><th class="r">มาแล้ว</th><th class="r">ยอดสะสม</th><th></th></tr></thead>
@@ -2858,7 +2877,8 @@ function applyBootstrapData(data) {
       useDelivery: sRow?.use_delivery || false,
       orderPaymentMode: sRow?.order_payment_mode || 'postpay',
       publicSlug: sRow?.public_slug || '',
-      kitchenTicketMode: sRow?.kitchen_ticket_mode || 'receipt'
+      kitchenTicketMode: sRow?.kitchen_ticket_mode || 'receipt',
+      memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     orders = (data.orders || []).map(o => ({
       id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '',
@@ -3160,6 +3180,7 @@ async function syncToSupabase() {
       order_payment_mode: settings.orderPaymentMode || 'postpay',
       public_slug: settings.publicSlug || null,
       kitchen_ticket_mode: settings.kitchenTicketMode || 'receipt',
+      member_config: settings.memberConfig || {},
       use_petty_cash: settings.usePettyCash || false,
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false
@@ -5912,20 +5933,36 @@ function posComputeTotals() {
   const discVal = parseFloat($('posDiscVal')?.value) || 0;
   const discType = $('posDiscType')?.value || '%';
   const disc = discType === '%' ? grand * discVal / 100 : discVal;
-  const afterDisc = Math.max(0, grand - disc);
   const member = findCustomerByPhone($('posMemberPhone')?.value || '');
-  const maxRedeem = member ? Math.min(Number(member.points) || 0, Math.floor(afterDisc / POINT_REDEEM_VALUE)) : 0;
+  const memberDiscPct = member ? (Number(mcfg().discountPct) || 0) : 0;
+  const memberDisc = grand * memberDiscPct / 100;
+  const afterDisc = Math.max(0, grand - disc - memberDisc);
+  const rewardPtsUsed = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
+  const maxRedeem = member ? Math.max(0, Math.min((Number(member.points) || 0) - rewardPtsUsed, Math.floor(afterDisc / POINT_REDEEM_VALUE))) : 0;
   let redeemPts = Math.floor(parseFloat($('posRedeemPts')?.value) || 0);
   if (redeemPts < 0) redeemPts = 0;
   if (redeemPts > maxRedeem) redeemPts = maxRedeem;
   const redeemDisc = redeemPts * POINT_REDEEM_VALUE;
   const net = Math.max(0, afterDisc - redeemDisc);
-  return { grand, disc, afterDisc, member, maxRedeem, redeemPts, redeemDisc, net };
+  return { grand, disc, memberDisc, afterDisc, member, maxRedeem, redeemPts, redeemDisc, net };
 }
 function posMemberLookup() {
   const el = $('posMemberInfo'); if (!el) return;
   const c = findCustomerByPhone($('posMemberPhone') ? $('posMemberPhone').value : '');
-  el.textContent = c ? ('สมาชิก: ' + (c.name || c.phone) + ' · ' + c.points + ' แต้ม · มาแล้ว ' + c.visits + ' ครั้ง') : '';
+  const m = mcfg();
+  let html = '';
+  if (c) {
+    html = 'สมาชิก: ' + esc(c.name || c.phone) + ' · ' + c.points + ' แต้ม · มาแล้ว ' + c.visits + ' ครั้ง';
+    if (m.discountPct > 0) html += ' · ลด ' + m.discountPct + '%';
+    // แสตมป์ครบรอบ
+    if (m.stampEvery > 0 && c.visits > 0 && (c.visits + 1) % m.stampEvery === 0) html += '<br><b style="color:#d97706;">🎁 บิลนี้ครบแสตมป์ ' + m.stampEvery + ' ครั้ง — แถม' + (m.stampItem ? ' ' + esc(m.stampItem) : 'ฟรี') + '!</b>';
+    // ปุ่มแลกของรางวัลที่แต้มพอ
+    const used = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
+    const avail = (Number(c.points) || 0) - used;
+    const aff = (m.rewards || []).filter(r => r.points <= avail);
+    if (aff.length) html += '<br>' + aff.map(r => `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 7px;margin:2px 0 0;" onclick="redeemReward('${r.id}')">🎁 ${esc(r.name)} (${r.points})</button>`).join(' ');
+  }
+  el.innerHTML = html;
   const row = $('posRedeemRow');
   if (row) {
     const show = c && (Number(c.points) || 0) > 0;
@@ -5933,6 +5970,18 @@ function posMemberLookup() {
     if (!show && $('posRedeemPts')) $('posRedeemPts').value = 0;
   }
   renderPosCart();
+}
+// แลกของรางวัล → เพิ่มของฟรีในตะกร้า (หักแต้มตอนชำระ)
+function redeemReward(id) {
+  const c = findCustomerByPhone($('posMemberPhone') ? $('posMemberPhone').value : '');
+  if (!c) return;
+  const r = (mcfg().rewards || []).find(x => x.id === id); if (!r) return;
+  const used = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
+  const redeemNow = Math.floor(parseFloat($('posRedeemPts')?.value) || 0);
+  if ((Number(c.points) || 0) - used - redeemNow < r.points) { ui.toast('แต้มไม่พอแลก ' + r.name, 'warning'); return; }
+  posCart.push({ recipeId: null, matId: null, qty: 1, price: 0, options: {}, rewardName: r.name, rewardPts: r.points });
+  if (typeof ui !== 'undefined' && ui.toast) ui.toast('เพิ่มของรางวัล: ' + r.name + ' (จะหัก ' + r.points + ' แต้มตอนชำระ)');
+  posMemberLookup();
 }
 function accrueMember(phone, spent) {
   phone = (phone || '').trim(); if (!phone) return null;
@@ -5945,7 +5994,14 @@ function accrueMember(phone, spent) {
 }
 // หน้าสมาชิก
 let editMemberId = null;
+function mcfg() { if (!settings.memberConfig) settings.memberConfig = { discountPct: 0, stampEvery: 0, stampItem: '', rewards: [] }; return settings.memberConfig; }
 function renderMembersPage() {
+  // โหลดค่าตั้งสิทธิประโยชน์
+  const m = mcfg();
+  if ($('mcDiscPct')) $('mcDiscPct').value = m.discountPct || '';
+  if ($('mcStampEvery')) $('mcStampEvery').value = m.stampEvery || '';
+  if ($('mcStampItem')) $('mcStampItem').value = m.stampItem || '';
+  renderRewardList();
   const el = $('membersList'); if (!el) return;
   const q = ($('memberSearch') ? $('memberSearch').value : '').trim().toLowerCase();
   let list = customers.slice();
@@ -5985,6 +6041,31 @@ async function delMember(id) {
   customers = customers.filter(c => c.id !== id);
   saveAll(); renderMembersPage();
 }
+// ตั้งค่าสิทธิประโยชน์สมาชิก
+function saveMemberConfig() {
+  const m = mcfg();
+  m.discountPct = Math.max(0, Math.min(100, Number($('mcDiscPct').value) || 0));
+  m.stampEvery = Math.max(0, Math.floor(Number($('mcStampEvery').value) || 0));
+  m.stampItem = $('mcStampItem').value.trim();
+  saveAll();
+}
+function renderRewardList() {
+  const el = $('mcRewardList'); if (!el) return;
+  const rewards = mcfg().rewards || [];
+  el.innerHTML = rewards.length ? rewards.map(r => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
+      <span style="flex:1;">${esc(r.name)}</span><b style="color:var(--color-primary);">${r.points} แต้ม</b>
+      <button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 7px;" onclick="delReward('${r.id}')">${icon('x')}</button></div>`).join('')
+    : '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีของรางวัล</p>';
+  renderIcons(el);
+}
+function addReward() {
+  const name = $('mcRwName').value.trim(), pts = Math.floor(Number($('mcRwPts').value) || 0);
+  if (!name || pts <= 0) { ui.toast('ใส่ชื่อ + แต้ม', 'warning'); return; }
+  mcfg().rewards.push({ id: uid(), name, points: pts });
+  $('mcRwName').value = ''; $('mcRwPts').value = '';
+  saveAll(); renderRewardList();
+}
+function delReward(id) { mcfg().rewards = (mcfg().rewards || []).filter(r => r.id !== id); saveAll(); renderRewardList(); }
 // Phase 2: จัดการทีมงาน (เจ้าของเท่านั้น — ใช้ /api/staff)
 async function renderStaffSection() {
   const el = $('staffList'); if (!el) return;
@@ -6033,9 +6114,9 @@ function renderPosCart() {
   let grand = 0;
   cartEl.innerHTML = posCart.map((it, ci) => {
     const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
-    if (!prod) return '';
-    const name = prod.name;
-    const lineTotal = it.qty * (it.price != null ? it.price : (it.matId ? (prod.sellPrice || 0) : prod.sell));
+    if (!prod && !it.rewardName) return '';
+    const name = it.rewardName ? ('🎁 ' + it.rewardName) : prod.name;
+    const lineTotal = it.rewardName ? 0 : it.qty * (it.price != null ? it.price : (it.matId ? (prod.sellPrice || 0) : prod.sell));
     grand += lineTotal;
     const optsText = Object.keys(it.options || {}).length
       ? `<div class="pci-opts">${Object.entries(it.options).map(([k,v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
@@ -6063,6 +6144,7 @@ function renderPosCart() {
     $('posCartGrand').textContent = money(t.net);
     const parts = [];
     if (t.disc > 0) parts.push('ส่วนลด ' + money(t.disc));
+    if (t.memberDisc > 0) parts.push('ส่วนลดสมาชิก ' + money(t.memberDisc));
     if (t.redeemDisc > 0) parts.push('แลกแต้ม ' + money(t.redeemDisc));
     $('posCartGrand').title = parts.length ? ('ก่อนลด ' + money(t.grand) + ' − ' + parts.join(' − ')) : '';
   }
@@ -6095,7 +6177,7 @@ async function posCheckout() {
     taxV: 0, taxT: '%',
     items: posCart.map(it => {
       const r = it.matId ? null : recById(it.recipeId);
-      return { recipeId: it.recipeId || null, matId: it.matId || null, qty: it.qty, price: it.price != null ? it.price : (r ? r.sell : 0), options: it.options || {} };
+      return { recipeId: it.recipeId || null, matId: it.matId || null, qty: it.qty, price: it.rewardName ? 0 : (it.price != null ? it.price : (r ? r.sell : 0)), options: it.options || {}, rewardName: it.rewardName || undefined };
     })
   };
 
@@ -6104,7 +6186,7 @@ async function posCheckout() {
   // ให้ตรง (กัน saveAll เขียนทับ) — มี fallback กลับวิธีเดิมถ้า server พลาด/mock (กันขายไม่ได้)
   let serverDeducted = false;
   if (!isMockMode) {
-    const lines = posCart.map(it => it.matId
+    const lines = posCart.filter(it => it.matId || it.recipeId).map(it => it.matId   // ข้ามบรรทัดของรางวัล (฿0 ไม่มี ref)
       ? { ref_type: 'material', ref_id: it.matId, qty: it.qty }
       : {
           ref_type: 'recipe', ref_id: it.recipeId, qty: it.qty,
@@ -6160,9 +6242,11 @@ async function posCheckout() {
   bills.push(newBill);
   counter++;
   if (newBill.memberPhone) {
-    if (redeemPts > 0) { const rm = findCustomerByPhone(newBill.memberPhone); if (rm) rm.points = Math.max(0, (Number(rm.points) || 0) - redeemPts); }   // หักแต้มที่แลกก่อน
+    const rewardPtsTotal = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
+    const usePts = redeemPts + rewardPtsTotal;
+    if (usePts > 0) { const rm = findCustomerByPhone(newBill.memberPhone); if (rm) rm.points = Math.max(0, (Number(rm.points) || 0) - usePts); }   // หักแต้มที่แลก (ส่วนลด + ของรางวัล)
     const mc = accrueMember(newBill.memberPhone, total);   // แล้วสะสมแต้มจากยอดที่จ่ายจริง
-    if (mc && typeof ui !== 'undefined' && ui.toast) ui.toast((redeemPts > 0 ? 'ใช้ ' + redeemPts + ' แต้ม · ' : '') + 'แต้มคงเหลือ ' + mc.points);
+    if (mc && typeof ui !== 'undefined' && ui.toast) ui.toast((usePts > 0 ? 'ใช้ ' + usePts + ' แต้ม · ' : '') + 'แต้มคงเหลือ ' + mc.points);
   }
   saveAll();
   posCart = [];
@@ -6184,7 +6268,8 @@ function showPosReceipt(b, total) {
     const optsLine = Object.keys(it.options || {}).length
       ? `<div style="font-size:11px;color:#666;padding-left:2px;">${Object.entries(it.options).map(([k,v]) => `${k}: ${v}`).join(', ')}</div>`
       : '';
-    return `<tr><td>${esc(prod ? prod.name : '-')}${optsLine}</td><td class="rc-c">${it.qty}</td><td class="rc-r">${money(it.qty * it.price)}</td></tr>`;
+    const nm = it.rewardName ? ('🎁 ' + it.rewardName) : (prod ? prod.name : '-');
+    return `<tr><td>${esc(nm)}${optsLine}</td><td class="rc-c">${it.qty}</td><td class="rc-r">${money(it.qty * (it.price || 0))}</td></tr>`;
   }).join('');
   const ppLine = settings.pp ? `<div class="rc-sub">พร้อมเพย์ ${esc(settings.pp)}</div>` : '';
   const phoneLine = settings.phone ? `<div class="rc-sub">โทร. ${esc(settings.phone)}</div>` : '';
