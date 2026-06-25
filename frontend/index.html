@@ -5357,6 +5357,7 @@ function loadReport() {
 
 // ===== สรุปยอดแยกตามวิธีจ่าย =====
 const PAY_METHOD_LABELS = { cash: 'เงินสด', transfer: 'โอน / พร้อมเพย์', card: 'บัตร' };
+const PAY_METHOD_SHORT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร' };
 const PAY_METHOD_ICONS = { cash: 'banknote', transfer: 'smartphone', card: 'credit-card' };
 const PAY_METHOD_COLORS = { cash: '#0F6E56', transfer: '#2563eb', card: '#8b5cf6' };
 function renderPayBreakdown(billsArr) {
@@ -5592,7 +5593,7 @@ function renderBillHistory() {
       <td style="font-family:monospace; font-size:12px;">${esc(b.billNo || '—')}</td>
       <td style="font-size:12px;">${b.date || '—'}</td>
       <td style="font-size:12px;">${esc(b.cust || '—')}</td>
-      <td><span style="background:${color}22; color:${color}; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:700;">${statusLabel[b.status] || b.status}</span></td>
+      <td><span style="background:${color}22; color:${color}; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:700;">${statusLabel[b.status] || b.status}</span>${b.status === 'paid' ? ` <span style="color:var(--color-text-muted); font-size:10px;">${esc(PAY_METHOD_SHORT[b.payMethod] || 'เงินสด')}</span>` : ''}</td>
       <td class="r" style="font-weight:700;">${money(total)}</td>
     </tr>`;
   }).join('') : '<tr><td colspan="5" style="text-align:center; color:#999; padding:16px;">ไม่พบบิลในช่วงเวลานี้</td></tr>';
@@ -6669,6 +6670,7 @@ function showPosReceipt(b, total) {
       </table>
       <div class="rc-divider"></div>
       <div class="rc-total">รวม <span>${money(total)}</span></div>
+      <div class="rc-sub" style="text-align:center;margin-top:4px;">ชำระโดย ${esc(PAY_METHOD_LABELS[b.payMethod] || 'เงินสด')}</div>
       ${(() => { const mc = b.memberPhone ? findCustomerByPhone(b.memberPhone) : null; return mc ? `<div class="rc-sub" style="text-align:center;margin-top:4px;">สมาชิก ${esc(mc.name || mc.phone)} · แต้มสะสม ${mc.points}</div>` : ''; })()}
       <div class="rc-footer">ขอบคุณที่ใช้บริการ</div>
       <div class="rc-actions no-print">
