@@ -88,8 +88,9 @@ router.post('/sync', async (req, res) => {
         if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         if (s.member_config != null && typeof s.member_config !== 'string') s.member_config = JSON.stringify(s.member_config);
         if (s.discount_presets != null && typeof s.discount_presets !== 'string') s.discount_presets = JSON.stringify(s.discount_presets);
+        if (s.staff_permissions != null && typeof s.staff_permissions !== 'string') s.staff_permissions = JSON.stringify(s.staff_permissions);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled', 'use_delivery', 'order_payment_mode', 'public_slug', 'kitchen_ticket_mode', 'member_config', 'business_type', 'vat_enabled', 'vat_rate', 'staff_discount_max', 'staff_discount_max_baht', 'discount_presets'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled', 'use_delivery', 'order_payment_mode', 'public_slug', 'kitchen_ticket_mode', 'member_config', 'business_type', 'vat_enabled', 'vat_rate', 'staff_discount_max', 'staff_discount_max_baht', 'discount_presets', 'staff_permissions'],
           [s], 'shop_id');
       }
 

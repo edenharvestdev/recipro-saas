@@ -20,10 +20,38 @@ async function tenant(req, res, next) {
 
     req.shopId = current ? current.shop_id : null;
     req.role = current ? current.role : null;
+
+    // S4: โหลดสิทธิ์ย่อยของพนักงานสำหรับร้านปัจจุบัน (ใช้บังคับสิทธิ์ใน endpoint สำคัญ)
+    req.staffPerms = {};
+    if (req.shopId) {
+      try {
+        const sp = await query('select staff_permissions from shop_settings where shop_id = $1', [req.shopId]);
+        let p = sp.rows[0] && sp.rows[0].staff_permissions;
+        if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } }
+        req.staffPerms = p || {};
+      } catch (e) { req.staffPerms = {}; }
+    }
     next();
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 }
 
-module.exports = { tenant };
+// ค่าเริ่มต้นสิทธิ์พนักงาน (ปลอดภัย: ขาย+ลดได้ ที่เหลือปิด) — ต้องตรงกับ DEFAULT_STAFF_PERMS ฝั่ง frontend
+const STAFF_PERM_DEFAULTS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false };
+
+// middleware กันชั้น API: owner/superadmin ผ่านเสมอ · staff ต้องได้รับสิทธิ์ key นั้น
+function requirePerm(key) {
+  return (req, res, next) => {
+    if (req.role === 'owner' || req.isSuperadmin) return next();
+    if (req.role === 'staff') {
+      const allowed = req.staffPerms && Object.prototype.hasOwnProperty.call(req.staffPerms, key)
+        ? !!req.staffPerms[key] : !!STAFF_PERM_DEFAULTS[key];
+      if (allowed) return next();
+      return res.status(403).json({ error: 'พนักงานไม่มีสิทธิ์ทำรายการนี้ (ให้เจ้าของเปิดสิทธิ์ก่อน)' });
+    }
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์' });
+  };
+}
+
+module.exports = { tenant, requirePerm, STAFF_PERM_DEFAULTS };

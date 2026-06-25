@@ -2,6 +2,7 @@
 // ทุก endpoint บังคับ shop_id = req.shopId เสมอ (กันข้ามร้าน)
 const express = require('express');
 const { tx, query } = require('../db');
+const { requirePerm } = require('../tenant');   // S4: บังคับสิทธิ์พนักงานในรายการสำคัญ
 const router = express.Router();
 
 const TBL = { material: { table: 'materials', col: 'stock' }, recipe: { table: 'recipes', col: 'fg_stock' } };
@@ -17,7 +18,7 @@ async function logMove(c, shopId, userId, m) {
 }
 
 // ปรับ/รับเข้า/เบิก รายการเดียว — mode: 'set' (กำหนดค่าใหม่) | 'delta' (บวก/ลบ)
-router.post('/stock/move', async (req, res) => {
+router.post('/stock/move', requirePerm('stock_receive'), async (req, res) => {
   const { ref_type, ref_id, mode, value, kind, note, unit } = req.body || {};
   const meta = TBL[ref_type];
   if (!meta || !ref_id) return res.status(400).json({ error: 'bad ref' });
@@ -41,7 +42,7 @@ router.post('/stock/move', async (req, res) => {
 
 // ตัดของเสีย — หักสต๊อก (วัตถุดิบ/สินค้าพร้อมขาย) + บันทึก movement kind='waste'
 // ของเสียได้ทุกหมวด (รวม ASSET/SALE) เพราะของชำรุด/เสียต้องหักได้จริง — ไม่ปรึกษา item_categories
-router.post('/stock/waste', async (req, res) => {
+router.post('/stock/waste', requirePerm('waste'), async (req, res) => {
   const { ref_type, ref_id, qty, reason, note, unit, actor_name } = req.body || {};
   const meta = TBL[ref_type];
   const amt = Number(qty) || 0;
@@ -67,7 +68,7 @@ router.post('/stock/waste', async (req, res) => {
 });
 
 // ผลิต SOP/สินค้า: ตัดวัตถุดิบตาม lines + เพิ่ม fg_stock — atomic ในทรานแซกชันเดียว
-router.post('/stock/produce', async (req, res) => {
+router.post('/stock/produce', requirePerm('stock_receive'), async (req, res) => {
   const { recipe_id, rounds, made, lines } = req.body || {};
   const r = Number(rounds) || 1;
   try {
@@ -267,7 +268,7 @@ router.post('/pos/sell', async (req, res) => {
 
 // ยกเลิก/คืนบิล — คืนสต๊อกโดย "ย้อน stock_movements ของบิลนั้น" (แม่นยำ: ครอบคลุม options/สูตรซ้อน
 // อัตโนมัติเพราะคืนตามที่ตัดจริง) + กันคืนซ้ำด้วยการเช็ค movement kind='void' ของบิลเดิม
-router.post('/pos/void', async (req, res) => {
+router.post('/pos/void', requirePerm('void'), async (req, res) => {
   const { bill_no } = req.body || {};
   if (!bill_no) return res.status(400).json({ error: 'no bill_no' });
   const saleNote = 'ขาย ' + bill_no;
