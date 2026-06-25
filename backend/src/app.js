@@ -27,6 +27,7 @@ app.use('/auth', require('./auth/routes'));
 app.use('/webhooks', require('./webhooks/stripe'));   // POST /webhooks/stripe (raw body)
 app.use('/webhooks', require('./webhooks/omise'));
 app.use('/public', require('./api/public'));          // M3: เมนู/ออเดอร์สาธารณะ (ไม่ต้อง login)
+app.post('/webhooks/omise-charge', require('./api/pay').omiseWebhook);  // S8: Omise charge webhook (POS) → mark paid + เด้งจอ
 
 // /api/* — ต้องล็อกอิน + ผูกร้าน (tenant) ก่อนเสมอ
 const api = express.Router();
@@ -38,6 +39,7 @@ api.use(require('./api/orders'));      // GET /api/orders · PATCH /api/orders/:
 api.use(require('./api/snapshots'));   // S1: GET/POST /api/snapshots · POST /api/snapshots/:id/restore (สำรอง+กู้คืน)
 api.use(require('./api/branches'));     // เฟส 3: GET /api/my-shops · GET /api/hq-summary (หลายสาขา)
 api.use(require('./api/posdisplay'));    // S5: QR Box จอลูกค้า — GET/POST /api/pos-display
+api.use(require('./api/pay'));           // S8: Payment Gateway (Omise) — /api/pay/{status,keys,charge}
 api.use(require('./api/staff'));       // GET/POST/PATCH/DELETE /api/staff (จัดการทีมงาน)
 api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recipes|bills}/:id
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout

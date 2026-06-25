@@ -1032,6 +1032,18 @@
           <tbody id="snapshotList"><tr><td colspan="4" style="text-align:center;color:#999;padding:12px;">กดรีเฟรชเพื่อโหลดรายการสำรอง</td></tr></tbody>
         </table></div>
       </div>
+      <div class="glass-card admin-only" id="payGatewayCard" style="margin-bottom:18px;">
+        <h2 style="margin:0 0 4px;"><span class="ico" data-icon="credit-card"></span> รับเงินออนไลน์ (Payment Gateway · Omise)</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">ใส่คีย์ Omise ของร้าน → รับ QR/บัตร ยืนยันเงินอัตโนมัติ (จ่ายแล้วจอ QR Box เด้ง "ขอบคุณ" เอง) · <b id="payStatusBadge"></b><br>สมัคร + ดู test key ที่ omise.co (dashboard.omise.co) · secret key เก็บฝั่งเซิร์ฟเวอร์ ไม่แสดงซ้ำ</p>
+        <div class="grid-2" style="margin-bottom:10px;">
+          <div class="field"><label>Public key (pkey_…)</label><input id="payPubKey" placeholder="pkey_test_..." autocomplete="off"></div>
+          <div class="field"><label>Secret key (skey_… — ใส่เพื่อบันทึก/เปลี่ยน)</label><input id="paySecKey" type="password" placeholder="skey_test_..." autocomplete="off"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:0;"><input type="checkbox" id="payEnable" style="width:16px;height:16px;"> เปิดใช้รับเงินออนไลน์</label>
+          <button class="btn btn-primary btn-sm" onclick="savePayKeys()"><span class="ico" data-icon="save"></span> บันทึกคีย์</button>
+        </div>
+      </div>
       <div class="grid-2">
         <!-- ข้อมูลร้านค้าและบัญชีรับเงิน -->
         <div class="glass-card">
@@ -3626,7 +3638,7 @@ function switchTab(t) {
     adminLoadDashboard();
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
-  if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
+  if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); loadPayStatus(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
@@ -6768,8 +6780,30 @@ async function renderSnapshots() {
   } catch (e) { tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:12px;">โหลดไม่ได้: ' + esc(e.message) + '</td></tr>'; }
 }
 async function manualSnapshot() {
-  try { await API.post('/api/snapshots', {}); ui.toast('สำรองข้อมูลแล้ว'); renderSnapshots(); }
+  try { await API.post('/api/snapshots', {}); ui.toast('สำรองข้อมูลแล้ว'); renderSnapshots(); } /*ph*/
   catch (e) { ui.alert('สำรองไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+}
+// S8: Payment Gateway (Omise) — โหลดสถานะ + บันทึกคีย์
+async function loadPayStatus() {
+  if (!$('payGatewayCard')) return;
+  try {
+    const s = await API.get('/api/pay/status');
+    if ($('payPubKey')) $('payPubKey').value = s.public_key || '';
+    if ($('payEnable')) $('payEnable').checked = !!s.enabled;
+    const b = $('payStatusBadge');
+    if (b) b.innerHTML = s.enabled ? '<span style="color:#16a34a;">● เปิดใช้อยู่</span>' : (s.has_secret ? '<span style="color:#d97706;">มีคีย์ (ปิดอยู่)</span>' : '<span style="color:#999;">ยังไม่ได้ตั้งคีย์</span>');
+  } catch (e) {}
+}
+async function savePayKeys() {
+  const body = { public_key: ($('payPubKey')?.value || '').trim(), enable: !!$('payEnable')?.checked };
+  const sec = ($('paySecKey')?.value || '').trim();
+  if (sec) body.secret_key = sec;
+  try {
+    await API.post('/api/pay/keys', body);
+    if ($('paySecKey')) $('paySecKey').value = '';
+    ui.toast('บันทึกคีย์แล้ว');
+    loadPayStatus();
+  } catch (e) { ui.alert('บันทึกไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 async function restoreSnapshot(id) {
   if (!(await ui.confirm('กู้คืนจากจุดสำรองนี้?\n\nระบบจะ "เพิ่มเฉพาะของที่หาย" กลับมา — ไม่ลบ/ไม่ทับของปัจจุบัน และจะสำรองสถานะตอนนี้ไว้ก่อนให้อัตโนมัติ', { okText: 'กู้คืน' }))) return;

@@ -44,7 +44,7 @@ router.get('/bootstrap', async (req, res) => {
       role: req.role,
       isSuperadmin: req.isSuperadmin,
       shop: shop.rows[0] || null,
-      settings: settings.rows[0] || null,
+      settings: (() => { const s = settings.rows[0]; if (s) delete s.omise_secret_key; return s || null; })(),  // S8: ไม่ส่ง secret key ไป frontend
       suppliers: suppliers.rows,
       materials: materials.rows,
       recipes: recipes.rows,
