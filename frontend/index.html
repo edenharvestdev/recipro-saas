@@ -1450,15 +1450,17 @@
 
     <section id="manualPage" class="page-section hidden">
       <div class="glass-card" style="margin-bottom:16px;">
-        <h2 style="margin:0 0 6px;"><span class="ico" data-icon="book-open"></span> คู่มือการใช้งาน — ฉบับร้านคาเฟ่</h2>
-        <p style="font-size:13px;color:var(--color-text-muted);margin:0;line-height:1.7;">รวมขั้นตอนทั้งหมดของระบบ สำหรับน้องหน้าร้านและคนทำสูตร — กดหัวข้อเพื่อดูรายละเอียด</p>
+        <h2 id="manualTitle" style="margin:0 0 6px;"><span class="ico" data-icon="book-open"></span> คู่มือการใช้งาน</h2>
+        <p style="font-size:13px;color:var(--color-text-muted);margin:0;line-height:1.7;">รวมขั้นตอนทั้งหมดของระบบ แบ่งเป็นส่วนๆ ให้เข้าใจง่าย — กดหัวข้อเพื่อดูรายละเอียด</p>
         <div style="background:var(--surface-2);border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13px;color:var(--color-text-main);line-height:1.8;">
           <b><span class="ico" data-icon="route"></span> ลำดับการทำงานของระบบ</b><br>
           วัตถุดิบ <span style="color:var(--color-text-muted);">(ซื้อเข้า/ตั้งหมวด)</span> → สูตร <span style="color:var(--color-text-muted);">(ส่วนผสม + ต้นทุน)</span> → นำขึ้นเมนู + ตัวเลือก → ขายหน้า POS → ระบบตัดสต๊อกวัตถุดิบให้อัตโนมัติ
         </div>
+        <div id="manualBizTip" style="background:#FFF7E6;border:1px solid #F0D9A8;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;color:#7A5C00;line-height:1.7;"></div>
       </div>
 
       <div class="glass-card" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:4px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="wrench"></span> ส่วน A · เตรียมของ & เมนู <span style="font-weight:500;color:var(--color-text-muted);">(ทำก่อนเปิดร้าน)</span></div>
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
           <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="carrot"></span> 1. วัตถุดิบ & หมวดสินค้า</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
@@ -1484,7 +1486,19 @@
         </details>
 
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="sliders-horizontal"></span> 3. ตัวเลือก (หวาน/ขนาด/เปลี่ยนนม/ท็อปปิ้ง)</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="tag"></span> 3. ขายของตรง (สินค้าซื้อมาขาย — ไม่ต้องทำสูตร)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            สำหรับของที่ <b>ซื้อมาขายต่อ</b> หรือ <b>ทำไว้ขายเป็นชิ้น</b> (เช่น ขนม โมจิ ฟินานซิเย่ น้ำขวด ท็อปปิ้ง) — ขายตรงได้เลย ไม่ต้องทำสูตร:<br>
+            1. หน้า "วัตถุดิบ" → เปิดรายการ (หรือเพิ่มใหม่)<br>
+            2. <b>หมวดสินค้า → เลือก "ของขาย"</b> → ช่อง <b>ราคาขาย</b> จะโผล่มา ใส่ราคา<br>
+            3. ช่อง "หมวด" พิมพ์หมวดที่อยากให้โชว์ในหน้าขาย (เช่น <i>Fussion Dessert</i> / <i>Topping</i>)<br>
+            4. บันทึก → ขึ้นหน้า POS เป็นการ์ด <b>"สินค้า"</b> อัตโนมัติ<br>
+            <span style="color:#16a34a;"><span class="ico" data-icon="check"></span> ขายแล้ว <b>ตัดสต๊อกตัวเอง</b> + คิดกำไร (ราคาขาย − ราคาทุน) ให้เลย · เติมของเข้าที่หน้า "สต๊อก"</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="sliders-horizontal"></span> 4. ตัวเลือก (หวาน/ขนาด/เปลี่ยนนม/ท็อปปิ้ง)</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
             ตั้งที่หน้า <b>"ตัวเลือก"</b> เท่านั้น (ในฟอร์มสูตรมีปุ่มลัด "จัดการ/เพิ่มตัวเลือก →")<br>
             กด "สร้างกลุ่มตัวเลือก" → ตั้งชื่อกลุ่ม → "เพิ่มตัวเลือก" → เลือก effect แล้ว "ใช้กับเมนู" (ติ๊กสูตรที่ใช้):<br>
@@ -1498,8 +1512,9 @@
           </div>
         </details>
 
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="receipt"></span> ส่วน B · ขายหน้าร้าน & รับเงิน</div>
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="receipt"></span> 4. ขายหน้าร้าน (POS)</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="receipt"></span> 5. ขายหน้าร้าน (POS)</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
             หน้า "ขาย & ออกบิล" → กดเมนู → เลือกตัวเลือก (ถ้ามี) → ใส่ตะกร้า → รับเงิน/ออกบิล<br>
             ระบบจะ <b>ตัดสต๊อกวัตถุดิบ</b> ตามสูตร + ตัวเลือกให้อัตโนมัติ<br>
@@ -1509,7 +1524,61 @@
         </details>
 
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="trash-2"></span> 5. ตัดของเสีย</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="layout-grid"></span> 6. จัดหมวดหน้าขาย (POS)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "ขาย" มี <b>แถบหมวด</b> ด้านบนให้กดกรองสินค้า — เจ้าของจัดเองได้:<br>
+            กดปุ่ม <b>"จัดการหมวด"</b> บนแถบ → เพิ่ม/ลบ/<b>ลากเรียงลำดับ</b> หมวดที่อยากให้โผล่ในหน้าขาย<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> หมวดหน้าขาย <b>แยกอิสระ</b> จากหมวดวัตถุดิบ — ตั้งให้กดง่ายตามการใช้จริงหน้าร้านได้เลย · สินค้าจะเข้าหมวดตามช่อง "หมวด" ที่ตั้งไว้ในรายการ</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="banknote"></span> 7. รับเงิน & QR พร้อมเพย์</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ตอนกดรับเงิน เลือก <b>วิธีจ่าย</b>: เงินสด · โอน · บัตร · <b>QR พร้อมเพย์</b> → วิธีจ่ายจะขึ้นบนใบเสร็จ + แยกยอดในรายงาน<br>
+            <b>QR พร้อมเพย์:</b> ตั้งเบอร์/เลขพร้อมเพย์ในหน้า "ตั้งค่า" ครั้งเดียว → ระบบสร้าง QR ตามยอดบิลให้ลูกค้าสแกนจ่ายได้เลย (ฟรี ใช้ QR ร้านเอง)<br>
+            <b>QR Box:</b> เปิดจอที่สอง (แท็บเล็ต/จอลูกค้า) โชว์ QR + ยอดให้ลูกค้าสแกน — กดเปิดจากหน้าขาย<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> รับเงินผ่านเกตเวย์ (Omise) อยู่ระหว่างเตรียม — ตอนนี้ใช้ QR ร้านเองได้ฟรี ไม่มีค่าธรรมเนียม</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="rotate-ccw"></span> 8. ยกเลิก / คืนบิล</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            เปิด "ประวัติบิล" → เลือกบิล → <b>ยกเลิกบิล</b> → ระบบ <b>คืนสต๊อกที่ตัดไป</b> กลับให้อัตโนมัติ (รวมตัวเลือกในบิล) + ตัดยอดออกจากรายงาน<br>
+            <span style="color:#d97706;"><span class="ico" data-icon="lock"></span> ต้องมีสิทธิ์ "ยกเลิกบิล" — เจ้าของเปิดให้พนักงานได้ในหน้าตั้งค่า (ดูหัวข้อ 18)</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="moon"></span> 9. ปิดยอดสิ้นวัน (Z-Report)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            สิ้นวันกด <b>"ปิดยอด"</b> → สรุป: ยอดขายรวม · จำนวนบิล · แยกตามวิธีจ่าย (เงินสด/โอน/QR) · ส่วนลด<br>
+            พิมพ์สลิปสรุป 80mm ไว้กระทบยอดเงินสดในลิ้นชักได้ → ตรวจเงินขาด/เกินง่าย
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="percent"></span> 10. ภาษี (VAT) & ใบกำกับภาษีอย่างย่อ</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "ตั้งค่า" → เปิด <b>VAT</b> + ใส่ % (เช่น 7) → ใบเสร็จจะแยกแสดงราคาก่อน/หลังภาษี<br>
+            ออก <b>ใบกำกับภาษีอย่างย่อ</b> พร้อมเลขผู้เสียภาษีของร้านได้ (ใส่เลขในตั้งค่า)<br>
+            <span style="color:var(--color-text-muted);">ถ้าร้านไม่จด VAT ก็ปิดไว้ — ใบเสร็จจะเป็นแบบปกติ</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="badge-percent"></span> 11. ส่วนลด & ส่วนลดพนักงาน</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ตอนขายใส่ส่วนลดได้ทั้ง <b>%</b> และ <b>บาท</b><br>
+            <b>ส่วนลดพนักงาน:</b> เจ้าของตั้งในหน้าตั้งค่า — ตั้ง <b>ปุ่มลัด</b> ส่วนลดที่ใช้บ่อย (เช่น 10%, 20฿) ให้กดง่าย + ตั้ง <b>เพดานสูงสุด</b> ได้ทั้ง % และบาท<br>
+            <span style="color:#16a34a;"><span class="ico" data-icon="shield-check"></span> ถ้าพนักงานกดลดเกินเพดาน ระบบจะลดให้เหลือเท่าเพดานอัตโนมัติ (กันลดจนขาดทุน) — ตั้งได้ว่าใครลดได้บ้าง</span>
+          </div>
+        </details>
+
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="package"></span> ส่วน C · สต๊อก & ของเสีย</div>
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="trash-2"></span> 12. ตัดของเสีย</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
             หน้า "สต๊อก" → ที่รายการวัตถุดิบ เลือก "ตัดของเสีย" → ใส่จำนวน + <b>เหตุผล</b> (ทำหก/ทำผิดเมนู/หมดอายุ) + <b>ชื่อคนทำ</b><br>
             ระบบจะหักออกจากสต๊อกและเก็บประวัติไว้ (ดูได้ในประวัติการเคลื่อนไหว)
@@ -1517,7 +1586,7 @@
         </details>
 
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="package"></span> 6. สต๊อก · รับของเข้า · แจ้งเตือนใกล้หมด</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="package"></span> 13. สต๊อก · รับของเข้า · แจ้งเตือนใกล้หมด</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
             <b>รับของเข้า:</b> หน้า "สต๊อก" → ใส่จำนวนที่ซื้อเข้าในช่อง "รับเข้า" → ยอดคงเหลือเพิ่มให้อัตโนมัติ<br>
             <b>แจ้งเตือนใกล้หมด:</b> ตั้ง "จุดเตือน" ที่วัตถุดิบแต่ละตัว → พอต่ำกว่าจะขึ้นเตือนให้สั่งซื้อ (รวมของขาย SALE ด้วย)<br>
@@ -1525,8 +1594,9 @@
           </div>
         </details>
 
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="wallet"></span> ส่วน D · เงิน & รายงาน</div>
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="wallet"></span> 7. รายรับ-รายจ่าย & เงินสดย่อย</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="wallet"></span> 14. รายรับ-รายจ่าย & เงินสดย่อย</summary>
           <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
             หน้า "รายจ่าย" → บันทึกค่าใช้จ่าย (ค่าวัตถุดิบ ค่าเช่า ค่าจ้าง ฯลฯ) เลือกหมวด + แนบสลิปได้<br>
             ตั้ง "รายจ่ายประจำ" (ค่าเช่า/เน็ต) ให้เตือนทุกเดือน · จัดการ "เงินสดย่อย" (petty cash) ได้<br>
@@ -1534,13 +1604,79 @@
           </div>
         </details>
 
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="bar-chart-3"></span> 15. รายงานยอดขาย & กำไร</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "รายงาน" → ดูยอดขาย/กำไรตามช่วงวัน · เมนูขายดี · ต้นทุนรวม · กำไรสุทธิ (ยอดขาย − ทุน − รายจ่าย)<br>
+            ส่งออกเป็นไฟล์ Excel/CSV ได้ เอาไปทำบัญชีต่อ
+          </div>
+        </details>
+
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="users"></span> ส่วน E · ลูกค้า</div>
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="award"></span> 16. สมาชิก & แต้มสะสม</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "สมาชิก" → เพิ่มสมาชิก (ชื่อ+เบอร์) · ตอนขายใส่เบอร์ลูกค้า → <b>สะสมแต้มอัตโนมัติ</b> (1 แต้ม/20฿)<br>
+            ตั้งได้: ส่วนลดสมาชิกทุกครั้ง (%) · แสตมป์ (ซื้อครบกี่ครั้งแถม) · ของรางวัลแลกแต้ม → กดแลกตอนขายได้เลย
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="qr-code"></span> 17. QR ลูกค้าสแกนดูเมนู / สั่งเอง</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ลูกค้าสแกน QR ของร้าน → เปิดหน้าเมนูสวยๆ (การ์ดแบบอัลบัม มีรูป + รายละเอียด) ดูเอง/สั่งเองได้<br>
+            สินค้าที่จะโชว์ = ตัวที่ "นำขึ้นเมนู" + มีรูป · ใส่ <b>ลิงก์รีวิว</b> ในรายการได้ (เผื่อพ่วงรีวิวในอนาคต)<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> ใส่รูปให้สวย = ขายดีขึ้น — รูปจะถูกย่ออัตโนมัติ ไม่ถ่วงระบบ</span>
+          </div>
+        </details>
+
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="store"></span> ส่วน F · จัดการร้าน <span style="font-weight:500;color:var(--color-text-muted);">(เฉพาะเจ้าของ)</span></div>
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="shield"></span> 18. สิทธิ์พนักงาน (เปิด/ปิดรายฟังก์ชัน)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า "ตั้งค่า" → จัดการพนักงาน → <b>เปิด/ปิดสิทธิ์รายฟังก์ชัน</b> ของแต่ละคน:<br>
+            ลดราคา · ยกเลิกบิล · รับของเข้า · ตัดของเสีย · แก้สูตร · <b>ดูต้นทุน</b> · เงินสดย่อย<br>
+            <span style="color:#16a34a;"><span class="ico" data-icon="check"></span> ค่าเริ่มต้นปลอดภัย: หน้าร้านขายได้ปกติ แต่ <b>ไม่เห็นต้นทุน · แก้สูตรไม่ได้</b> จนกว่าเจ้าของจะเปิดให้</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="git-branch"></span> 19. หลายสาขา</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ถ้าบัญชีคุณดูแลหลายสาขา จะมี <b>ตัวสลับสาขา</b> ขึ้นมาให้เลือก (เมนูด้านข้าง)<br>
+            กด <b>"ภาพรวมรวมทุกสาขา"</b> → ดูยอดขายรวมทุกสาขาในที่เดียว
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="database-backup"></span> 20. สำรอง & กู้คืนข้อมูล</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            ระบบ <b>สำรองข้อมูลอัตโนมัติ</b> (snapshot) ให้เป็นระยะ — ดู/กู้คืนได้ในหน้า "ตั้งค่า"<br>
+            กด <b>"สำรองตอนนี้"</b> เองก่อนทำอะไรใหญ่ๆ ได้ · กู้คืน = ดึงข้อมูลที่หายกลับมา (เพิ่มเฉพาะที่ขาด ไม่ทับของใหม่)<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> แนะนำให้น้องเซฟไฟล์ส่งออกเก็บไว้เองด้วยเป็นครั้งคราว (กันเหนียว)</span>
+          </div>
+        </details>
+
+        <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="copy"></span> 21. โคลน / ย้ายข้อมูลร้าน (เปิดสาขาใหม่)</summary>
+          <div style="font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;">
+            หน้า <b>Super Admin</b> → การ์ด "โคลนข้อมูลร้าน":<br>
+            • <b>โคลนตรง</b> — ก๊อปเมนู/สูตร/วัตถุดิบทั้งชุดไปร้านใหม่ (สต๊อกเริ่มที่ 0)<br>
+            • <b>ส่งออกไฟล์ / นำเข้าไฟล์</b> — เอาข้อมูลออกไปตั้งร้านใหม่ที่อื่น<br>
+            <span style="color:var(--color-text-muted);"><span class="ico" data-icon="info"></span> เหมาะตอนเปิดสาขาใหม่ด้วยเมนูเดิม — ตั้งครั้งเดียว ใช้ได้ทุกสาขา</span>
+          </div>
+        </details>
+
+        <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:14px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="alert-triangle"></span> ส่วน G · ข้อควรระวัง</div>
+
         <details open style="border:1px solid #5DCAA5;border-radius:10px;padding:4px 14px;background:#E1F5EE;">
-          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;color:#04342C;"><span class="ico" data-icon="alert-triangle"></span> 8. ข้อควรระวัง (อ่านก่อนใช้!)</summary>
+          <summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;color:#04342C;"><span class="ico" data-icon="alert-triangle"></span> 22. ข้อควรระวัง (อ่านก่อนใช้!)</summary>
           <div style="font-size:13px;color:#0F6E56;line-height:2;padding:4px 0 12px;">
             <b>1. เปิดแท็บเดียว</b> — อย่าเปิดระบบหลายแท็บ/หลายเครื่องพร้อมกันแล้วแก้ข้อมูล จะเขียนทับกัน ข้อมูลหาย<br>
             <b>2. หลังมีอัปเดตระบบ กด Ctrl + F5</b> ทุกเครื่อง เพื่อโหลดเวอร์ชันใหม่<br>
             <b>3. เปิด "ทำสดตอนสั่ง"</b> ในหน้าตั้งค่า ระบบถึงจะตัดสต๊อกวัตถุดิบตอนขาย<br>
-            <b>4. ใส่หมวดสินค้าให้ถูก</b> — เป็นหัวใจของการตัดสต๊อก+คิดต้นทุน
+            <b>4. ใส่หมวดสินค้าให้ถูก</b> — เป็นหัวใจของการตัดสต๊อก+คิดต้นทุน<br>
+            <b style="color:#b91c1c;">5. ถ้าขึ้นแถบแดง "บันทึกขึ้นคลาวด์ไม่สำเร็จ" — อย่าปิด/รีเฟรชหน้า!</b> ให้กดปุ่ม "ลองบันทึกใหม่" จนหายแถบแดงก่อน (เน็ตอาจหลุดชั่วคราว) แล้วค่อยทำต่อ — กันข้อมูล/รูปที่เพิ่งกรอกหาย
           </div>
         </details>
       </div>
@@ -2988,6 +3124,22 @@ function applyTerminology() {
   const dm = document.getElementById('dockMaterials'); if (dm) { const sp = dm.querySelector('span:last-child'); if (sp) sp.textContent = bt('ingredient'); }
 }
 
+// คู่มือ: ปรับหัวเรื่อง + ทิปคำเรียกตามประเภทธุรกิจ
+const MANUAL_BIZ_TIPS = {
+  fnb:     'สำหรับ <b>ร้านอาหาร/คาเฟ่/เบเกอรี่</b>: “เมนู” = เครื่องดื่ม/อาหาร · “สูตร” = ส่วนผสมต่อแก้ว/จาน · “วัตถุดิบ” = ของที่ซื้อเข้า · ของซื้อมาขายต่อ (ขนม/น้ำขวด) ใช้ “ขายของตรง” (หัวข้อ 3)',
+  service: 'สำหรับ <b>ร้านบริการ (คิ้ว/เล็บ/สปา)</b>: “เมนู” = บริการ · “สูตร” = วัสดุ+ขั้นตอนที่ใช้ต่อครั้ง (ระบบจะตัดวัสดุให้ตอนปิดงาน) · “วัตถุดิบ” = วัสดุ/อุปกรณ์ · ของขายหน้าร้าน (ครีม/สครับ) ใช้ “ขายของตรง” (หัวข้อ 3)',
+  retail:  'สำหรับ <b>ร้านขายของ / รีเทล</b>: ส่วนใหญ่ใช้ “ขายของตรง” (หัวข้อ 3) — ตั้งสินค้าเป็น “ของขาย” + ราคา ไม่ต้องทำสูตร · “สต๊อกสินค้า” = นับของในร้าน · ใช้ “ชุดสินค้า” (สูตร) เฉพาะตอนจัดเซต/บันเดิล',
+  maker:   'สำหรับ <b>โฮมเมด / ผลิตขาย</b>: “สูตร” = ส่วนผสมต่อชิ้น/ล็อต → กด “ผลิต” เก็บสต๊อก → ขาย (ตัดจากของที่ผลิต) · ของที่ทำเสร็จพร้อมขายเลยใช้ “ขายของตรง” (หัวข้อ 3) ก็ได้',
+};
+function renderManualHeader() {
+  const tpl = BIZ_TEMPLATES[settings.businessType] || BIZ_TEMPLATES.fnb;
+  const ttl = $('manualTitle');
+  if (ttl) ttl.innerHTML = '<span class="ico" data-icon="book-open"></span> คู่มือการใช้งาน — ฉบับ ' + (tpl.label || 'ร้านค้า');
+  const tip = $('manualBizTip');
+  if (tip) tip.innerHTML = '<b><span class="ico" data-icon="lightbulb"></span> อ่านตามประเภทร้านของคุณ:</b><br>' + (MANUAL_BIZ_TIPS[settings.businessType] || MANUAL_BIZ_TIPS.fnb);
+  if (typeof renderIcons === 'function') { if (ttl) renderIcons(ttl); if (tip) renderIcons(tip); }
+}
+
 // เฟส 3: ตัวสลับสาขา (แสดงเมื่อผู้ใช้เป็นสมาชิก > 1 สาขา)
 let MY_SHOPS = [];
 function renderBranchSwitcher(shops, currentId) {
@@ -3679,6 +3831,7 @@ function switchTab(t) {
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
   if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); loadPayStatus(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
+  if (t === 'manual') renderManualHeader();
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
