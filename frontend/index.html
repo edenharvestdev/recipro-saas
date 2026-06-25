@@ -3326,11 +3326,34 @@ function saveAll() {
   syncTimeout = setTimeout(async () => {
     try {
       await syncToSupabase();
+      hideSyncError();   // sync สำเร็จ → ซ่อนแบนเนอร์เตือน (ถ้ามี)
     } catch (e) {
       updateCloudStatus("ซิงค์คลาวด์ผิดพลาด", "circle-x");
+      showSyncError(e);  // เตือนดังๆ — ข้อมูลยังไม่ขึ้นคลาวด์ (กันหายเงียบ เช่นเคส 413 รูปใหญ่)
     }
   }, 1500);
 }
+// แบนเนอร์เตือนเมื่อบันทึกขึ้นคลาวด์ไม่สำเร็จ — ค้างไว้จนกว่าจะสำเร็จ (กันข้อมูลหายเงียบ)
+function showSyncError(e) {
+  if (isMockMode) return;
+  const big = e && e.status === 413;
+  let el = document.getElementById('syncErrBanner');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'syncErrBanner';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100001;background:#dc2626;color:#fff;padding:11px 16px;font-size:13px;font-weight:700;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.25);font-family:inherit;';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '⚠️ บันทึกขึ้นคลาวด์ไม่สำเร็จ — ข้อมูลยังไม่ถูกบันทึก! <b>อย่าปิด/รีเฟรชหน้านี้</b> '
+    + (big ? '(ไฟล์รูปอาจใหญ่เกิน — ลองกด "ย่อรูป &amp; บันทึก" ในตั้งค่า) ' : '')
+    + '<button onclick="retrySync()" style="margin-left:8px;padding:3px 12px;border:none;border-radius:6px;background:#fff;color:#dc2626;font-weight:800;cursor:pointer;">ลองบันทึกใหม่</button>';
+  el.style.display = 'block';
+  document.body.style.paddingTop = el.offsetHeight + 'px';
+}
+function hideSyncError() {
+  const el = document.getElementById('syncErrBanner');
+  if (el) { el.style.display = 'none'; document.body.style.paddingTop = ''; }
+}
+function retrySync() { updateCloudStatus('กำลังลองบันทึกใหม่...', 'refresh-cw'); saveAll(); }
 
 function refreshDashIfVisible() {
   const p = $('dashPage');
