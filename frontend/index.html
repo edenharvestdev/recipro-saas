@@ -502,6 +502,16 @@
         </div>
       </div>
 
+      <!-- ใบสั่งซื้อ — ของที่ต้องสั่ง -->
+      <div class="glass-card" style="margin-top:24px;" id="purchaseOrderCard">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <h2 style="margin:0;"><span class="ico" data-icon="shopping-cart"></span> ใบสั่งซื้อ — ของที่ต้องสั่ง</h2>
+          <button class="btn btn-ghost btn-sm" onclick="printPurchaseOrder()"><span class="ico" data-icon="printer"></span> พิมพ์ทั้งหมด</button>
+        </div>
+        <p style="color:var(--color-text-muted); font-size:13px; margin:6px 0 12px;">รวมของที่ถึงจุดเตือน แยกตามซัพพลายเออร์ — ปรับจำนวน แล้วกด "คัดลอกส่งร้าน" (วางใน LINE ได้) หรือพิมพ์</p>
+        <div id="poBody"></div>
+      </div>
+
       <!-- ตรวจนับสต๊อก (Stock Count) -->
       <div class="glass-card" style="margin-top:24px;" id="stockCountCard">
         <h2><span class="ico" data-icon="clipboard-check"></span> ตรวจนับสต๊อก (Stock Count)</h2>
@@ -5587,6 +5597,98 @@ function renderStockPage() {
   renderReceiveLogs();
   renderProdLogs();
   renderStockCount();
+  renderPurchaseOrder();
+}
+
+// ---- ใบสั่งซื้อ (Purchase Order จากของถึงจุดเตือน) ----
+let poDraft = {}; // { matId: จำนวนที่จะสั่ง (string) }
+function poNeedItems() {
+  return (materials || []).filter(m => !m.isConsumable && Number(m.lowStock) > 0 && (Number(m.stock) || 0) <= Number(m.lowStock))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+}
+function poSuggest(m) { return Math.max(1, Math.ceil((Number(m.lowStock) || 0) * 2 - (Number(m.stock) || 0))); } // เติมให้ถึง ~2 เท่าจุดเตือน
+function poQty(m) { const v = poDraft[m.id]; return (v === undefined || v === '') ? poSuggest(m) : (Number(v) || 0); }
+function poSupName(sid) { return sid === '_none' ? 'ไม่ระบุซัพพลายเออร์' : ((supById(sid) || {}).name || 'ซัพพลายเออร์'); }
+function renderPurchaseOrder() {
+  const el = $('poBody'); if (!el) return;
+  const items = poNeedItems();
+  if (!items.length) { el.innerHTML = '<div style="text-align:center;color:var(--green,#16a34a);padding:18px;"><span class="ico" data-icon="circle-check"></span> ของครบ ไม่มีอะไรต้องสั่งตอนนี้</div>'; renderIcons(el); return; }
+  const groups = {};
+  items.forEach(m => { const k = m.supId || '_none'; (groups[k] = groups[k] || []).push(m); });
+  let grand = 0;
+  const html = Object.keys(groups).map(sid => {
+    const list = groups[sid];
+    const sNote = sid === '_none' ? '' : ((supById(sid) || {}).note || '');
+    const orderUrl = (list.find(m => m.orderUrl) || {}).orderUrl || '';
+    let sub = 0;
+    const rows = list.map(m => {
+      const q = poQty(m), cost = q * (Number(m.price) || 0); sub += cost;
+      return `<tr>
+        <td>${esc(m.name)} <span style="color:var(--color-text-muted);font-size:11px;">${esc(m.unit || '')}</span></td>
+        <td class="r" style="color:#e53e3e;">${_cnt2(m.stock)}</td>
+        <td class="r" style="color:var(--color-text-muted);">${_cnt2(m.lowStock)}</td>
+        <td class="r"><input type="number" min="0" step="any" value="${esc(String(q))}" oninput="poQtyInput('${m.id}',this.value)" style="width:80px;text-align:right;padding:5px 7px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"></td>
+        <td class="r" data-posub="${m.id}">${money(cost)}</td>
+      </tr>`;
+    }).join('');
+    grand += sub;
+    return `<div style="border:1px solid var(--border-soft);border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <b style="font-size:14px;"><span class="ico" data-icon="truck"></span> ${esc(poSupName(sid))} <span style="font-weight:400;color:var(--color-text-muted);font-size:12px;">${esc(sNote)}</span></b>
+        <div style="display:flex;gap:6px;">
+          ${orderUrl ? `<a href="${esc(orderUrl)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm"><span class="ico" data-icon="external-link"></span> ลิงก์สั่ง</a>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="copyPoSupplier('${sid}')"><span class="ico" data-icon="copy"></span> คัดลอกส่งร้าน</button>
+        </div>
+      </div>
+      <div class="table-scroll"><table class="lst">
+        <thead><tr><th>วัตถุดิบ</th><th class="r">เหลือ</th><th class="r">จุดเตือน</th><th class="r" style="width:90px;">สั่ง</th><th class="r">รวม</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="r" style="margin-top:6px;font-size:13px;">รวมซัพฯ นี้: <b data-pogrp="${sid}">${money(sub)}</b></div>
+    </div>`;
+  }).join('');
+  el.innerHTML = html + `<div style="text-align:right;font-size:15px;font-weight:800;padding:6px 2px;">รวมทั้งหมด: <span id="poGrand" style="color:var(--color-primary);">${money(grand)}</span></div>`;
+  renderIcons(el);
+}
+function poQtyInput(id, val) {
+  if (val === '' || val == null) delete poDraft[id]; else poDraft[id] = val;
+  const m = matById(id); if (!m) return;
+  const cell = document.querySelector(`[data-posub="${id}"]`);
+  if (cell) cell.textContent = money(poQty(m) * (Number(m.price) || 0));
+  let grand = 0; const sub = {};
+  poNeedItems().forEach(x => { const k = x.supId || '_none'; const c = poQty(x) * (Number(x.price) || 0); sub[k] = (sub[k] || 0) + c; grand += c; });
+  Object.keys(sub).forEach(k => { const e = document.querySelector(`[data-pogrp="${k}"]`); if (e) e.textContent = money(sub[k]); });
+  const g = $('poGrand'); if (g) g.textContent = money(grand);
+}
+function poText(sid) {
+  const items = poNeedItems().filter(m => (m.supId || '_none') === sid);
+  const lines = items.map(m => `- ${m.name} : ${poQty(m)} ${m.unit || ''}`.trim());
+  const total = items.reduce((s, m) => s + poQty(m) * (Number(m.price) || 0), 0);
+  return `รายการสั่งซื้อ (${settings.shopName || ''})\nซัพพลายเออร์: ${poSupName(sid)}\n\n${lines.join('\n')}\n\nรวมประมาณ ${money(total)}`;
+}
+async function copyPoSupplier(sid) {
+  const txt = poText(sid);
+  try { await navigator.clipboard.writeText(txt); ui.toast('คัดลอกรายการแล้ว — วางส่งร้านค้าได้เลย', 'success'); }
+  catch (e) { ui.alert('คัดลอกอัตโนมัติไม่ได้ — ก๊อปข้อความนี้:<br><textarea style="width:100%;height:130px;margin-top:6px;">' + esc(txt) + '</textarea>', { icon: 'copy' }); }
+}
+function printPurchaseOrder() {
+  const items = poNeedItems();
+  if (!items.length) { ui.toast('ไม่มีของต้องสั่งตอนนี้', 'info'); return; }
+  const groups = {};
+  items.forEach(m => { const k = m.supId || '_none'; (groups[k] = groups[k] || []).push(m); });
+  const today = new Date().toLocaleDateString('th-TH');
+  let body = `<h2>ใบสั่งซื้อ — ${esc(settings.shopName || '')}</h2><div>วันที่ ${today}</div>`;
+  let grand = 0;
+  Object.keys(groups).forEach(sid => {
+    let sub = 0;
+    const rows = groups[sid].map(m => { const q = poQty(m), c = q * (Number(m.price) || 0); sub += c; return `<tr><td>${esc(m.name)}</td><td style="text-align:right">${q} ${esc(m.unit || '')}</td><td style="text-align:right">${money(c)}</td></tr>`; }).join('');
+    grand += sub;
+    body += `<h3>${esc(poSupName(sid))}</h3><table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:13px;"><tr><th align="left">วัตถุดิบ</th><th>สั่ง</th><th>รวม</th></tr>${rows}<tr><td colspan="2" align="right"><b>รวม</b></td><td align="right"><b>${money(sub)}</b></td></tr></table><br>`;
+  });
+  body += `<h3 style="text-align:right">รวมทั้งหมด ${money(grand)}</h3>`;
+  const html = '<html><head><meta charset="utf-8"><title>ใบสั่งซื้อ</title><style>body{font-family:Tahoma,sans-serif;padding:20px;}h3{margin:14px 0 6px;}</style></head><body>' + body + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank'); if (!w) { ui.alert('เปิดหน้าต่างพิมพ์ไม่ได้ (ป๊อปอัปถูกบล็อก)'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ---- ตรวจนับสต๊อก (Stock Count) ----
