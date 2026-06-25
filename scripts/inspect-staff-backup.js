@@ -1,0 +1,14 @@
+const fs = require('fs');
+const root = JSON.parse(fs.readFileSync(process.env.F, 'utf8'));
+const recs = root.recipes || [], mats = root.materials || [];
+const recImgs = recs.filter(r => r.imgData && r.imgData.length > 100);
+const matImgs = mats.filter(m => m.imgData && m.imgData.length > 100);
+const sumLen = a => a.reduce((s, x) => s + (x.imgData ? x.imgData.length : 0), 0);
+console.log('TOP KEYS:', Object.keys(root).join(', '));
+console.log('recipes:', recs.length, '| with image:', recImgs.length);
+console.log('materials:', mats.length, '| with image:', matImgs.length);
+console.log('recipe img total MB:', (sumLen(recs) / 1048576).toFixed(1), '| material img MB:', (sumLen(mats) / 1048576).toFixed(1));
+const sizes = recImgs.map(r => Math.round((r.imgData.length) / 1024)).sort((a, b) => b - a);
+console.log('biggest recipe imgs KB:', sizes.slice(0, 8).join(', '));
+console.log('sample recipes with img:');
+recImgs.slice(0, 6).forEach(r => console.log('  -', (r.id || '').slice(0, 8), r.name, '|', Math.round(r.imgData.length / 1024) + 'KB', '|', (r.imgData || '').slice(0, 22)));
