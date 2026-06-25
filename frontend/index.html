@@ -502,6 +502,25 @@
         </div>
       </div>
 
+      <!-- ตรวจนับสต๊อก (Stock Count) -->
+      <div class="glass-card" style="margin-top:24px;" id="stockCountCard">
+        <h2><span class="ico" data-icon="clipboard-check"></span> ตรวจนับสต๊อก (Stock Count)</h2>
+        <p style="color:var(--color-text-muted); font-size:13px; margin:-4px 0 10px;">นับของจริงในร้าน → ใส่จำนวนที่นับได้ → ระบบปรับสต๊อกให้ตรง + เก็บประวัติ (เหมาะตอนเปิดสาขาใหม่ / ตรวจนับประจำเดือน / ก่อนยกข้อมูล)</p>
+        <div id="countInfo" style="background:var(--surface-2); border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.7; margin-bottom:10px;"></div>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+          <input id="countSearch" placeholder="ค้นหาวัตถุดิบ..." style="flex:1; min-width:140px;" oninput="renderStockCount()">
+          <span id="countSummary" style="font-size:13px; color:var(--color-text-muted); white-space:nowrap;"></span>
+          <button class="btn btn-ghost btn-sm" onclick="clearStockCount()" style="white-space:nowrap;"><span class="ico" data-icon="eraser"></span> ล้างที่กรอก</button>
+          <button class="btn btn-primary btn-sm" id="btnSaveCount" onclick="saveStockCount()" style="white-space:nowrap;"><span class="ico" data-icon="save"></span> บันทึกผลนับ</button>
+        </div>
+        <div class="table-scroll">
+          <table class="lst">
+            <thead><tr><th>วัตถุดิบ</th><th class="r">คงเหลือระบบ</th><th class="r" style="width:110px;">นับจริง</th><th class="r">ผลต่าง</th></tr></thead>
+            <tbody id="countList"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ตัดของเสีย -->
       <div class="glass-card" style="margin-top:24px;">
         <h2><span class="ico" data-icon="trash-2"></span> ตัดของเสีย</h2>
@@ -5567,6 +5586,102 @@ function renderStockPage() {
   renderWasteLogs();
   renderReceiveLogs();
   renderProdLogs();
+  renderStockCount();
+}
+
+// ---- ตรวจนับสต๊อก (Stock Count) ----
+let countDraft = {}; // { matId: ค่าที่นับได้ (string) }
+const _cnt2 = n => Math.round((Number(n) || 0) * 100) / 100;
+function lastCountAt() {
+  let last = null;
+  for (const m of movementSource()) {
+    if (m.kind === 'count') { const t = m.at || m.created_at; if (t && (!last || t > last)) last = t; }
+  }
+  return last;
+}
+function renderCountInfo() {
+  const el = $('countInfo'); if (!el) return;
+  const last = lastCountAt();
+  if (!last) { el.innerHTML = '<span class="ico" data-icon="info"></span> ยังไม่เคยตรวจนับ — นับครั้งแรกเพื่อตั้งยอดตั้งต้นให้ตรงของจริง'; renderIcons(el); return; }
+  const lastDate = String(last).slice(0, 10);
+  const sales = (bills || []).filter(b => b.status === 'paid' && (b.date || '') >= lastDate);
+  const sum = sales.reduce((s, b) => s + billTotal(b), 0);
+  const d = new Date(last);
+  const ds = isNaN(d) ? lastDate : d.toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = `<span class="ico" data-icon="history"></span> นับล่าสุด: <b>${ds}</b> &nbsp;·&nbsp; ยอดขายตั้งแต่นับล่าสุด: <b style="color:var(--green,#16a34a);">${money(sum)}</b> <span style="color:var(--color-text-muted);">(${sales.length} บิล)</span>`;
+  renderIcons(el);
+}
+function updateCountSummary() {
+  const el = $('countSummary'); if (!el) return;
+  let n = 0, mism = 0, val = 0;
+  Object.keys(countDraft).forEach(id => {
+    if (countDraft[id] === '' || countDraft[id] == null) return;
+    const m = matById(id); if (!m) return;
+    n++;
+    const diff = (Number(countDraft[id]) || 0) - (Number(m.stock) || 0);
+    if (Math.abs(diff) > 0.0001) { mism++; val += Math.abs(diff) * (Number(m.price) || 0); }
+  });
+  el.innerHTML = n ? `นับแล้ว <b>${n}</b> · ไม่ตรง <b style="color:#e53e3e;">${mism}</b>${val ? ` · มูลค่าส่วนต่าง ~${money(val)}` : ''}` : 'ยังไม่ได้กรอก';
+}
+function renderStockCount() {
+  const tb = $('countList'); if (!tb) return;
+  const btn = $('btnSaveCount'); if (btn) btn.style.display = (typeof can === 'function' && !can('stock_receive')) ? 'none' : '';
+  const q = ($('countSearch')?.value || '').trim().toLowerCase();
+  let mats = (materials || []).filter(m => !m.isConsumable);
+  if (q) mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
+  mats.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+  renderCountInfo();
+  if (!mats.length) { tb.innerHTML = '<tr><td colspan="4" style="color:#999;text-align:center;padding:16px;">ไม่พบวัตถุดิบ</td></tr>'; updateCountSummary(); return; }
+  tb.innerHTML = mats.map(m => {
+    const sys = Number(m.stock) || 0;
+    const has = countDraft[m.id] !== undefined && countDraft[m.id] !== '';
+    const diff = has ? (Number(countDraft[m.id]) || 0) - sys : null;
+    const diffHtml = diff === null ? '<span style="color:var(--color-text-muted)">—</span>'
+      : Math.abs(diff) < 0.0001 ? '<span style="color:#16a34a;">ตรง ✓</span>'
+      : `<span style="color:${diff > 0 ? '#2563eb' : '#e53e3e'};font-weight:700;">${diff > 0 ? '+' : ''}${_cnt2(diff)}</span>`;
+    return `<tr>
+      <td>${esc(m.name)} <span style="color:var(--color-text-muted);font-size:11px;">${esc(m.unit || '')}</span></td>
+      <td class="r">${_cnt2(sys)}</td>
+      <td class="r"><input type="number" step="any" inputmode="decimal" value="${has ? esc(String(countDraft[m.id])) : ''}" placeholder="${_cnt2(sys)}" oninput="countDraftInput('${m.id}',this.value)" style="width:96px;text-align:right;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"></td>
+      <td class="r" data-cntdiff="${m.id}">${diffHtml}</td>
+    </tr>`;
+  }).join('');
+  updateCountSummary();
+}
+function countDraftInput(id, val) {
+  if (val === '' || val == null) delete countDraft[id]; else countDraft[id] = val;
+  const m = matById(id); const sys = Number(m && m.stock) || 0;
+  const cell = document.querySelector(`[data-cntdiff="${id}"]`);
+  if (cell) {
+    const has = countDraft[id] !== undefined;
+    const diff = has ? (Number(countDraft[id]) || 0) - sys : null;
+    cell.innerHTML = diff === null ? '<span style="color:var(--color-text-muted)">—</span>'
+      : Math.abs(diff) < 0.0001 ? '<span style="color:#16a34a;">ตรง ✓</span>'
+      : `<span style="color:${diff > 0 ? '#2563eb' : '#e53e3e'};font-weight:700;">${diff > 0 ? '+' : ''}${_cnt2(diff)}</span>`;
+  }
+  updateCountSummary();
+}
+function clearStockCount() { countDraft = {}; renderStockCount(); }
+async function saveStockCount() {
+  const entries = Object.keys(countDraft).filter(id => countDraft[id] !== '' && countDraft[id] != null);
+  if (!entries.length) { ui.alert('ยังไม่ได้กรอกจำนวนที่นับ', { icon: 'clipboard-check' }); return; }
+  // เฉพาะรายการที่ค่าต่างจากระบบ
+  const changes = entries.map(id => {
+    const m = matById(id); if (!m) return null;
+    const sys = Number(m.stock) || 0; const counted = Number(countDraft[id]) || 0;
+    return Math.abs(counted - sys) < 0.0001 ? null : { m, sys, counted };
+  }).filter(Boolean);
+  if (!changes.length) { ui.toast('ทุกรายการตรงกับระบบอยู่แล้ว — ไม่มีอะไรต้องปรับ', 'success'); return; }
+  const ok = await ui.confirm(`ปรับสต๊อกตามผลนับ ${changes.length} รายการ?<br><span style="font-size:12px;color:var(--color-text-muted)">ระบบจะตั้งยอดให้ตรงของจริง + เก็บประวัติ "ตรวจนับ"</span>`, { okText: 'ยืนยันปรับ', icon: 'clipboard-check', variant: 'success' });
+  if (!ok) return;
+  changes.forEach(({ m, sys, counted }) => {
+    m.stock = counted;
+    pushMovement({ kind: 'count', refType: 'material', refId: m.id, name: m.name, unit: m.unit, old: sys, newVal: counted, note: 'ตรวจนับสต๊อก' });
+  });
+  countDraft = {};
+  saveAll();
+  renderStockPage();
+  ui.toast(`ปรับตามผลนับ ${changes.length} รายการแล้ว`, 'success');
 }
 
 // ---- ตัดของเสีย (waste write-off) ----
