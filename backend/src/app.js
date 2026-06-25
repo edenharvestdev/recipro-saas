@@ -37,6 +37,7 @@ api.use(require('./api/stock'));       // POST /api/stock/{move,produce,sale} ·
 api.use(require('./api/orders'));      // GET /api/orders · PATCH /api/orders/:id (เฟส 3)
 api.use(require('./api/snapshots'));   // S1: GET/POST /api/snapshots · POST /api/snapshots/:id/restore (สำรอง+กู้คืน)
 api.use(require('./api/branches'));     // เฟส 3: GET /api/my-shops · GET /api/hq-summary (หลายสาขา)
+api.use(require('./api/posdisplay'));    // S5: QR Box จอลูกค้า — GET/POST /api/pos-display
 api.use(require('./api/staff'));       // GET/POST/PATCH/DELETE /api/staff (จัดการทีมงาน)
 api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recipes|bills}/:id
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout

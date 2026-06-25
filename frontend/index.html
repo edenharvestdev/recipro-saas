@@ -818,8 +818,12 @@
                 <span class="amount" id="posCartGrand">฿0.00</span>
               </div>
               <button class="btn btn-secondary" onclick="posClearCart()" style="width:100%; margin-bottom:8px; font-size:13px;"><span class="ico" data-icon="trash-2"></span> ล้างตะกร้า</button>
-              <button class="btn btn-secondary" onclick="showQrReceive()" style="width:100%; margin-bottom:8px; font-size:13px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="qr-code"></span> รับเงิน QR พร้อมเพย์</button>
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <button class="btn btn-secondary" onclick="showQrReceive()" style="flex:1; font-size:12px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="qr-code"></span> QR พร้อมเพย์</button>
+                <button class="btn btn-secondary" onclick="sendToQrBox()" style="flex:1; font-size:12px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="monitor"></span> ส่งไปจอลูกค้า</button>
+              </div>
               <button class="btn btn-primary" onclick="posCheckout()" style="width:100%;"><span class="ico" data-icon="banknote"></span> ชำระเงิน</button>
+              <button class="btn btn-ghost" onclick="openQrBox()" style="width:100%; margin-top:8px; font-size:12px;"><span class="ico" data-icon="tv"></span> เปิดจอ QR Box (เครื่องนี้เป็นจอลูกค้า)</button>
             </div>
           </div>
         </div>
@@ -3276,6 +3280,8 @@ async function boot() {
   updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์ (อัปเดตบราวเซอร์แล้ว)" : "ซิงค์คลาวด์เรียบร้อย", isMockMode ? "wifi-off" : "circle-check");
 
   renderIcons();
+  // QR Box: ถ้า bookmark ด้วย #qrbox ให้เปิดโหมดจอลูกค้าอัตโนมัติ (เครื่องที่ตั้งเป็นจอ)
+  if (location.hash === '#qrbox') { try { openQrBox(); } catch (e) {} }
 }
 
 let syncTimeout = null;
@@ -6823,6 +6829,63 @@ function confirmQrReceived() {
   posCheckout();
 }
 
+// ===== QR Box (จอลูกค้า) — แคชเชียร์ push ยอด → จอลูกค้า poll มาแสดง QR =====
+function posDisplayPush(amount, status, billNo) {
+  if (isMockMode) return;
+  API.post('/api/pos-display', { amount: Number(amount) || 0, status: status || 'idle', bill_no: billNo || '' }).catch(() => {});
+}
+// แคชเชียร์: ส่งยอดในตะกร้าไปจอลูกค้า
+function sendToQrBox() {
+  if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
+  if (!settings.pp) { ui.alert('ตั้งเบอร์พร้อมเพย์ใน ตั้งค่า ก่อน', { icon: 'alert-triangle' }); return; }
+  posDisplayPush(posComputeTotals().net, 'await');
+  if (ui.toast) ui.toast('ส่งยอดไปจอ QR box แล้ว');
+}
+// จอลูกค้า: เปิดโหมดแสดง QR แบบเต็มจอ (เครื่อง/มือถือที่หันให้ลูกค้า)
+let _qrBoxTimer = null, _qrBoxLast = '';
+async function openQrBox() {
+  try { await ensureQrLib(); } catch (e) { ui.alert(e.message, { icon: 'alert-triangle' }); return; }
+  let ov = document.getElementById('qrBoxOverlay');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'qrBoxOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:linear-gradient(160deg,#0f1e3a,#16325c);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:inherit;';
+    ov.innerHTML = '<button onclick="closeQrBox()" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;">ปิดจอ</button><div id="qrBoxBody" style="width:100%;max-width:420px;padding:20px;"></div>';
+    document.body.appendChild(ov);
+  }
+  _qrBoxLast = '';
+  qrBoxPoll();
+  if (_qrBoxTimer) clearInterval(_qrBoxTimer);
+  _qrBoxTimer = setInterval(qrBoxPoll, 2500);
+}
+function closeQrBox() {
+  if (_qrBoxTimer) { clearInterval(_qrBoxTimer); _qrBoxTimer = null; }
+  const ov = document.getElementById('qrBoxOverlay'); if (ov) ov.remove();
+}
+async function qrBoxPoll() {
+  const body = document.getElementById('qrBoxBody'); if (!body) return;
+  let d; try { d = await API.get('/api/pos-display'); } catch (e) { return; }
+  const key = (d.status || 'idle') + ':' + (d.amount || 0) + ':' + (d.updated_at || '');
+  if (key === _qrBoxLast) return;   // ไม่เปลี่ยน → ไม่ re-render (กันกระพริบ)
+  _qrBoxLast = key;
+  const logo = settings.logoData ? '<img src="' + esc(settings.logoData) + '" style="width:72px;height:72px;object-fit:contain;border-radius:12px;margin-bottom:10px;">' : '';
+  const name = '<div style="font-size:22px;font-weight:800;margin-bottom:4px;">' + esc(settings.shopName || 'Recipro') + '</div>';
+  if (d.status === 'await' && Number(d.amount) > 0) {
+    let qrImg = '';
+    try { const q = qrcode(0, 'M'); q.addData(promptpayPayload(settings.pp, d.amount)); q.make(); qrImg = q.createImgTag(7, 10); } catch (e) {}
+    body.innerHTML = logo + name
+      + '<div style="font-size:15px;opacity:.85;margin-bottom:14px;">สแกนเพื่อชำระเงิน</div>'
+      + '<div style="display:inline-block;background:#fff;padding:14px;border-radius:18px;">' + qrImg + '</div>'
+      + '<div style="font-size:16px;opacity:.85;margin-top:18px;">ยอดชำระ</div>'
+      + '<div style="font-size:46px;font-weight:800;color:#7dd3fc;">' + money(d.amount) + '</div>'
+      + '<div style="font-size:13px;opacity:.6;margin-top:6px;">พร้อมเพย์ · ' + esc(settings.pp || '') + '</div>';
+  } else if (d.status === 'paid') {
+    body.innerHTML = logo + name + '<div style="font-size:64px;margin:18px 0;">✓</div><div style="font-size:28px;font-weight:800;color:#86efac;">ขอบคุณค่ะ</div>';
+  } else {
+    body.innerHTML = logo + name + '<div style="font-size:17px;opacity:.8;margin-top:10px;">ยินดีต้อนรับ 🙏</div><div style="font-size:13px;opacity:.5;margin-top:20px;">Recipro QR Box</div>';
+  }
+  renderIcons(body);
+}
+
 async function posCheckout() {
   if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
 
@@ -6935,6 +6998,9 @@ async function posCheckout() {
   renderPosGrid();
   renderPosCart();
   render();
+  // QR Box: โชว์ "ขอบคุณ" ที่จอลูกค้า แล้วเคลียร์เป็น idle หลัง 6 วิ
+  posDisplayPush(0, 'paid');
+  setTimeout(() => posDisplayPush(0, 'idle'), 6000);
   showPosReceipt(newBill, total);
 }
 
