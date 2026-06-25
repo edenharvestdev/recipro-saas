@@ -614,7 +614,9 @@
 
     <!-- REPORT PAGE -->
     <section id="reportPage" class="page-section hidden">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <input type="date" id="zDate" style="padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+        <button class="btn btn-primary btn-sm" onclick="printDailyClose()"><span class="ico" data-icon="receipt"></span> ปิดยอดสิ้นวัน (สรุป)</button>
         <button class="btn btn-ghost btn-sm" onclick="printReport()"><span class="ico" data-icon="printer"></span> Export PDF</button>
       </div>
       <!-- Revenue summary cards -->
@@ -5348,6 +5350,7 @@ function loadReport() {
   // Set default date range for history filter
   if ($('rptFrom') && !$('rptFrom').value) $('rptFrom').value = monthStart;
   if ($('rptTo') && !$('rptTo').value) $('rptTo').value = today;
+  if ($('zDate') && !$('zDate').value) $('zDate').value = today;
   renderBillHistory();
   renderIcons($('reportPage'));
 }
@@ -5367,6 +5370,95 @@ function renderPayBreakdown(billsArr) {
       <div style="font-size:11px; color:var(--color-text-muted);">${acc[m].n} บิล</div>
     </div>`).join('');
   renderIcons(el);
+}
+
+// ===== ปิดยอดสิ้นวัน (Z-report) — สรุปขาย+วิธีจ่าย+ลิ้นชัก+ต้นทุน/กำไร ของวันหนึ่ง =====
+function computeDailyClose(date) {
+  const paid = bills.filter(b => b.status === 'paid' && (b.date || '') === date);
+  const grand = paid.reduce((s, b) => s + billTotal(b), 0);
+  const pm = { cash: { sum: 0, n: 0 }, transfer: { sum: 0, n: 0 }, card: { sum: 0, n: 0 } };
+  paid.forEach(b => { const m = pm[b.payMethod] ? b.payMethod : 'cash'; pm[m].sum += billTotal(b); pm[m].n++; });
+  // ต้นทุนวัตถุดิบ (COGS) + เมนูขายดี
+  const prodMap = {};
+  let cogs = 0;
+  paid.forEach(b => (b.items || []).forEach(it => {
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    const q = it.qty || 1;
+    const unitCost = it.matId ? (prod ? (perBase(prod) || 0) : 0)
+      : (prod ? (recipeCost(prod.items || []) / Math.max(1, Number(prod.batchYield) || 1)) : 0);
+    cogs += q * unitCost;
+    const key = it.matId ? ('m:' + it.matId) : (it.recipeId ? ('r:' + it.recipeId) : 'x');
+    if (!prodMap[key]) prodMap[key] = { name: prod ? prod.name : '—', qty: 0, rev: 0 };
+    prodMap[key].qty += q; prodMap[key].rev += q * (it.price || 0);
+  }));
+  const gross = grand - cogs;
+  const opex = (expenses || []).filter(e => e.kind !== 'income' && (e.date || '') === date).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const net = gross - opex;
+  const top = Object.values(prodMap).sort((a, b) => b.rev - a.rev).slice(0, 5);
+  // ลิ้นชัก: กะของวันนั้น (ถ้ามี)
+  const sess = cashSessions.find(s => (s.bizDate || '') === date);
+  let till = null;
+  if (sess) {
+    const expected = sess.openingFloat + pm.cash.sum + (sess.cashIn || 0) - (sess.cashOut || 0);
+    till = { float: sess.openingFloat, cashIn: sess.cashIn || 0, cashOut: sess.cashOut || 0,
+      expected, counted: sess.counted || 0, status: sess.status, diff: (sess.counted || 0) - expected };
+  }
+  return { date, grand, count: paid.length, pm, cogs, gross, opex, net, top, till };
+}
+function printDailyClose() {
+  const date = ($('zDate') && $('zDate').value) || new Date().toISOString().slice(0, 10);
+  const d = computeDailyClose(date);
+  if (!d.count) { ui.alert('วันที่ ' + date + ' ยังไม่มีบิลขาย', { icon: 'info' }); return; }
+  const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const m = v => '฿' + (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const row = (l, v, b) => '<div class="r' + (b ? ' rb' : '') + '"><span>' + e(l) + '</span><span>' + v + '</span></div>';
+  const now = new Date();
+  const printed = now.toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+  let body = '<div class="h">' + e(settings.shopName || 'ร้านของฉัน') + '</div>'
+    + '<div class="sub">สรุปปิดยอดสิ้นวัน (Z)</div>'
+    + '<div class="sub">วันที่ ' + e(date) + ' · พิมพ์ ' + e(printed) + '</div>'
+    + '<div class="hr"></div>'
+    + row('ยอดขายรวม', m(d.grand) + ' <b>(' + d.count + ' บิล)</b>', true)
+    + '<div class="hr dash"></div><div class="sec">แยกตามวิธีจ่าย</div>'
+    + row('เงินสด (' + d.pm.cash.n + ')', m(d.pm.cash.sum))
+    + row('โอน/พร้อมเพย์ (' + d.pm.transfer.n + ')', m(d.pm.transfer.sum))
+    + row('บัตร (' + d.pm.card.n + ')', m(d.pm.card.sum))
+    + '<div class="hr dash"></div><div class="sec">ต้นทุน &amp; กำไร</div>'
+    + row('ต้นทุนวัตถุดิบ (COGS)', '-' + m(d.cogs))
+    + row('กำไรขั้นต้น', m(d.gross), true)
+    + row('ค่าใช้จ่ายดำเนินงาน', '-' + m(d.opex))
+    + row('กำไรสุทธิ', m(d.net), true);
+  if (d.till) {
+    body += '<div class="hr dash"></div><div class="sec">ลิ้นชักเงินสด</div>'
+      + row('เงินทอนตั้งต้น', m(d.till.float))
+      + row('+ ขายเงินสด', m(d.pm.cash.sum))
+      + row('+ เติม / − เบิก', m(d.till.cashIn) + ' / ' + m(d.till.cashOut))
+      + row('= ควรมีในลิ้นชัก', m(d.till.expected), true);
+    if (d.till.status === 'closed') {
+      body += row('นับเงินจริง', m(d.till.counted))
+        + row(d.till.diff === 0 ? 'พอดีเป๊ะ' : (d.till.diff > 0 ? 'เงินเกิน' : 'เงินขาด'),
+              (d.till.diff === 0 ? '' : (d.till.diff > 0 ? '+' : '-')) + m(Math.abs(d.till.diff)), true);
+    } else {
+      body += '<div class="note">* กะยังเปิดอยู่ (ยังไม่ปิดนับเงิน)</div>';
+    }
+  }
+  if (d.top.length) {
+    body += '<div class="hr dash"></div><div class="sec">เมนูขายดี</div>'
+      + d.top.map((t, i) => row((i + 1) + '. ' + t.name + ' ×' + t.qty, m(t.rev))).join('');
+  }
+  body += '<div class="hr"></div><div class="foot">Recipro · ปิดยอด ' + e(printed) + '</div>';
+  const css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+    + 'body{width:80mm;padding:5mm 4mm;color:#000}.h{text-align:center;font-size:18px;font-weight:800}'
+    + '.sub{text-align:center;font-size:11px;color:#333}.sec{font-size:12px;font-weight:700;margin:4px 0 2px}'
+    + '.hr{border-top:2px solid #000;margin:6px 0}.hr.dash{border-top:1px dashed #888}'
+    + '.r{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;gap:8px}.r span:last-child{text-align:right;white-space:nowrap}'
+    + '.rb{font-weight:800;font-size:14px}.note{font-size:11px;color:#666;margin-top:3px}'
+    + '.foot{text-align:center;font-size:10px;color:#888;margin-top:4px}';
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ปิดยอด ' + e(date) + '</title><style>' + css + '</style></head><body>' + body
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank');
+  if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ===== รายงานอันดับ (สินค้า + ตัวเลือก) ตามช่วงเวลา =====
