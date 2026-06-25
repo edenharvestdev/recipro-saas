@@ -265,6 +265,46 @@ router.post('/pos/sell', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ยกเลิก/คืนบิล — คืนสต๊อกโดย "ย้อน stock_movements ของบิลนั้น" (แม่นยำ: ครอบคลุม options/สูตรซ้อน
+// อัตโนมัติเพราะคืนตามที่ตัดจริง) + กันคืนซ้ำด้วยการเช็ค movement kind='void' ของบิลเดิม
+router.post('/pos/void', async (req, res) => {
+  const { bill_no } = req.body || {};
+  if (!bill_no) return res.status(400).json({ error: 'no bill_no' });
+  const saleNote = 'ขาย ' + bill_no;
+  const voidNote = 'ยกเลิก ' + bill_no;
+  try {
+    const out = await tx(async (c) => {
+      // กันคืนซ้ำ: ถ้าเคยมี movement void ของบิลนี้แล้ว ไม่ทำซ้ำ
+      const dup = await c.query(
+        "select 1 from stock_movements where shop_id=$1 and note=$2 and kind='void' limit 1", [req.shopId, voidNote]);
+      if (dup.rowCount) return { already: true, results: [] };
+      // หา movement การขายของบิลนี้ (ที่ตัดสต๊อกจริง)
+      const moves = (await c.query(
+        "select id, ref_type, ref_id, ref_name, unit, delta from stock_movements where shop_id=$1 and note=$2 and kind='sale'",
+        [req.shopId, saleNote])).rows;
+      const results = [];
+      for (const mv of moves) {
+        const restore = -Number(mv.delta);            // delta ตอนขายติดลบ → คืน = บวกกลับเท่าที่ตัดจริง
+        if (!(restore > 0)) continue;
+        const meta = TBL[mv.ref_type]; if (!meta) continue;
+        const cur = (await c.query(
+          `select ${meta.col} as q, name from ${meta.table} where id=$1 and shop_id=$2 for update`, [mv.ref_id, req.shopId])).rows[0];
+        if (!cur) continue;
+        const before = Number(cur.q) || 0;
+        const after = before + restore;
+        await c.query(`update ${meta.table} set ${meta.col}=$1, updated_at=now() where id=$2`, [after, mv.ref_id]);
+        await logMove(c, req.shopId, req.userId, {
+          kind: 'void', ref_type: mv.ref_type, ref_id: mv.ref_id, ref_name: mv.ref_name || cur.name,
+          unit: mv.unit, before, after, note: voidNote, consumption_category: 'void' });
+        results.push({ type: mv.ref_type, ref_id: mv.ref_id, before, after });
+      }
+      return { results, restored: results.length };
+    });
+    if (out.already) return res.json({ ok: true, already: true, results: [] });
+    res.json({ ok: true, ...out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============================================================
 // P5: เตือนสั่งของ — รายการวัตถุดิบที่ stock ถึง/ต่ำกว่าจุดสั่งซื้อ (low_stock)
 // คืน supplier + ลิงก์สั่งซื้อ เพื่อสั่งต่อได้ทันที (ข้าม ASSET ที่ไม่ตัดสต๊อก)

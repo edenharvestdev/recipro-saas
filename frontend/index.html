@@ -5627,8 +5627,8 @@ function renderBillHistory() {
     (!to   || (b.date || '') <= to)
   ).sort((a, b) => (b.date || '') > (a.date || '') ? 1 : -1);
 
-  const statusLabel = { paid: 'ชำระแล้ว', wait: 'รอชำระ', ship: 'จัดส่งแล้ว' };
-  const statusColor = { paid: '#22c55e', wait: '#f59e0b', ship: '#3b82f6' };
+  const statusLabel = { paid: 'ชำระแล้ว', wait: 'รอชำระ', ship: 'จัดส่งแล้ว', void: 'ยกเลิกแล้ว' };
+  const statusColor = { paid: '#22c55e', wait: '#f59e0b', ship: '#3b82f6', void: '#dc2626' };
   $('rptBillList').innerHTML = filtered.length ? filtered.map(b => {
     const total = billTotal(b);
     const color = statusColor[b.status] || '#999';
@@ -6790,20 +6790,21 @@ function renderSalesLog() {
       return `${r ? esc(r.name) : 'สินค้า'} ×${it.qty}`;
     }).join(', ');
     const total = (b.items || []).reduce((s, it) => s + (it.qty * (it.price || 0)), 0);
-    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border-soft);">
+    const isVoid = b.status === 'void';
+    return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border-soft);${isVoid ? 'opacity:.6;' : ''}">
       <div>
-        <div style="font-weight:700;font-size:14px;">${esc(b.billNo || b.id.slice(0,8))}</div>
+        <div style="font-weight:700;font-size:14px;">${esc(b.billNo || b.id.slice(0,8))}${isVoid ? ' <span style="color:#dc2626;font-size:11px;border:1px solid #dc2626;border-radius:8px;padding:0 6px;">ยกเลิกแล้ว</span>' : ''}</div>
         <div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;">${b.date || ''}</div>
         <div style="font-size:12px;margin-top:4px;color:var(--color-text-soft);">${itemsText}</div>
       </div>
       <div style="text-align:right;flex-shrink:0;">
-        <div style="font-weight:700;font-size:15px;color:var(--color-primary);">${money(total)}</div>
+        <div style="font-weight:700;font-size:15px;color:var(--color-primary);${isVoid ? 'text-decoration:line-through;' : ''}">${money(total)}</div>
         <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;" onclick="reprintReceipt('${b.id}')">
           <span class="ico" data-icon="printer"></span> พิมพ์ซ้ำ
         </button>
-        <button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;" onclick="printKitchen('${b.id}')">
-          <span class="ico" data-icon="clipboard-list"></span> ส่งหลังร้าน
-        </button>
+        ${isVoid ? '' : `<button class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:11px;color:#dc2626;" onclick="voidBill('${b.id}')">
+          <span class="ico" data-icon="x-circle"></span> ยกเลิกบิล
+        </button>`}
       </div>
     </div>`;
   }).join('');
@@ -6815,6 +6816,40 @@ function reprintReceipt(billId) {
   if (!b) return;
   const total = (b.items || []).reduce((s, it) => s + (it.qty * (it.price || 0)), 0);
   showPosReceipt(b, total);
+}
+// ยกเลิก/คืนบิล: คืนสต๊อก (ย้อน movement จริงฝั่ง server) + คืนแต้มสมาชิก + บิลเป็น void (ออกจากยอดขาย/ลิ้นชัก/รายงาน)
+async function voidBill(billId) {
+  const b = bills.find(x => x.id === billId);
+  if (!b || b.status === 'void') return;
+  const total = billTotal(b);
+  if (!(await ui.confirm('ยกเลิกบิล ' + (b.billNo || '') + ' (' + money(total) + ')?\n\nระบบจะคืนสต๊อกที่ตัดไป + คืนแต้มสมาชิก และตัดบิลนี้ออกจากยอดขาย — ย้อนกลับไม่ได้', { okText: 'ยกเลิกบิล', danger: true }))) return;
+  // คืนสต๊อกผ่าน engine (แม่นยำตาม movement ที่ตัดจริง) — ถ้า mock/พลาด ข้ามส่วน server
+  if (!isMockMode) {
+    try {
+      const res = await API.post('/api/pos/void', { bill_no: b.billNo });
+      if (res && Array.isArray(res.results)) {
+        res.results.forEach(rr => {
+          if (rr.after == null) return;
+          if (rr.type === 'material') { const m = matById(rr.ref_id); if (m) m.stock = Number(rr.after); }
+          else if (rr.type === 'recipe') { const s = recById(rr.ref_id); if (s) s.fgStock = Number(rr.after); }
+        });
+      }
+    } catch (e) { ui.alert('คืนสต๊อกไม่สำเร็จ: ' + e.message + '\nยังไม่ยกเลิกบิล', { icon: 'alert-triangle' }); return; }
+  }
+  // คืนแต้มสมาชิก: ลบแต้มที่เคยได้ + คืนแต้มที่ใช้แลก + ลดยอด/จำนวนครั้ง
+  if (b.memberPhone) {
+    const c = findCustomerByPhone(b.memberPhone);
+    if (c) {
+      const earned = Math.floor((Number(total) || 0) / POINTS_PER_BAHT);
+      c.points = Math.max(0, (Number(c.points) || 0) - earned + (Number(b.redeemedPoints) || 0));
+      c.visits = Math.max(0, (Number(c.visits) || 0) - 1);
+      c.totalSpent = Math.max(0, (Number(c.totalSpent) || 0) - (Number(total) || 0));
+    }
+  }
+  b.status = 'void';
+  saveAll();
+  renderSalesLog(); render();
+  if (ui.toast) ui.toast('ยกเลิกบิลแล้ว · คืนสต๊อก/แต้มเรียบร้อย');
 }
 
 // ใบส่งงานหลังร้าน — รองรับ 2 แบบตาม settings.kitchenTicketMode: 'receipt' (ใบรวม 80mm) | 'sticker' (สติกเกอร์ต่อแก้ว 50×40)
