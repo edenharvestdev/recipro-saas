@@ -8153,9 +8153,24 @@ async function commitRecipeImport() {
 // ============================================================
 const LOG_LABELS = {
   'auth.login': 'เข้าสู่ระบบ', 'auth.register': 'สมัคร/เปิดร้านใหม่',
-  'data.sync': 'บันทึกข้อมูล', 'billing.checkout': 'เริ่มชำระเงิน',
+  'data.sync': 'บันทึกข้อมูล', 'data.delete': '🗑️ ลบรายการ', 'billing.checkout': 'เริ่มชำระเงิน',
   'admin.shop.create': 'สร้างร้านใหม่', 'admin.shop.status': 'เปลี่ยนสถานะร้าน',
+  'admin.clone-shop': 'คัดลอกร้าน',
 };
+// แปลง detail เป็นข้อความไทยอ่านง่าย (เน้นการลบ — เวลาข้อมูลหายจะได้รู้ว่าใครลบอะไร)
+function fmtLogDetail(action, d) {
+  if (!d) return '';
+  let o = d; if (typeof d === 'string') { try { o = JSON.parse(d); } catch (e) { return d; } }
+  if (action === 'data.delete') {
+    return 'ลบ ' + (o.kind || o.table || '') + ': “' + (o.name || '(ไม่มีชื่อ)') + '”';
+  }
+  if (action === 'data.sync') {
+    const p = []; if (o.materials != null) p.push('วัตถุดิบ ' + o.materials); if (o.recipes != null) p.push('สูตร ' + o.recipes);
+    if (o.bills != null) p.push('บิล ' + o.bills); return p.join(' · ');
+  }
+  if (action === 'auth.login' || action === 'auth.register') return o.email || '';
+  return typeof o === 'object' ? JSON.stringify(o) : String(o);
+}
 async function loadLogs() {
   const el = $('logList'); if (!el) return;
   if (isMockMode) { el.innerHTML = '<div style="color:var(--color-text-muted); font-size:13px;">โหมดจำลองยังไม่มีบันทึกกิจกรรม (ใช้งานบนระบบจริง)</div>'; return; }
@@ -8175,10 +8190,11 @@ function renderLogs(logs, scope) {
     </tr></thead><tbody>${logs.map(l => {
       const when = new Date(l.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
       const label = LOG_LABELS[l.action] || l.action;
-      const detail = l.detail ? esc(typeof l.detail === 'string' ? l.detail : JSON.stringify(l.detail)) : '';
-      return `<tr>
+      const detail = esc(fmtLogDetail(l.action, l.detail));
+      const isDel = l.action === 'data.delete';
+      return `<tr${isDel ? ' style="background:rgba(220,38,38,.06);"' : ''}>
         <td style="white-space:nowrap; font-size:12px;">${when}</td>
-        <td><b>${esc(label)}</b></td>
+        <td><b${isDel ? ' style="color:#dc2626;"' : ''}>${esc(label)}</b></td>
         <td style="font-size:12px;">${esc(l.email || '-')}</td>
         ${scope === 'all' ? `<td style="font-size:12px;">${esc(l.shop_name || '-')}</td>` : ''}
         <td style="font-size:12px; color:var(--color-text-muted);">${detail}</td>
