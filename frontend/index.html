@@ -644,6 +644,17 @@
         <div id="rptPayBreakdown" style="display:flex; gap:12px; flex-wrap:wrap;"></div>
       </div>
 
+      <!-- ส่งออกข้อมูลบัญชีให้นักบัญชี / ยื่นภาษี (Excel/CSV) -->
+      <div class="glass-card" style="margin-bottom:20px;">
+        <h2 style="margin:0 0 6px;"><span class="ico" data-icon="file-spreadsheet"></span> ส่งออกบัญชี (Excel/CSV)</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">ดาวน์โหลดรายการขาย + รายจ่ายของเดือนเป็นไฟล์ เปิดด้วย Excel/Google Sheets ส่งนักบัญชีได้เลย (รองรับภาษาไทย)</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="month" id="acctMonth" style="padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+          <button class="btn btn-primary btn-sm" onclick="exportSalesCSV()"><span class="ico" data-icon="download"></span> ยอดขาย CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportExpensesCSV()"><span class="ico" data-icon="download"></span> รายจ่าย CSV</button>
+        </div>
+      </div>
+
       <!-- 7-day bar chart -->
       <div class="glass-card" style="margin-bottom:20px;">
         <h2><span class="ico" data-icon="bar-chart-2"></span> ยอดขาย 7 วันล่าสุด</h2>
@@ -5389,6 +5400,7 @@ function loadReport() {
   if ($('rptFrom') && !$('rptFrom').value) $('rptFrom').value = monthStart;
   if ($('rptTo') && !$('rptTo').value) $('rptTo').value = today;
   if ($('zDate') && !$('zDate').value) $('zDate').value = today;
+  if ($('acctMonth') && !$('acctMonth').value) $('acctMonth').value = today.slice(0, 7);
   renderBillHistory();
   renderIcons($('reportPage'));
 }
@@ -5409,6 +5421,57 @@ function renderPayBreakdown(billsArr) {
       <div style="font-size:11px; color:var(--color-text-muted);">${acc[m].n} บิล</div>
     </div>`).join('');
   renderIcons(el);
+}
+
+// ===== ส่งออกบัญชี CSV (เปิดด้วย Excel ได้, ใส่ BOM ให้ภาษาไทยไม่เพี้ยน) =====
+function csvCell(v) { v = String(v == null ? '' : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function downloadCSV(filename, rows) {
+  const csv = '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function acctMonthVal() { return ($('acctMonth') && $('acctMonth').value) || new Date().toISOString().slice(0, 7); }
+function exportSalesCSV() {
+  const mo = acctMonthVal();
+  const vatOn = !!settings.vatEnabled; const vatRate = settings.vatRate != null ? Number(settings.vatRate) : 7;
+  const list = bills.filter(b => (b.date || '').startsWith(mo) && (b.status === 'paid' || b.status === 'void'))
+    .sort((a, b) => (a.billNo || '').localeCompare(b.billNo || ''));
+  if (!list.length) { ui.alert('เดือน ' + mo + ' ยังไม่มีบิล', { icon: 'info' }); return; }
+  const rows = [['วันที่', 'เลขบิล', 'รายการ', 'ยอดก่อนลด', 'ส่วนลด', 'มูลค่าก่อนภาษี', 'VAT', 'ยอดสุทธิ', 'วิธีจ่าย', 'สถานะ', 'สมาชิก']];
+  let tGross = 0, tDisc = 0, tVat = 0, tNet = 0;
+  list.forEach(b => {
+    const sub = (b.items || []).reduce((s, it) => s + (it.qty || 1) * (it.price || 0), 0);
+    const total = billTotal(b);
+    const disc = sub - (b.taxT === '%' ? total / (1 + (b.taxV || 0) / 100) : total - (b.taxV || 0));
+    const voided = b.status === 'void';
+    const net = voided ? 0 : total;
+    const base = (vatOn && !voided) ? total / (1 + vatRate / 100) : (voided ? 0 : total);
+    const vat = (vatOn && !voided) ? total - base : 0;
+    const itemsText = (b.items || []).map(it => { const r = it.matId ? matById(it.matId) : recById(it.recipeId); return (it.rewardName || (r ? r.name : 'สินค้า')) + '×' + (it.qty || 1); }).join(' / ');
+    if (!voided) { tGross += sub; tDisc += (sub - total); tVat += vat; tNet += net; }
+    rows.push([b.date || '', b.billNo || '', itemsText, sub.toFixed(2), (sub - total).toFixed(2), base.toFixed(2), vat.toFixed(2), net.toFixed(2),
+      PAY_METHOD_LABELS[b.payMethod] || 'เงินสด', voided ? 'ยกเลิก' : 'ชำระแล้ว', b.memberPhone || '']);
+  });
+  rows.push([]); rows.push(['รวม (ไม่นับบิลยกเลิก)', '', '', tGross.toFixed(2), tDisc.toFixed(2), (tNet - tVat).toFixed(2), tVat.toFixed(2), tNet.toFixed(2), '', '', '']);
+  downloadCSV('recipro-ยอดขาย-' + mo + '.csv', rows);
+}
+function exportExpensesCSV() {
+  const mo = acctMonthVal();
+  const list = (expenses || []).filter(e => (e.date || '').startsWith(mo)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  if (!list.length) { ui.alert('เดือน ' + mo + ' ยังไม่มีรายรับ-จ่าย', { icon: 'info' }); return; }
+  const rows = [['วันที่', 'ประเภท', 'หมวด', 'รายละเอียด', 'จำนวนเงิน', 'วิธีจ่าย', 'หมายเหตุ']];
+  let tIn = 0, tOut = 0;
+  const PAYT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร' };
+  list.forEach(e => {
+    const amt = Number(e.amount) || 0; const isIn = e.kind === 'income';
+    if (isIn) tIn += amt; else tOut += amt;
+    rows.push([e.date || '', isIn ? 'รายรับ' : 'รายจ่าย', e.category || '', e.description || '', amt.toFixed(2), PAYT[e.payType] || e.payType || '', e.note || '']);
+  });
+  rows.push([]); rows.push(['รวมรายรับ', '', '', '', tIn.toFixed(2), '', '']); rows.push(['รวมรายจ่าย', '', '', '', tOut.toFixed(2), '', '']);
+  downloadCSV('recipro-รายจ่าย-' + mo + '.csv', rows);
 }
 
 // ===== ปิดยอดสิ้นวัน (Z-report) — สรุปขาย+วิธีจ่าย+ลิ้นชัก+ต้นทุน/กำไร ของวันหนึ่ง =====
