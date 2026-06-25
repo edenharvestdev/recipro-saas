@@ -1225,20 +1225,18 @@
             <select id="cloneDstShop" style="width:100%;"></select>
           </div>
         </div>
-        <div style="margin-bottom:14px;">
-          <label style="font-size:13px;font-weight:700;display:block;margin-bottom:8px;">สิ่งที่จะโคลน:</label>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="cloneWhat" value="materials" checked> วัตถุดิบเท่านั้น</label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="cloneWhat" value="recipes"> สูตร/เมนูเท่านั้น (รวม recipe_items)</label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"><input type="radio" name="cloneWhat" value="all"> ทั้งหมด (วัตถุดิบ + สูตร + ตัวเลือก)</label>
-          </div>
-        </div>
         <div style="background:#fef3c7;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:14px;">
-          <span class="ico" data-icon="alert-triangle"></span> ระบบจะ Backup ข้อมูลก่อนลบ และโคลนข้อมูลใหม่ — ข้อมูลยอดขาย/บิลของร้านปลายทางจะ <b>ไม่ถูกแตะต้อง</b>
+          <span class="ico" data-icon="alert-triangle"></span> โคลน <b>ทั้งหมด</b> (วัตถุดิบ + สูตร + ตัวเลือก + ผู้ขาย + การตั้งค่า) ด้วย <b>id ใหม่</b> ไม่ชนกันข้ามสาขา · <b>สต๊อกตั้งต้น 0</b> (แต่ละสาขาใส่เอง) · master เดิมของปลายทางถูกแทนที่ · ยอดขาย/บิลไม่ถูกแตะ
         </div>
-        <button class="btn btn-primary" onclick="doCloneShop()" style="background:#dc2626;border-color:#dc2626;">
-          <span class="ico" data-icon="copy"></span> เริ่มโคลน (ลบแล้วคัดลอกใหม่)
-        </button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-primary" onclick="doCloneShop()" style="background:#dc2626;border-color:#dc2626;">
+            <span class="ico" data-icon="copy"></span> โคลนตรง: ต้นทาง → ปลายทาง
+          </button>
+          <span style="color:var(--color-text-muted);font-size:12px;">— หรือผ่านไฟล์ —</span>
+          <button class="btn btn-secondary" onclick="exportShopBundle()"><span class="ico" data-icon="download"></span> ส่งออกร้านต้นทาง (ไฟล์)</button>
+          <label class="btn btn-secondary" style="cursor:pointer;margin:0;"><span class="ico" data-icon="upload"></span> นำเข้าไฟล์ → ร้านปลายทาง
+            <input type="file" accept="application/json,.json" onchange="importShopBundle(this)" style="display:none;"></label>
+        </div>
         <div id="cloneResult" style="margin-top:12px;font-size:13px;"></div>
       </div>
     </section>
@@ -7579,11 +7577,50 @@ async function doCloneShop() {
   const resEl = $('cloneResult');
   if (resEl) resEl.innerHTML = '<span style="color:var(--color-secondary);">⏳ กำลังโคลน...</span>';
   try {
-    const r = await API.post('/api/admin/clone-shop', { srcShopId: srcId, dstShopId: dstId, what });
-    if (resEl) resEl.innerHTML = `<span style="color:#16a34a;">✓ โคลนเสร็จแล้ว — วัตถุดิบ: ${r.materials}, สูตร: ${r.recipes}, ตัวเลือก: ${r.optionGroups||0}</span>`;
+    // engine ใหม่: สร้าง id ใหม่ + remap ครบ (วัตถุดิบ/สูตร/ตัวเลือก/ผู้ขาย/ตั้งค่า) · สต๊อกตั้งต้น 0
+    const r = await API.post('/api/admin/clone-shop2', { srcShopId: srcId, dstShopId: dstId, resetStock: true, includeSettings: true });
+    const c = r.cloned || {};
+    if (resEl) resEl.innerHTML = `<span style="color:#16a34a;">✓ โคลนเสร็จ — วัตถุดิบ ${c.materials} · สูตร ${c.recipes} · ส่วนผสม ${c.recipe_items} · กลุ่มตัวเลือก ${c.option_groups} · ผู้ขาย ${c.suppliers} (สต๊อกตั้งต้น 0)</span>`;
   } catch(e) {
     if (resEl) resEl.innerHTML = `<span style="color:#dc2626;">✗ ${e.message}</span>`;
   }
+}
+// ส่งออกข้อมูลร้าน (master) เป็นไฟล์ JSON
+async function exportShopBundle() {
+  const srcId = $('cloneSrcShop')?.value;
+  if (!srcId) { ui.alert('เลือกร้านต้นทางก่อน'); return; }
+  const name = $('cloneSrcShop')?.selectedOptions[0]?.text || srcId;
+  const resEl = $('cloneResult');
+  if (resEl) resEl.innerHTML = '<span style="color:var(--color-secondary);">⏳ กำลังส่งออก...</span>';
+  try {
+    const bundle = await API.get('/api/admin/export-shop/' + srcId);
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = 'recipro-ร้าน-' + name.replace(/[^\wก-๙\- ]/g, '').trim() + '.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (resEl) resEl.innerHTML = `<span style="color:#16a34a;">✓ ส่งออกแล้ว — วัตถุดิบ ${bundle.counts?.materials||0} · สูตร ${bundle.counts?.recipes||0}</span>`;
+  } catch (e) { if (resEl) resEl.innerHTML = `<span style="color:#dc2626;">✗ ${e.message}</span>`; }
+}
+// นำเข้าไฟล์ JSON ลงร้านปลายทาง (id ใหม่ + remap)
+async function importShopBundle(fileInput) {
+  const dstId = $('cloneDstShop')?.value;
+  if (!dstId) { ui.alert('เลือกร้านปลายทางก่อน'); return; }
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  const dstName = $('cloneDstShop')?.selectedOptions[0]?.text || dstId;
+  const resEl = $('cloneResult');
+  try {
+    const bundle = JSON.parse(await file.text());
+    if (!bundle.data) { ui.alert('ไฟล์ไม่ถูกต้อง (ไม่มี data)'); return; }
+    const ok = await ui.confirm(`นำเข้าข้อมูลจากไฟล์ลงร้าน "${dstName}"?\n\n⚠️ master เดิมของร้านปลายทางจะถูกแทนที่ (สต๊อกตั้งต้น 0)`, { okText: 'นำเข้า', danger: true });
+    if (!ok) { fileInput.value = ''; return; }
+    if (resEl) resEl.innerHTML = '<span style="color:var(--color-secondary);">⏳ กำลังนำเข้า...</span>';
+    const r = await API.post('/api/admin/import-shop', { dstShopId: dstId, bundle, replace: true, resetStock: true, includeSettings: true });
+    const c = r.imported || {};
+    if (resEl) resEl.innerHTML = `<span style="color:#16a34a;">✓ นำเข้าแล้ว — วัตถุดิบ ${c.materials} · สูตร ${c.recipes} · ส่วนผสม ${c.recipe_items} · กลุ่มตัวเลือก ${c.option_groups}</span>`;
+  } catch (e) { if (resEl) resEl.innerHTML = `<span style="color:#dc2626;">✗ ${e.message}</span>`; }
+  fileInput.value = '';
 }
 
 function renderShopsTableHTML(shops) {
