@@ -636,6 +636,12 @@
         </div>
       </div>
 
+      <!-- สรุปยอดวันนี้ แยกตามวิธีจ่าย (เงินสด/โอน/บัตร) -->
+      <div class="glass-card" style="margin-bottom:20px;">
+        <h2 style="margin:0 0 12px;"><span class="ico" data-icon="wallet"></span> ยอดขายวันนี้ แยกตามวิธีจ่าย</h2>
+        <div id="rptPayBreakdown" style="display:flex; gap:12px; flex-wrap:wrap;"></div>
+      </div>
+
       <!-- 7-day bar chart -->
       <div class="glass-card" style="margin-bottom:20px;">
         <h2><span class="ico" data-icon="bar-chart-2"></span> ยอดขาย 7 วันล่าสุด</h2>
@@ -782,6 +788,14 @@
                     <option value="฿">฿</option>
                   </select>
                 </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+                <span style="font-size:13px;color:var(--color-text-muted);">วิธีจ่าย</span>
+                <select id="posPayMethod" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+                  <option value="cash">เงินสด</option>
+                  <option value="transfer">โอน / พร้อมเพย์</option>
+                  <option value="card">บัตร</option>
+                </select>
               </div>
               <div class="pos-cart-grand">
                 <span class="label">ยอดรวม</span>
@@ -3191,6 +3205,7 @@ async function syncToSupabase() {
       id: b.id, number: b.billNo, status: b.status,
       items_json: {
         items: b.items, cust: b.cust, sender: b.sender, tableNo: b.tableNo || '', memberPhone: b.memberPhone || '',
+        payMethod: b.payMethod || 'cash',
         discV: b.discV, discT: b.discT, taxV: b.taxV, taxT: b.taxT, date: b.date
       }
     })),
@@ -5308,6 +5323,9 @@ function loadReport() {
   $('rptWeek').textContent   = money(wk.sum); $('rptWeekCount').textContent   = `${wk.count} บิล`;
   $('rptMonth').textContent  = money(mo.sum); $('rptMonthCount').textContent  = `${mo.count} บิล`;
 
+  // แยกยอดวันนี้ตามวิธีจ่าย (เงินสด/โอน/บัตร) — ใช้กระทบยอดลิ้นชัก/บัญชี
+  renderPayBreakdown(todayBills);
+
   // 7-day bar chart
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now - (6 - i) * 86400000);
@@ -5332,6 +5350,23 @@ function loadReport() {
   if ($('rptTo') && !$('rptTo').value) $('rptTo').value = today;
   renderBillHistory();
   renderIcons($('reportPage'));
+}
+
+// ===== สรุปยอดแยกตามวิธีจ่าย =====
+const PAY_METHOD_LABELS = { cash: 'เงินสด', transfer: 'โอน / พร้อมเพย์', card: 'บัตร' };
+const PAY_METHOD_ICONS = { cash: 'banknote', transfer: 'smartphone', card: 'credit-card' };
+const PAY_METHOD_COLORS = { cash: '#0F6E56', transfer: '#2563eb', card: '#8b5cf6' };
+function renderPayBreakdown(billsArr) {
+  const el = $('rptPayBreakdown'); if (!el) return;
+  const acc = { cash: { sum: 0, n: 0 }, transfer: { sum: 0, n: 0 }, card: { sum: 0, n: 0 } };
+  billsArr.forEach(b => { const m = acc[b.payMethod] ? b.payMethod : 'cash'; acc[m].sum += billTotal(b); acc[m].n++; });
+  el.innerHTML = ['cash', 'transfer', 'card'].map(m => `
+    <div style="flex:1; min-width:130px; text-align:center; background:var(--surface-2); border-radius:10px; padding:12px;">
+      <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:4px;"><span class="ico" data-icon="${PAY_METHOD_ICONS[m]}"></span> ${PAY_METHOD_LABELS[m]}</div>
+      <div style="font-size:22px; font-weight:800; color:${PAY_METHOD_COLORS[m]};">${money(acc[m].sum)}</div>
+      <div style="font-size:11px; color:var(--color-text-muted);">${acc[m].n} บิล</div>
+    </div>`).join('');
+  renderIcons(el);
 }
 
 // ===== รายงานอันดับ (สินค้า + ตัวเลือก) ตามช่วงเวลา =====
@@ -6110,6 +6145,7 @@ function posClearCart() {
   posCart = [];
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
+  if ($('posPayMethod')) $('posPayMethod').value = 'cash';
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
   if ($('posRedeemPts')) $('posRedeemPts').value = 0;
   if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
@@ -6418,6 +6454,7 @@ async function posCheckout() {
     sender: settings.shopName,
     tableNo: ($('posTableNo')?.value || '').trim(),
     memberPhone: ($('posMemberPhone')?.value || '').trim(),
+    payMethod: $('posPayMethod')?.value || 'cash',
     redeemedPoints: redeemPts,
     discV: discVal, discT: discType,
     taxV: 0, taxT: '%',
@@ -6498,6 +6535,7 @@ async function posCheckout() {
   posCart = [];
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
+  if ($('posPayMethod')) $('posPayMethod').value = 'cash';
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
   if ($('posRedeemPts')) $('posRedeemPts').value = 0;
   if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
