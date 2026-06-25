@@ -1033,14 +1033,29 @@
         </table></div>
       </div>
       <div class="glass-card admin-only" id="payGatewayCard" style="margin-bottom:18px;">
-        <h2 style="margin:0 0 4px;"><span class="ico" data-icon="credit-card"></span> รับเงินออนไลน์ (Payment Gateway · Omise)</h2>
-        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">ใส่คีย์ Omise ของร้าน → รับ QR/บัตร ยืนยันเงินอัตโนมัติ (จ่ายแล้วจอ QR Box เด้ง "ขอบคุณ" เอง) · <b id="payStatusBadge"></b><br>สมัคร + ดู test key ที่ omise.co (dashboard.omise.co) · secret key เก็บฝั่งเซิร์ฟเวอร์ ไม่แสดงซ้ำ</p>
+        <h2 style="margin:0 0 4px;"><span class="ico" data-icon="credit-card"></span> รับเงินออนไลน์</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">รับเงินได้ 2 แบบ — เลือกได้ตามร้าน · <b id="payStatusBadge"></b></p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div style="flex:1;min-width:200px;background:#E1F5EE;border-radius:10px;padding:10px 12px;">
+            <div style="font-size:13px;font-weight:700;color:#0F6E56;">① QR พร้อมเพย์ของร้านเอง</div>
+            <div style="font-size:11.5px;color:#0F6E56;margin-top:3px;"><b>ฟรี ไม่มีค่าธรรมเนียม</b> · ใช้เบอร์/บัญชีพร้อมเพย์ร้าน · พนักงานยืนยันรับเงินเอง (มีปุ่ม "รับเงิน QR" ที่หน้าขายอยู่แล้ว)</div>
+          </div>
+          <div style="flex:1;min-width:200px;background:var(--surface-2);border-radius:10px;padding:10px 12px;">
+            <div style="font-size:13px;font-weight:700;">② Payment Gateway (Omise) — ยืนยันอัตโนมัติ</div>
+            <div style="font-size:11.5px;color:var(--color-text-muted);margin-top:3px;">รับบัตร+QR+e-wallet · จ่ายแล้วจอเด้ง "ขอบคุณ" เอง · <b style="color:#dc2626;">มีค่าธรรมเนียมต่อรายการ</b></div>
+          </div>
+        </div>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#9a3412;margin-bottom:12px;">
+          <b><span class="ico" data-icon="info"></span> แจ้งค่าธรรมเนียม Gateway:</b> QR พร้อมเพย์ ~1.65% · บัตรเครดิต ~3.65% (+ VAT 7%) ต่อรายการ — <b>หักโดยผู้ให้บริการ (Omise) จากบัญชีร้าน ไม่ใช่ Recipro</b> · เรท/เงื่อนไขเป็นไปตามที่ผู้ให้บริการกำหนดและอาจเปลี่ยนแปลง · ร้านต้องสมัคร + ยอมรับข้อตกลงกับผู้ให้บริการเอง
+        </div>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">ใส่คีย์ Omise ของร้าน (สมัคร/ดู test key ที่ dashboard.omise.co) · secret key เก็บฝั่งเซิร์ฟเวอร์ ไม่แสดงซ้ำ</p>
         <div class="grid-2" style="margin-bottom:10px;">
           <div class="field"><label>Public key (pkey_…)</label><input id="payPubKey" placeholder="pkey_test_..." autocomplete="off"></div>
           <div class="field"><label>Secret key (skey_… — ใส่เพื่อบันทึก/เปลี่ยน)</label><input id="paySecKey" type="password" placeholder="skey_test_..." autocomplete="off"></div>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:12px;cursor:pointer;margin:0 0 10px;"><input type="checkbox" id="payTerms" style="width:16px;height:16px;margin-top:1px;"> <span>ฉันเข้าใจและยอมรับ <b>เรทค่าธรรมเนียม + เงื่อนไขการให้บริการ</b>ของผู้ให้บริการชำระเงิน และรับผิดชอบค่าธรรมเนียมที่เกิดขึ้นเอง</span></label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:0;"><input type="checkbox" id="payEnable" style="width:16px;height:16px;"> เปิดใช้รับเงินออนไลน์</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:0;"><input type="checkbox" id="payEnable" style="width:16px;height:16px;"> เปิดใช้ Payment Gateway</label>
           <button class="btn btn-primary btn-sm" onclick="savePayKeys()"><span class="ico" data-icon="save"></span> บันทึกคีย์</button>
         </div>
       </div>
@@ -6795,7 +6810,10 @@ async function loadPayStatus() {
   } catch (e) {}
 }
 async function savePayKeys() {
-  const body = { public_key: ($('payPubKey')?.value || '').trim(), enable: !!$('payEnable')?.checked };
+  const enable = !!$('payEnable')?.checked;
+  // เปิดใช้ gateway ต้องยอมรับเรท/เงื่อนไขก่อน
+  if (enable && !$('payTerms')?.checked) { ui.alert('กรุณาติ๊กยอมรับเรทค่าธรรมเนียม + เงื่อนไข ก่อนเปิดใช้ Payment Gateway', { icon: 'alert-triangle' }); return; }
+  const body = { public_key: ($('payPubKey')?.value || '').trim(), enable };
   const sec = ($('paySecKey')?.value || '').trim();
   if (sec) body.secret_key = sec;
   try {
