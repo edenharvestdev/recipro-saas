@@ -1244,6 +1244,22 @@
         </div>
       </div>
 
+      <!-- บิลลิ่ง: สถานะแพ็กเกจทุกร้าน + ต่ออายุ manual (เฟส 2) -->
+      <div class="glass-card" style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <h2 style="margin:0;"><span class="ico" data-icon="credit-card"></span> บิลลิ่ง — สถานะแพ็กเกจทุกร้าน</h2>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="renderBillingAdmin()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรช</button>
+            <button class="btn btn-ghost btn-sm" onclick="openPlansAdmin()"><span class="ico" data-icon="tags"></span> จัดการแพ็กเกจ</button>
+          </div>
+        </div>
+        <p style="color:var(--color-text-muted);font-size:13px;margin:6px 0 12px;">ร้านที่ใกล้หมด/หมดอายุเด้งขึ้นบนสุด · กด "ต่ออายุ" เมื่อร้านโอนเงินมา (manual)</p>
+        <div class="table-scroll"><table class="lst">
+          <thead><tr><th>ร้าน</th><th>แพ็กเกจ</th><th>สถานะ</th><th class="r">หมดอายุ</th><th class="r">จ่ายล่าสุด</th><th></th></tr></thead>
+          <tbody id="billingList"></tbody>
+        </table></div>
+      </div>
+
       <div class="grid-2">
         <!-- สร้างร้านและไอดีร้าน -->
         <div class="glass-card">
@@ -3981,6 +3997,7 @@ function switchTab(t) {
   // เปิดแท็บแอดมิน → รีเฟรชตัวเลขแดชบอร์ดให้ล่าสุดเสมอ
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
+    renderBillingAdmin();
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
   if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); loadPayStatus(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
@@ -8569,6 +8586,103 @@ function renderMockShops() {
 // ============================================================
 // 11b. SUPERADMIN DASHBOARD — สถิติภาพรวมทั้งระบบ
 // ============================================================
+// ===== เฟส 2: แดชบอร์ดบิลลิ่ง (superadmin) =====
+let _billingPlans = [];
+const BILL_STATE = {
+  active: { t: 'ใช้งาน', c: '#16a34a', bg: '#e7f6ee' }, expiring: { t: 'ใกล้หมด', c: '#b45309', bg: '#fdf2dc' },
+  grace: { t: 'เลยกำหนด', c: '#ea580c', bg: '#fde7d6' }, readonly: { t: 'หมดอายุ', c: '#dc2626', bg: '#fde2e2' },
+  trial: { t: 'ทดลอง', c: '#2563eb', bg: '#e3edfd' }, suspended: { t: 'ระงับ', c: '#6b7280', bg: '#eeeeee' },
+};
+async function renderBillingAdmin() {
+  const tb = $('billingList'); if (!tb) return;
+  if (isMockMode) { tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">โหมดจำลอง — ดูได้บนระบบจริง</td></tr>'; return; }
+  try {
+    const [bd, pl] = await Promise.all([API.get('/api/admin/billing'), API.get('/api/admin/plans-admin')]);
+    _billingPlans = pl.plans || [];
+    const rows = (bd.shops || []).map(s => {
+      const st = BILL_STATE[s.state] || BILL_STATE.trial;
+      const dl = s.days_left;
+      const badge = st.t + (dl != null && ['expiring', 'grace', 'readonly'].includes(s.state) ? (dl >= 0 ? ' ' + dl + 'd' : ' เลย ' + (-dl) + 'd') : '');
+      const end = s.current_period_end ? new Date(s.current_period_end).toLocaleDateString('th-TH') : (s.trial_ends_at ? 'ทดลองถึง ' + new Date(s.trial_ends_at).toLocaleDateString('th-TH') : '—');
+      const dlTxt = dl == null ? '' : dl >= 0 ? 'เหลือ ' + dl + ' วัน' : 'เลย ' + (-dl) + ' วัน';
+      const pay = s.last_payment ? money(s.last_payment.amount) : '—';
+      const nm = (s.name || '').replace(/'/g, "\\'");
+      return `<tr>
+        <td><b>${esc(s.name)}</b></td>
+        <td>${esc(s.plan_name || '—')}</td>
+        <td><span style="background:${st.bg};color:${st.c};padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">${esc(badge)}</span></td>
+        <td class="r" style="font-size:12px;">${end}<br><span style="color:var(--color-text-muted);">${dlTxt}</span></td>
+        <td class="r">${pay}</td>
+        <td class="r"><button class="btn btn-primary btn-sm" onclick="openExtendModal('${s.shop_id}','${nm}')">ต่ออายุ</button></td>
+      </tr>`;
+    }).join('');
+    tb.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:#999;padding:14px;">ยังไม่มีร้าน</td></tr>';
+    renderIcons(tb);
+  } catch (e) { tb.innerHTML = `<tr><td colspan="6" style="color:#e53e3e;text-align:center;padding:14px;">โหลดไม่ได้: ${esc(e.message || '')}</td></tr>`; }
+}
+function openExtendModal(shopId, name) {
+  const opts = _billingPlans.filter(p => p.active !== false).map(p => `<option value="${p.id}" data-m="${p.price_month}" data-y="${p.price_year}">${esc(p.name)} (${money(p.price_month)}/ด)</option>`).join('');
+  let ov = $('extendOverlay'); if (!ov) { ov = document.createElement('div'); ov.id = 'extendOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:16px;max-width:430px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <h3 style="margin:0 0 4px;"><span class="ico" data-icon="banknote"></span> ต่ออายุ — ${esc(name)}</h3>
+    <p style="color:var(--color-text-muted);font-size:12px;margin:0 0 12px;">ยืนยันรับเงิน (โอน/พร้อมเพย์) แล้วต่ออายุให้ร้าน</p>
+    <div class="field" style="margin-bottom:10px;"><label>แพ็กเกจ</label><select id="exPlan" onchange="exRecalc()" style="width:100%;">${opts || '<option value="">— ไม่มีแพ็กเกจ —</option>'}</select></div>
+    <div class="grid-2" style="gap:10px;">
+      <div class="field" style="margin:0;"><label>ระยะเวลา</label><select id="exMonths" onchange="exRecalc()" style="width:100%;"><option value="1">1 เดือน</option><option value="3">3 เดือน</option><option value="6">6 เดือน</option><option value="12">12 เดือน (รายปี)</option></select></div>
+      <div class="field" style="margin:0;"><label>ยอดรับ (฿)</label><input id="exAmount" type="number" style="width:100%;"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="$('extendOverlay').remove()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="confirmExtend('${shopId}')"><span class="ico" data-icon="check"></span> ยืนยันต่ออายุ</button>
+    </div></div>`;
+  renderIcons(ov); exRecalc();
+}
+function exRecalc() {
+  const sel = $('exPlan'), mEl = $('exMonths'); if (!sel || !mEl || !sel.selectedOptions[0]) return;
+  const m = +mEl.value || 1, pm = +sel.selectedOptions[0].dataset.m || 0, py = +sel.selectedOptions[0].dataset.y || 0;
+  $('exAmount').value = m >= 12 ? (py || pm * 12) : pm * m;
+}
+async function confirmExtend(shopId) {
+  const planId = $('exPlan').value || null, months = +$('exMonths').value, amount = +$('exAmount').value;
+  try {
+    await API.post(`/api/admin/billing/${shopId}/extend`, { planId, months, amount });
+    const ov = $('extendOverlay'); if (ov) ov.remove();
+    ui.toast('ต่ออายุเรียบร้อย', 'success'); renderBillingAdmin();
+  } catch (e) { ui.alert('ต่ออายุไม่สำเร็จ: ' + (e.message || '')); }
+}
+async function openPlansAdmin() {
+  if (!_billingPlans.length) { try { _billingPlans = (await API.get('/api/admin/plans-admin')).plans || []; } catch (e) {} }
+  let ov = $('plansOverlay'); if (!ov) { ov = document.createElement('div'); ov.id = 'plansOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+  const rows = _billingPlans.map(p => `<tr>
+    <td><input value="${esc(p.name || '')}" data-pf="name" data-pid="${p.id}" style="width:110px;"></td>
+    <td><input type="number" value="${p.price_month || 0}" data-pf="price_month" data-pid="${p.id}" style="width:80px;text-align:right;"></td>
+    <td><input type="number" value="${p.price_year || 0}" data-pf="price_year" data-pid="${p.id}" style="width:80px;text-align:right;"></td>
+    <td style="text-align:center;"><input type="checkbox" ${p.active !== false ? 'checked' : ''} data-pf="active" data-pid="${p.id}"></td>
+  </tr>`).join('');
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:16px;max-width:480px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow:auto;">
+    <h3 style="margin:0 0 12px;"><span class="ico" data-icon="tags"></span> จัดการแพ็กเกจ/ราคา</h3>
+    <table class="lst"><thead><tr><th>ชื่อ</th><th class="r">/เดือน</th><th class="r">/ปี</th><th>เปิด</th></tr></thead><tbody>${rows}</tbody></table>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="$('plansOverlay').remove()">ปิด</button>
+      <button class="btn btn-primary" onclick="savePlansAdmin()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div></div>`;
+  renderIcons(ov);
+}
+async function savePlansAdmin() {
+  const byId = {};
+  document.querySelectorAll('#plansOverlay [data-pid]').forEach(el => {
+    const id = el.dataset.pid, f = el.dataset.pf;
+    (byId[id] = byId[id] || { id })[f] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  try {
+    for (const id in byId) await API.post('/api/admin/plans-admin', byId[id]);
+    const ov = $('plansOverlay'); if (ov) ov.remove();
+    ui.toast('บันทึกแพ็กเกจแล้ว', 'success'); renderBillingAdmin();
+  } catch (e) { ui.alert('บันทึกไม่สำเร็จ: ' + (e.message || '')); }
+}
+
 async function adminLoadDashboard() {
   let shops, payments, subs;
 

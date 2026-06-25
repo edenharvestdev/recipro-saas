@@ -144,4 +144,120 @@ router.get('/dashboard', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Billing admin (เฟส 1): ดูทุกร้าน + ต่ออายุ manual + จัดการแพ็กเกจ =====
+const GRACE_DAYS = Number(process.env.GRACE_DAYS) || 5;
+const DAY = 86400000;
+
+// คำนวณสถานะแสดงผล: trial | active | expiring | grace | readonly | suspended
+function billingState(shopStatus, sub, trialEndsAt) {
+  if (shopStatus === 'suspended') return { state: 'suspended', daysLeft: null };
+  const end = sub && sub.current_period_end ? new Date(sub.current_period_end) : null;
+  if (!sub || ['trial', 'trialing'].includes(sub.status || '') || !end) {
+    if (trialEndsAt) {
+      const t = new Date(trialEndsAt);
+      const dl = Math.ceil((t - Date.now()) / DAY);
+      if (dl >= 0) return { state: 'trial', daysLeft: dl };
+      return { state: (-dl) <= GRACE_DAYS ? 'grace' : 'readonly', daysLeft: dl };
+    }
+    return { state: 'trial', daysLeft: null };
+  }
+  const dl = Math.ceil((end - Date.now()) / DAY);
+  if (dl >= 0) return { state: dl <= 7 ? 'expiring' : 'active', daysLeft: dl };
+  return { state: (-dl) <= GRACE_DAYS ? 'grace' : 'readonly', daysLeft: dl };
+}
+
+// ภาพรวมบิลลิ่งทุกร้าน (เรียงร้านที่ต้องสนใจขึ้นก่อน)
+router.get('/billing', async (req, res) => {
+  try {
+    const [shops, subs, plans, pays] = await Promise.all([
+      query('select id, name, status, created_at, trial_ends_at from shops order by created_at'),
+      query('select shop_id, plan_id, status, billing_cycle, current_period_end from subscriptions'),
+      query('select id, name, code, price_month, price_year from plans'),
+      query("select shop_id, amount, paid_at from payments where status='paid' order by paid_at desc"),
+    ]);
+    const subBy = {}; subs.rows.forEach(s => { subBy[s.shop_id] = s; });
+    const planBy = {}; plans.rows.forEach(p => { planBy[p.id] = p; });
+    const lastPay = {}; pays.rows.forEach(p => { if (!lastPay[p.shop_id]) lastPay[p.shop_id] = p; });
+    const order = { readonly: 0, grace: 1, expiring: 2, suspended: 3, trial: 4, active: 5 };
+    const list = shops.rows.map(sh => {
+      const sub = subBy[sh.id];
+      const bs = billingState(sh.status, sub, sh.trial_ends_at);
+      const plan = sub && sub.plan_id ? planBy[sub.plan_id] : null;
+      return {
+        shop_id: sh.id, name: sh.name, shop_status: sh.status,
+        plan_name: plan ? plan.name : null, plan_code: plan ? plan.code : null,
+        billing_cycle: sub ? sub.billing_cycle : null,
+        current_period_end: sub ? sub.current_period_end : null,
+        trial_ends_at: sh.trial_ends_at,
+        state: bs.state, days_left: bs.daysLeft,
+        last_payment: lastPay[sh.id] || null,
+      };
+    }).sort((a, b) => (order[a.state] ?? 9) - (order[b.state] ?? 9) || ((a.days_left ?? 1e9) - (b.days_left ?? 1e9)));
+    res.json({ shops: list, grace_days: GRACE_DAYS });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ต่ออายุ manual (โอน/พร้อมเพย์) — ยืนยันรับเงิน + ต่อ N เดือน + บันทึก payment
+router.post('/billing/:shopId/extend', async (req, res) => {
+  try {
+    const shopId = req.params.shopId;
+    const months = Math.max(1, Math.min(36, Number(req.body.months) || 1));
+    const amount = Number(req.body.amount) || 0;
+    const planId = req.body.planId || null;
+    const out = await tx(async (c) => {
+      const sh = (await c.query('select id from shops where id=$1', [shopId])).rows[0];
+      if (!sh) return null;
+      const cur = (await c.query('select id, plan_id, current_period_end from subscriptions where shop_id=$1 limit 1', [shopId])).rows[0];
+      const base = cur && cur.current_period_end && new Date(cur.current_period_end) > new Date() ? new Date(cur.current_period_end) : new Date();
+      base.setMonth(base.getMonth() + months);
+      const newEnd = base.toISOString();
+      const usePlan = planId || (cur && cur.plan_id) || null;
+      const cycle = months >= 12 ? 'year' : 'month';
+      if (cur) {
+        await c.query("update subscriptions set status='active', plan_id=coalesce($2,plan_id), billing_cycle=$3, current_period_end=$4, provider='manual' where id=$1", [cur.id, usePlan, cycle, newEnd]);
+      } else {
+        await c.query("insert into subscriptions (shop_id, plan_id, status, billing_cycle, current_period_end, provider) values ($1,$2,'active',$3,$4,'manual')", [shopId, usePlan, cycle, newEnd]);
+      }
+      await c.query("update shops set status='active' where id=$1", [shopId]);
+      if (amount > 0) await c.query("insert into payments (shop_id, amount, currency, status, paid_at, provider_invoice_id) values ($1,$2,'THB','paid',now(),$3)", [shopId, amount, 'manual']);
+      return { current_period_end: newEnd, months, amount };
+    });
+    if (!out) return res.status(404).json({ error: 'ไม่พบร้าน' });
+    logEvent(shopId, req.userId, 'billing.manual_extend', out);
+    res.json({ ok: true, ...out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// เปลี่ยนแพ็กเกจของร้าน (ไม่คิดเงิน — แค่ตั้ง plan)
+router.post('/billing/:shopId/plan', async (req, res) => {
+  try {
+    const { shopId } = req.params; const { planId } = req.body || {};
+    const cur = (await query('select id from subscriptions where shop_id=$1 limit 1', [shopId])).rows[0];
+    if (cur) await query('update subscriptions set plan_id=$2 where id=$1', [cur.id, planId]);
+    else await query("insert into subscriptions (shop_id, plan_id, status) values ($1,$2,'trialing')", [shopId, planId]);
+    logEvent(shopId, req.userId, 'billing.set_plan', { planId });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// จัดการแพ็กเกจ (CRUD) — superadmin
+router.get('/plans-admin', async (req, res) => {
+  try { const { rows } = await query('select * from plans order by sort, price_month'); res.json({ plans: rows }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/plans-admin', async (req, res) => {
+  try {
+    const { id, name, price_month, price_year, active, features_json, code, sort } = req.body || {};
+    if (id) {
+      await query('update plans set name=$2, price_month=$3, price_year=$4, active=$5, features_json=coalesce($6,features_json), sort=coalesce($7,sort) where id=$1',
+        [id, name, Number(price_month) || 0, Number(price_year) || 0, active !== false, features_json || null, sort != null ? Number(sort) : null]);
+      res.json({ ok: true, id });
+    } else {
+      const r = await query('insert into plans (name, price_month, price_year, active, features_json, code, sort) values ($1,$2,$3,$4,$5,$6,$7) returning id',
+        [name, Number(price_month) || 0, Number(price_year) || 0, active !== false, features_json || '{}', code || null, Number(sort) || 0]);
+      res.json({ ok: true, id: r.rows[0].id });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
