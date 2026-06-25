@@ -238,6 +238,7 @@
         </span>
         <span class="user-card-chevron"><span class="ico" data-icon="chevron-down"></span></span>
       </button>
+      <div id="branchSwitcher" style="display:none;margin-top:8px;"></div>
     </div>
   </aside>
 
@@ -2919,6 +2920,62 @@ function applyTerminology() {
   const dm = document.getElementById('dockMaterials'); if (dm) { const sp = dm.querySelector('span:last-child'); if (sp) sp.textContent = bt('ingredient'); }
 }
 
+// เฟส 3: ตัวสลับสาขา (แสดงเมื่อผู้ใช้เป็นสมาชิก > 1 สาขา)
+let MY_SHOPS = [];
+function renderBranchSwitcher(shops, currentId) {
+  MY_SHOPS = shops || [];
+  const el = $('branchSwitcher'); if (!el) return;
+  if (!shops || shops.length <= 1) { el.style.display = 'none'; return; }
+  const cur = currentId || (shops[0] && shops[0].id);
+  el.style.display = 'block';
+  el.innerHTML = '<label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">'
+    + '<span class="ico" data-icon="store"></span> สาขา (' + shops.length + ')</label>'
+    + '<select onchange="switchShop(this.value)" style="width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">'
+    + shops.map(s => '<option value="' + s.id + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + (s.role === 'staff' ? ' (พนักงาน)' : '') + '</option>').join('')
+    + '</select>'
+    + '<button onclick="openHqSummary()" class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px;font-size:12px;"><span class="ico" data-icon="bar-chart-3"></span> ภาพรวมรวมทุกสาขา</button>';
+  renderIcons(el);
+}
+async function switchShop(id) {
+  if (!id) return;
+  try { localStorage.setItem('recipro_shop', id); } catch (e) {}
+  window.RECIPRO_SHOP_OVERRIDE = id;
+  // โหลดสาขาใหม่ทั้งหน้า (กันข้อมูลปนสาขา)
+  location.reload();
+}
+// ภาพรวมรวมทุกสาขา (HQ) — ดึง /api/hq-summary เดือนนี้ แล้วโชว์ใน modal
+async function openHqSummary() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const to = now.toISOString().slice(0, 10);
+  let res;
+  try { res = await API.get('/api/hq-summary?from=' + from + '&to=' + to); }
+  catch (e) { ui.alert('โหลดภาพรวมไม่ได้: ' + e.message, { icon: 'alert-triangle' }); return; }
+  const b = res.branches || [];
+  const max = Math.max(1, ...b.map(x => x.sales));
+  const rows = b.map(x => `<tr>
+      <td style="padding:8px 6px;">${esc(x.name)}</td>
+      <td style="padding:8px 6px;text-align:right;font-weight:700;">${money(x.sales)}</td>
+      <td style="padding:8px 6px;text-align:right;color:var(--color-text-muted);">${x.bills} บิล</td>
+      <td style="padding:8px 6px;width:30%;"><div style="background:var(--color-primary);height:8px;border-radius:4px;width:${Math.round(x.sales / max * 100)}%;min-width:2px;opacity:.8;"></div></td>
+    </tr>`).join('');
+  const html = `<div class="modal-overlay" id="hqOverlay" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--surface-1);border-radius:16px;max-width:560px;width:92%;max-height:85vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+      <h2 style="margin:0 0 4px;"><span class="ico" data-icon="bar-chart-3"></span> ภาพรวมรวมทุกสาขา</h2>
+      <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">เดือนนี้ (${from} ถึง ${to}) · ${b.length} สาขา</p>
+      <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:140px;text-align:center;background:#E1F5EE;border-radius:10px;padding:12px;"><div style="font-size:12px;color:#0F6E56;">ยอดขายรวมทุกสาขา</div><div style="font-size:24px;font-weight:800;color:#0F6E56;">${money(res.totals.sales)}</div></div>
+        <div style="flex:1;min-width:140px;text-align:center;background:var(--surface-2);border-radius:10px;padding:12px;"><div style="font-size:12px;color:var(--color-text-muted);">บิลรวม</div><div style="font-size:24px;font-weight:800;">${res.totals.bills}</div></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:2px solid var(--border-soft);">
+        <th style="text-align:left;padding:6px;">สาขา</th><th style="text-align:right;padding:6px;">ยอดขาย</th><th style="text-align:right;padding:6px;">บิล</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">ยังไม่มียอดขายเดือนนี้</td></tr>'}</tbody></table>
+      <button onclick="document.getElementById('hqOverlay').remove()" class="btn btn-ghost" style="margin-top:14px;width:100%;">ปิด</button>
+    </div></div>`;
+  const wrap = document.createElement('div'); wrap.innerHTML = html;
+  document.body.appendChild(wrap.firstElementChild);
+  renderIcons(document.getElementById('hqOverlay'));
+}
+
 function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
   document.body.classList.toggle('role-staff', USER_ROLE === 'staff');   // พนักงาน: ซ่อนต้นทุน/กำไร + จำกัดหน้า
@@ -3080,7 +3137,9 @@ function applyBootstrapData(data) {
 
 async function boot() {
   updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์" : "กำลังโหลดข้อมูลจากระบบ...", isMockMode ? "wifi-off" : "refresh-cw");
-  
+  // เฟส 3: ถ้าผู้ใช้เคยเลือกสาขา ให้โหลดสาขานั้น (ส่ง X-Shop-Id ผ่าน API helper) ก่อน bootstrap
+  try { const sv = localStorage.getItem('recipro_shop'); if (sv) window.RECIPRO_SHOP_OVERRIDE = sv; } catch (e) {}
+
   if (isMockMode) {
     CURRENT_SHOP = 'mock-shop-id';
     USER_ROLE = 'superadmin'; // เปิดสิทธิ์ Admin ให้อัตโนมัติสำหรับทดสอบหน้าจอทั้งหมด
@@ -3159,6 +3218,8 @@ async function boot() {
     if (data.isSuperadmin) {
       try { const r = await API.get('/api/admin/shops'); allShops = r.shops || []; } catch(_) {}
     }
+    // เฟส 3: ตัวสลับสาขา (ถ้าผู้ใช้เป็นสมาชิกหลายสาขา)
+    try { const ms = await API.get('/api/my-shops'); renderBranchSwitcher(ms.shops || [], ms.current); } catch (_) {}
   }
 
   fillSettings();
