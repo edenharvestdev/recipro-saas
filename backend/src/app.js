@@ -9,7 +9,7 @@ const app = express();
 // Stripe webhook ต้องใช้ raw body เพื่อตรวจลายเซ็น — ต้องมาก่อน express.json()
 app.use('/webhooks/stripe', express.raw({ type: '*/*' }));
 
-app.use(express.json({ limit: '6mb' }));
+app.use(express.json({ limit: '64mb' }));   // รองรับ sync ที่มีรูปเมนู/วัตถุดิบจำนวนมาก (base64) — กัน 413 ทำ sync ล้มเงียบ/รูปหาย
 
 // CORS — ใช้ Bearer token (ไม่ใช้ cookie) จึงเปิดกว้างได้ เผื่อ frontend คนละโดเมนกับ API
 app.use((req, res, next) => {
