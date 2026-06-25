@@ -3,6 +3,7 @@
 const express = require('express');
 const { tx } = require('../db');
 const { logEvent } = require('../logs');
+const { maybeAutoSnapshot } = require('./snapshots');   // S1: สำรองอัตโนมัติหลัง sync สำเร็จ
 const router = express.Router();
 
 // upsert ช่วย: ระบุ table, คอลัมน์, แถว, และคีย์ conflict
@@ -166,6 +167,8 @@ router.post('/sync', async (req, res) => {
       recipes: (b.recipes || []).length, bills: (b.bills || []).length,
     });
     res.json({ ok: true, version: newVersion });
+    // S1: สำรองอัตโนมัติ (ไม่บล็อก response, พังก็ไม่กระทบ sync)
+    maybeAutoSnapshot(shopId).catch(() => {});
   } catch (e) {
     if (e && e.code === 'CONFLICT') {
       return res.status(409).json({ error: 'version_conflict', conflict: true, currentVersion: e.currentVersion });

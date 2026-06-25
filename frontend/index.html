@@ -963,6 +963,18 @@
           <tbody id="staffList"><tr><td colspan="3" style="text-align:center;color:#999;padding:12px;">กำลังโหลด…</td></tr></tbody>
         </table></div>
       </div>
+      <div class="glass-card admin-only" id="backupCard" style="margin-bottom:18px;">
+        <h2 style="margin:0 0 4px;"><span class="ico" data-icon="shield-check"></span> สำรอง &amp; กู้คืนข้อมูล</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">ระบบสำรองข้อมูลร้าน (วัตถุดิบ/สูตร/ตัวเลือก/สมาชิก) ให้อัตโนมัติเป็นช่วงๆ · กู้คืน = <b>เพิ่มเฉพาะของที่หาย ไม่ลบ/ไม่ทับของปัจจุบัน</b> · กดสำรองเองได้ก่อนแก้ข้อมูลเยอะๆ</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn btn-primary" onclick="manualSnapshot()"><span class="ico" data-icon="save"></span> สำรองตอนนี้</button>
+          <button class="btn btn-ghost" onclick="renderSnapshots()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรช</button>
+        </div>
+        <div class="table-scroll"><table class="lst">
+          <thead><tr><th>เวลา</th><th>ชนิด</th><th>ข้อมูล</th><th></th></tr></thead>
+          <tbody id="snapshotList"><tr><td colspan="4" style="text-align:center;color:#999;padding:12px;">กดรีเฟรชเพื่อโหลดรายการสำรอง</td></tr></tbody>
+        </table></div>
+      </div>
       <div class="grid-2">
         <!-- ข้อมูลร้านค้าและบัญชีรับเงิน -->
         <div class="glass-card">
@@ -3441,7 +3453,7 @@ function switchTab(t) {
     adminLoadDashboard();
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
-  if (t === 'set') { loadLogs(); renderStaffSection(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
+  if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
@@ -6278,6 +6290,60 @@ async function removeStaff(uid, email) {
   if (!(await ui.confirm('เอา ' + email + ' ออกจากร้านนี้?', { okText: 'เอาออก', danger: true }))) return;
   try { await API.del('/api/staff/' + uid); ui.toast('เอาออกแล้ว'); renderStaffSection(); }
   catch (e) { ui.alert('เอาออกไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+}
+
+// S1: สำรอง & กู้คืนข้อมูล (per-shop snapshot)
+const SNAP_KIND_LABEL = { auto: 'อัตโนมัติ', manual: 'สำรองเอง', pre_restore: 'ก่อนกู้คืน' };
+function _snapCountText(c) {
+  if (!c) return '';
+  const m = c.materials || 0, r = c.recipes || 0, ri = c.recipe_items || 0;
+  return 'วัตถุดิบ ' + m + ' · สูตร ' + r + ' · ส่วนผสม ' + ri;
+}
+async function renderSnapshots() {
+  const tb = $('snapshotList'); if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:12px;">กำลังโหลด…</td></tr>';
+  try {
+    const res = await API.get('/api/snapshots');
+    const rows = (res.snapshots || []);
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:12px;">ยังไม่มีข้อมูลสำรอง — กด "สำรองตอนนี้"</td></tr>'; return; }
+    tb.innerHTML = rows.map(s => {
+      const d = new Date(s.created_at);
+      const when = d.toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const kind = SNAP_KIND_LABEL[s.kind] || s.kind;
+      return '<tr><td>' + when + '</td><td>' + kind + '</td><td style="font-size:11px;color:var(--color-text-muted);">' + esc(_snapCountText(s.counts)) + '</td>' +
+        '<td style="white-space:nowrap;text-align:right;">' +
+        '<button class="btn btn-ghost" style="padding:3px 8px;" onclick="restoreSnapshot(\'' + s.id + '\')">กู้คืน</button> ' +
+        '<button class="btn btn-ghost" style="padding:3px 8px;" onclick="downloadSnapshot(\'' + s.id + '\')">ดาวน์โหลด</button></td></tr>';
+    }).join('');
+  } catch (e) { tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:12px;">โหลดไม่ได้: ' + esc(e.message) + '</td></tr>'; }
+}
+async function manualSnapshot() {
+  try { await API.post('/api/snapshots', {}); ui.toast('สำรองข้อมูลแล้ว'); renderSnapshots(); }
+  catch (e) { ui.alert('สำรองไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+}
+async function restoreSnapshot(id) {
+  if (!(await ui.confirm('กู้คืนจากจุดสำรองนี้?\n\nระบบจะ "เพิ่มเฉพาะของที่หาย" กลับมา — ไม่ลบ/ไม่ทับของปัจจุบัน และจะสำรองสถานะตอนนี้ไว้ก่อนให้อัตโนมัติ', { okText: 'กู้คืน' }))) return;
+  try {
+    const res = await API.post('/api/snapshots/' + id + '/restore', {});
+    const r = res.restored || {};
+    const total = Object.values(r).reduce((a, b) => a + (b || 0), 0);
+    await ui.alert(total > 0
+      ? '✅ กู้คืนแล้ว เพิ่มกลับมา ' + total + ' รายการ\n(วัตถุดิบ ' + (r.materials || 0) + ' · สูตร ' + (r.recipes || 0) + ' · ส่วนผสม ' + (r.recipe_items || 0) + ' · ตัวเลือก ' + ((r.option_groups || 0) + (r.option_choices || 0)) + ')\n\nระบบจะโหลดข้อมูลใหม่ให้'
+      : 'ไม่มีของที่หายให้กู้คืน — ข้อมูลปัจจุบันครบอยู่แล้ว', { icon: 'circle-check' });
+    if (total > 0) location.reload();
+    else renderSnapshots();
+  } catch (e) { ui.alert('กู้คืนไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
+}
+async function downloadSnapshot(id) {
+  try {
+    const res = await API.get('/api/snapshots/' + id);
+    const blob = new Blob([JSON.stringify(res.snapshot, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'recipro-สำรอง-' + id.slice(0, 8) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) { ui.alert('ดาวน์โหลดไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 
 function renderPosCart() {
