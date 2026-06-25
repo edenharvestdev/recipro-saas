@@ -1,0 +1,11 @@
+const fs = require('fs');
+const root = JSON.parse(fs.readFileSync(process.env.F, 'utf8'));
+const mat = (root.materials || []).find(m => m.name && m.name.indexOf('หมื่นลี้แห้ง 500') >= 0);
+const rec = (root.recipes || []).find(r => r.name === 'Kori Osmanthus Matcha');
+console.log('=== MATERIAL full keys ===');
+console.log(JSON.stringify(mat, null, 1));
+console.log('=== RECIPE full keys (items truncated) ===');
+const rc = Object.assign({}, rec); const items = rc.items; delete rc.items;
+console.log(JSON.stringify(rc, null, 1));
+console.log('=== RECIPE items sample ===');
+console.log(JSON.stringify(items, null, 1));
