@@ -41,6 +41,7 @@ api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recip
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout
 api.use(require('./api/logs'));        // GET  /api/logs
 api.use('/admin', requireSuperadmin, require('./api/admin')); // /api/admin/*
+api.use('/admin', requireSuperadmin, require('./api/clone')); // /api/admin/{export-shop,import-shop,clone-shop2}
 app.use('/api', api);
 
 // เสิร์ฟ frontend เป็น static + fallback
