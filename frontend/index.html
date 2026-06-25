@@ -2863,6 +2863,8 @@ function applyBootstrapData(data) {
     document.head.appendChild(st);
   }
   CURRENT_SHOP = data.shop ? data.shop.id : null;
+  initTabGuard();            // กันหลายแท็บ v2: เริ่มตรวจจับ + แจ้งเตือนเมื่อเปิดร้านนี้หลายแท็บ
+  checkConflictBackup();     // ถ้ามีงานที่ค้างจากการชนครั้งก่อน ให้กู้คืน/ดาวน์โหลดได้
   if (data.isSuperadmin) {
     $('menuAdmin').classList.remove('hidden');
     $('accountAdmin').classList.remove('hidden');
@@ -3246,6 +3248,7 @@ async function syncToSupabase() {
   };
 
   try {
+    _lastSyncPayload = payload;   // กันหลายแท็บ v2: เก็บสำเนาก้อนล่าสุดไว้ เผื่อชนแล้วต้องสำรองก่อนโหลดทับ
     const res = await API.post('/api/sync', payload);
     if (res && res.version != null) dataVersion = res.version;   // อัปเดต baseline
     updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
@@ -3256,11 +3259,122 @@ async function syncToSupabase() {
 }
 // #2: ข้อมูลถูกแก้จากแท็บ/เครื่องอื่น — โหลดล่าสุดทับ (กันเขียนข้อมูลเก่าทับของใหม่)
 let _conflictHandling = false;
+let _lastSyncPayload = null;   // กันหลายแท็บ v2: ก้อนข้อมูลล่าสุดที่แท็บนี้พยายามบันทึก
+function _conflictKey() { return 'recipro_conflict_backup_' + (CURRENT_SHOP || 'x'); }
 async function handleSyncConflict() {
   if (_conflictHandling) return; _conflictHandling = true;
   updateCloudStatus("ข้อมูลถูกแก้จากที่อื่น — กำลังโหลดล่าสุด", "alert-triangle");
-  try { await ui.alert('ข้อมูลถูกแก้ไขจากอุปกรณ์/แท็บอื่น\nระบบจะโหลดข้อมูลล่าสุดให้ (การแก้ที่ยังไม่ได้บันทึกในแท็บนี้จะถูกแทนที่)', { icon: 'alert-triangle' }); } catch (e) {}
+  // กันหลายแท็บ v2: สำรองงานที่ค้างของแท็บนี้ลงเครื่องก่อนโหลดทับ — ไม่ให้หายเงียบอีก
+  let saved = false;
+  try {
+    if (_lastSyncPayload) {
+      localStorage.setItem(_conflictKey(), JSON.stringify({ ts: Date.now(), shop: CURRENT_SHOP, payload: _lastSyncPayload }));
+      saved = true;
+    }
+  } catch (e) {}
+  try {
+    await ui.alert(
+      'ข้อมูลถูกแก้ไขจากอุปกรณ์/แท็บอื่น พร้อมๆ กัน\n\nระบบจะโหลดข้อมูลล่าสุดให้' +
+      (saved ? '\n\n✅ งานที่คุณแก้ค้างในแท็บนี้ถูกสำรองไว้ในเครื่องแล้ว — เปิดใหม่จะมีปุ่มให้กู้คืน/ดาวน์โหลด' : '') +
+      '\n\n💡 เปิด Recipro ร้านนี้แท็บเดียวพอ เพื่อกันข้อมูลทับกัน',
+      { icon: 'alert-triangle' });
+  } catch (e) {}
   location.reload();
+}
+
+// ============================================================
+// กันหลายแท็บ v2 (MULTI-TAB GUARD) — frontend-only, ไม่แตะ schema/backend
+//  ① BroadcastChannel: เตือนทันทีเมื่อเปิดร้านนี้ไว้หลายแท็บในเบราว์เซอร์เดียว
+//  ② กู้คืน/ดาวน์โหลดงานที่ค้างจากการชน (snapshot ใน handleSyncConflict)
+// ============================================================
+let _tabBus = null, _tabPeers = new Map(), _tabGuardInit = false, _tabBannerHidden = false;
+const TAB_ID = 'tab_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
+function _ensureBanner(id, bg, border) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;display:none;' +
+      'padding:10px 14px;font-size:13px;font-weight:600;text-align:center;' +
+      'background:' + bg + ';color:#3a2a00;border-bottom:2px solid ' + border + ';' +
+      'box-shadow:0 2px 8px rgba(0,0,0,.12);font-family:inherit;';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function _renderTabBanner() {
+  const el = _ensureBanner('multiTabBanner', '#fff3cd', '#f0c000');
+  const n = _tabPeers.size;
+  if (n > 0 && !_tabBannerHidden) {
+    el.innerHTML = '⚠️ เปิด Recipro ร้านนี้ไว้ <b>' + (n + 1) + ' หน้าจอ/แท็บ</b> — แก้ข้อมูลทีละแท็บเพื่อกันข้อมูลทับกัน ' +
+      '<button onclick="_dismissTabBanner()" style="margin-left:8px;padding:2px 10px;border:1px solid #c79a00;border-radius:6px;background:#fff;cursor:pointer;font-weight:600;">ซ่อน</button>';
+    el.style.display = 'block';
+    document.body.style.paddingTop = el.offsetHeight + 'px';
+  } else {
+    el.style.display = 'none';
+    document.body.style.paddingTop = '';
+  }
+}
+function _dismissTabBanner() { _tabBannerHidden = true; _renderTabBanner(); }
+
+function initTabGuard() {
+  if (_tabGuardInit || !CURRENT_SHOP || !('BroadcastChannel' in window)) return;
+  _tabGuardInit = true;
+  try { _tabBus = new BroadcastChannel('recipro_tabs'); } catch (e) { return; }
+  const send = (t) => { try { _tabBus.postMessage({ t, id: TAB_ID, shop: CURRENT_SHOP }); } catch (e) {} };
+  _tabBus.onmessage = (ev) => {
+    const m = ev.data || {};
+    if (!m.id || m.id === TAB_ID || m.shop !== CURRENT_SHOP) return;
+    if (m.t === 'bye') { _tabPeers.delete(m.id); _renderTabBanner(); return; }
+    const wasNew = !_tabPeers.has(m.id);
+    _tabPeers.set(m.id, Date.now());
+    if (m.t === 'hello') send('beat');   // ตอบให้แท็บใหม่รู้ว่าเรามีอยู่
+    if (wasNew) { _tabBannerHidden = false; _renderTabBanner(); }   // มีแท็บใหม่เข้ามา → แสดงเตือนอีกครั้ง
+  };
+  send('hello');
+  setInterval(() => {
+    send('beat');
+    const cut = Date.now() - 7000;
+    let changed = false;
+    for (const [id, ts] of _tabPeers) { if (ts < cut) { _tabPeers.delete(id); changed = true; } }
+    if (changed) _renderTabBanner();
+  }, 2500);
+  window.addEventListener('pagehide', () => send('bye'));
+  window.addEventListener('beforeunload', () => send('bye'));
+}
+
+// ② เปิดใหม่แล้วเจอ snapshot งานที่ค้างจากการชน → ให้ดาวน์โหลด/ลบ (ไม่ auto-merge เพื่อความปลอดภัย)
+function checkConflictBackup() {
+  let raw; try { raw = localStorage.getItem(_conflictKey()); } catch (e) { return; }
+  if (!raw) return;
+  let b; try { b = JSON.parse(raw); } catch (e) { localStorage.removeItem(_conflictKey()); return; }
+  if (!b || b.shop !== CURRENT_SHOP) return;
+  const when = new Date(b.ts || Date.now());
+  const hh = String(when.getHours()).padStart(2, '0') + ':' + String(when.getMinutes()).padStart(2, '0');
+  const el = _ensureBanner('conflictBackupBanner', '#d1f0d8', '#3aa55a');
+  el.style.color = '#0a3a1a';
+  el.innerHTML = '💾 พบงานที่คุณแก้ค้างจากการชนข้อมูล (เวลา ' + hh + ') — ระบบสำรองไว้แล้ว ' +
+    '<button onclick="downloadConflictBackup()" style="margin:0 4px;padding:2px 10px;border:1px solid #2e8b4f;border-radius:6px;background:#fff;cursor:pointer;font-weight:600;">ดาวน์โหลดไฟล์สำรอง</button>' +
+    '<button onclick="dismissConflictBackup()" style="padding:2px 10px;border:1px solid #2e8b4f;border-radius:6px;background:#fff;cursor:pointer;font-weight:600;">เก็บแล้ว ลบทิ้ง</button>';
+  el.style.display = 'block';
+}
+function downloadConflictBackup() {
+  let raw; try { raw = localStorage.getItem(_conflictKey()); } catch (e) { return; }
+  if (!raw) return;
+  const blob = new Blob([raw], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'recipro-งานค้าง-' + (CURRENT_SHOP || 'shop').slice(0, 8) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function dismissConflictBackup() {
+  try { localStorage.removeItem(_conflictKey()); } catch (e) {}
+  const el = document.getElementById('conflictBackupBanner');
+  if (el) el.style.display = 'none';
 }
 
 // ============================================================
