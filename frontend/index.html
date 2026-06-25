@@ -308,6 +308,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px; flex-wrap:wrap;">
           <h2 style="font-size: 18px; margin:0;"><span class="ico" data-icon="carrot"></span> รายการวัตถุดิบ</h2>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="exportMaterialsCSV()"><span class="ico" data-icon="file-spreadsheet"></span> Export Excel</button>
             <button class="btn btn-ghost btn-sm" onclick="openLabelPrint()"><span class="ico" data-icon="tag"></span> พิมพ์ฉลาก</button>
             <button class="btn btn-primary btn-sm" onclick="openMatForm()"><span class="ico" data-icon="plus"></span> เพิ่มวัตถุดิบ</button>
           </div>
@@ -3695,14 +3696,18 @@ function openDrawer(id) {
   renderIcons();
 }
 
-// ปิดลิ้นชักทุกตัว + overlay
+// ปิดลิ้นชักทุกตัว + overlay (generic — ปิดทุก .drawer เพื่อไม่ลืมตัวใหม่ เช่น labelDrawer)
 function closeDrawer() {
-  ['matDrawer', 'supDrawer', 'recipeDrawer', 'optGroupDrawer', 'consDrawer'].forEach(id => {
-    const d = $(id);
-    if (d) d.classList.remove('open');
-  });
-  $('drawerOverlay').classList.remove('open');
+  document.querySelectorAll('.drawer.open').forEach(d => d.classList.remove('open'));
+  const ov = $('drawerOverlay'); if (ov) ov.classList.remove('open');
 }
+// กด Esc ปิดลิ้นชัก/หน้าต่างที่เปิดอยู่
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.querySelector('.drawer.open')) closeDrawer();
+    document.querySelectorAll('.modal.open, .modal-overlay').forEach(m => { if (m.id === 'qrReceiveOverlay' || m.id === 'hqOverlay' || m.id === 'posCatOverlay') m.remove(); });
+  }
+});
 
 // เปิดฟอร์ม "เพิ่มวัตถุดิบ" แบบล้างค่าใหม่
 function openMatForm() {
@@ -5610,6 +5615,19 @@ function exportExpensesCSV() {
   });
   rows.push([]); rows.push(['รวมรายรับ', '', '', '', tIn.toFixed(2), '', '']); rows.push(['รวมรายจ่าย', '', '', '', tOut.toFixed(2), '', '']);
   downloadCSV('recipro-รายจ่าย-' + mo + '.csv', rows);
+}
+// Export รายการวัตถุดิบเป็น Excel/CSV (เปิดด้วย Excel/Sheets, ภาษาไทยไม่เพี้ยน)
+function exportMaterialsCSV() {
+  const list = (materials || []).filter(m => !m.isConsumable);
+  if (!list.length) { ui.alert('ยังไม่มีวัตถุดิบ', { icon: 'info' }); return; }
+  const supName = id => { const s = (suppliers || []).find(x => x.id === id); return s ? s.name : ''; };
+  const rows = [['ลำดับ', 'ชื่อวัตถุดิบ', 'SKU', 'หมวดสินค้า', 'หน่วย', 'ราคาทุน', 'ราคาขาย', 'สต๊อกคงเหลือ', 'จุดสั่งซื้อ', 'ผู้ขาย']];
+  list.forEach((m, i) => rows.push([
+    i + 1, m.name || '', m.sku || '', m.itemType || '', m.unit || '',
+    (Number(m.price) || 0).toFixed(2), m.sellPrice ? Number(m.sellPrice).toFixed(2) : '',
+    (Number(m.stock) || 0), (Number(m.lowStock) || 0), supName(m.supId)
+  ]));
+  downloadCSV('recipro-วัตถุดิบ-' + new Date().toISOString().slice(0, 10) + '.csv', rows);
 }
 
 // ===== ปิดยอดสิ้นวัน (Z-report) — สรุปขาย+วิธีจ่าย+ลิ้นชัก+ต้นทุน/กำไร ของวันหนึ่ง =====
