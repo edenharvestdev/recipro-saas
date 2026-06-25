@@ -781,6 +781,7 @@
                 <span style="font-size:13px;color:var(--color-text-muted);">ใช้แต้มลด <span id="posRedeemMax" style="font-size:11px;"></span></span>
                 <input id="posRedeemPts" type="number" min="0" value="0" oninput="renderPosCart()" style="width:80px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
               </div>
+              <div id="posDiscPresets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
                 <span style="font-size:13px;color:var(--color-text-muted);">ส่วนลด</span>
                 <div style="display:flex;gap:4px;align-items:center;">
@@ -962,10 +963,22 @@
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
         <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">พนักงาน (staff) เห็นแค่หน้าขาย/สต๊อก/สมาชิก — <b>ไม่เห็นต้นทุน/กำไร/สูตร</b> · เจ้าของ (owner) เห็นทุกอย่าง · <b id="stCount">ทีมงาน —/3</b></p>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--surface-2);border-radius:10px;">
-          <span style="font-size:13px;"><span class="ico" data-icon="percent"></span> พนักงานลดราคาได้สูงสุด</span>
-          <input type="number" id="setStaffDiscMax" min="0" max="100" step="1" onchange="saveSettings()" style="width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
-          <span style="font-size:13px;color:var(--color-text-muted);">% ต่อบิล (100 = ไม่จำกัด · เจ้าของไม่จำกัดเสมอ)</span>
+        <div style="margin-bottom:12px;padding:12px;background:var(--surface-2);border-radius:10px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;"><span class="ico" data-icon="percent"></span> การควบคุมส่วนลดหน้าร้าน</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="font-size:13px;">เพดานพนักงาน:</span>
+            <input type="number" id="setStaffDiscMax" min="0" max="100" step="1" onchange="saveSettings()" style="width:60px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;"> %
+            <span style="color:var(--color-text-muted);">และ</span>
+            <input type="number" id="setStaffDiscMaxBaht" min="0" step="1" onchange="saveSettings()" style="width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;"> ฿ ต่อบิล
+          </div>
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:10px;">เกินเพดานระบบตัดให้อัตโนมัติ · 100% / 0฿ = ไม่จำกัด · เจ้าของไม่จำกัดเสมอ</div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px;">ปุ่มส่วนลดสำเร็จรูป (ทุกคนกดได้ที่หน้าขาย)</div>
+          <div id="discPresetList" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"></div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <input type="number" id="newPresetVal" min="0" step="1" placeholder="ค่า" style="width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+            <select id="newPresetType" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"><option value="%">%</option><option value="฿">฿</option></select>
+            <button class="btn btn-ghost btn-sm" onclick="addDiscPreset()"><span class="ico" data-icon="plus"></span> เพิ่มปุ่ม</button>
+          </div>
         </div>
         <div class="grid-2" style="margin-bottom:10px;">
           <div class="field"><label>อีเมลพนักงาน</label><input id="stEmail" placeholder="staff@example.com" autocomplete="off"></div>
@@ -2969,6 +2982,8 @@ function applyBootstrapData(data) {
       vatEnabled: !!sRow?.vat_enabled,
       vatRate: sRow?.vat_rate != null ? Number(sRow.vat_rate) : 7,
       staffDiscountMax: sRow?.staff_discount_max != null ? Number(sRow.staff_discount_max) : 100,
+      staffDiscountMaxBaht: sRow?.staff_discount_max_baht != null ? Number(sRow.staff_discount_max_baht) : 0,
+      discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -3291,7 +3306,9 @@ async function syncToSupabase() {
       use_delivery: settings.useDelivery || false,
       vat_enabled: settings.vatEnabled || false,
       vat_rate: settings.vatRate != null ? settings.vatRate : 7,
-      staff_discount_max: settings.staffDiscountMax != null ? settings.staffDiscountMax : 100
+      staff_discount_max: settings.staffDiscountMax != null ? settings.staffDiscountMax : 100,
+      staff_discount_max_baht: settings.staffDiscountMaxBaht != null ? settings.staffDiscountMaxBaht : 0,
+      discount_presets: Array.isArray(settings.discountPresets) ? settings.discountPresets : []
     },
     shop: { name: settings.shopName },
     _base_version: dataVersion
@@ -6274,18 +6291,36 @@ function posClearCart() {
 const POINTS_PER_BAHT = 20;
 function findCustomerByPhone(phone) { phone = (phone || '').trim(); return phone ? customers.find(c => c.phone === phone) : null; }
 const POINT_REDEEM_VALUE = 1;   // 1 แต้ม = 1 บาท ตอนแลก
+// ปุ่มส่วนลดสำเร็จรูป (ทุกคนกดได้) — ตั้งไว้ในตั้งค่า
+function discPresetLabel(p) { return p.type === '฿' ? ('ลด ฿' + p.val) : ('ลด ' + p.val + '%'); }
+function renderPosDiscPresets() {
+  const el = $('posDiscPresets'); if (!el) return;
+  const presets = Array.isArray(settings.discountPresets) ? settings.discountPresets : [];
+  if (!presets.length) { el.innerHTML = ''; return; }
+  const chip = (inner, on, extra) => '<button type="button" onclick="' + on + '" style="padding:4px 10px;border-radius:14px;border:1px solid var(--border-soft);background:var(--surface-2);color:var(--color-text-main);font-size:12px;cursor:pointer;' + (extra || '') + '">' + inner + '</button>';
+  el.innerHTML = presets.map((p, i) => chip(esc(discPresetLabel(p)), 'applyDiscPreset(' + i + ')')).join('')
+    + chip('ไม่ลด', 'applyDiscPreset(-1)', 'color:var(--color-text-muted);');
+}
+function applyDiscPreset(i) {
+  const presets = Array.isArray(settings.discountPresets) ? settings.discountPresets : [];
+  if (i < 0 || !presets[i]) { if ($('posDiscVal')) $('posDiscVal').value = ''; if ($('posDiscType')) $('posDiscType').value = '%'; }
+  else { const p = presets[i]; if ($('posDiscVal')) $('posDiscVal').value = p.val; if ($('posDiscType')) $('posDiscType').value = p.type; }
+  renderPosCart();
+}
 // คิดยอดรวมหน้าขาย (ใช้ทั้ง renderPosCart + posCheckout ให้ตรงกัน): รวมส่วนลด + แลกแต้ม
 function posComputeTotals() {
   const grand = posCart.reduce((s, it) => s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0)), 0);
   const discVal = parseFloat($('posDiscVal')?.value) || 0;
   const discType = $('posDiscType')?.value || '%';
   let disc = discType === '%' ? grand * discVal / 100 : discVal;
-  // เพดานส่วนลดพนักงาน: staff กดลดได้ไม่เกิน staffDiscountMax% ของยอด (เจ้าของ/แอดมินไม่จำกัด)
+  // เพดานส่วนลดพนักงาน: staff กดลดได้ไม่เกินทั้งเพดาน % และเพดาน ฿ (กันขาดทุน · เจ้าของ/แอดมินไม่จำกัด)
   let discCapped = false;
   if (USER_ROLE === 'staff') {
     const maxPct = settings.staffDiscountMax != null ? Number(settings.staffDiscountMax) : 100;
-    const capAmt = grand * maxPct / 100;
-    if (disc > capAmt) { disc = capAmt; discCapped = true; }
+    const maxBaht = settings.staffDiscountMaxBaht != null ? Number(settings.staffDiscountMaxBaht) : 0;
+    let cap = grand * maxPct / 100;                       // เพดาน %
+    if (maxBaht > 0) cap = Math.min(cap, maxBaht);         // เพดาน ฿ (0 = ไม่จำกัด)
+    if (disc > cap) { disc = cap; discCapped = true; }
   }
   const member = findCustomerByPhone($('posMemberPhone')?.value || '');
   const memberDiscPct = member ? (Number(mcfg().discountPct) || 0) : 0;
@@ -6545,6 +6580,7 @@ function renderPosCart() {
 
   if (footerEl) {
     footerEl.style.display = '';
+    renderPosDiscPresets();   // ปุ่มส่วนลดสำเร็จรูป
     const t = posComputeTotals();
     // คุมค่า input แลกแต้มไม่ให้เกินสิทธิ์ + อัปเดตป้าย "มี X"
     if ($('posRedeemPts') && Math.floor(parseFloat($('posRedeemPts').value) || 0) !== t.redeemPts) $('posRedeemPts').value = t.redeemPts;
@@ -7117,6 +7153,32 @@ function fillSettings() {
   if ($('setVatEnabled')) $('setVatEnabled').checked = settings.vatEnabled || false;
   if ($('setVatRate')) $('setVatRate').value = settings.vatRate != null ? settings.vatRate : 7;
   if ($('setStaffDiscMax')) $('setStaffDiscMax').value = settings.staffDiscountMax != null ? settings.staffDiscountMax : 100;
+  if ($('setStaffDiscMaxBaht')) $('setStaffDiscMaxBaht').value = settings.staffDiscountMaxBaht != null ? settings.staffDiscountMaxBaht : 0;
+  renderDiscPresetList();
+}
+function renderDiscPresetList() {
+  const el = $('discPresetList'); if (!el) return;
+  const presets = Array.isArray(settings.discountPresets) ? settings.discountPresets : [];
+  el.innerHTML = presets.length ? presets.map((p, i) =>
+    '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--surface-1);border:1px solid var(--border-soft);font-size:12px;">'
+    + esc(discPresetLabel(p))
+    + '<button onclick="removeDiscPreset(' + i + ')" style="border:none;background:none;cursor:pointer;color:#dc2626;font-size:14px;line-height:1;padding:0 2px;">×</button></span>').join('')
+    : '<span style="font-size:12px;color:var(--color-text-muted);">ยังไม่มี — เพิ่มด้านล่าง เช่น 10% หรือ 20฿</span>';
+}
+function addDiscPreset() {
+  const val = Number($('newPresetVal')?.value);
+  const type = $('newPresetType')?.value || '%';
+  if (!(val > 0)) { ui.toast('ใส่ค่าส่วนลด', 'warning'); return; }
+  if (type === '%' && val > 100) { ui.toast('% ต้องไม่เกิน 100', 'warning'); return; }
+  if (!Array.isArray(settings.discountPresets)) settings.discountPresets = [];
+  settings.discountPresets.push({ type, val });
+  if ($('newPresetVal')) $('newPresetVal').value = '';
+  renderDiscPresetList(); saveSettings();
+}
+function removeDiscPreset(i) {
+  if (!Array.isArray(settings.discountPresets)) return;
+  settings.discountPresets.splice(i, 1);
+  renderDiscPresetList(); saveSettings();
 }
 
 function saveSettings() {
@@ -7132,6 +7194,7 @@ function saveSettings() {
   if ($('setVatEnabled')) settings.vatEnabled = $('setVatEnabled').checked;
   if ($('setVatRate')) settings.vatRate = Number($('setVatRate').value) || 0;
   if ($('setStaffDiscMax')) settings.staffDiscountMax = Math.max(0, Math.min(100, Number($('setStaffDiscMax').value)));
+  if ($('setStaffDiscMaxBaht')) settings.staffDiscountMaxBaht = Math.max(0, Number($('setStaffDiscMaxBaht').value) || 0);
 
   $('sidebarShopName').textContent = settings.shopName;
   syncAccountUI();
