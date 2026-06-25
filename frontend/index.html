@@ -791,6 +791,7 @@
                   </select>
                 </div>
               </div>
+              <div id="posDiscCapNote" style="display:none;font-size:11px;color:#dc2626;text-align:right;margin:-4px 0 8px;"></div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
                 <span style="font-size:13px;color:var(--color-text-muted);">วิธีจ่าย</span>
                 <select id="posPayMethod" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
@@ -961,6 +962,11 @@
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
         <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 12px;">พนักงาน (staff) เห็นแค่หน้าขาย/สต๊อก/สมาชิก — <b>ไม่เห็นต้นทุน/กำไร/สูตร</b> · เจ้าของ (owner) เห็นทุกอย่าง · <b id="stCount">ทีมงาน —/3</b></p>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:var(--surface-2);border-radius:10px;">
+          <span style="font-size:13px;"><span class="ico" data-icon="percent"></span> พนักงานลดราคาได้สูงสุด</span>
+          <input type="number" id="setStaffDiscMax" min="0" max="100" step="1" onchange="saveSettings()" style="width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+          <span style="font-size:13px;color:var(--color-text-muted);">% ต่อบิล (100 = ไม่จำกัด · เจ้าของไม่จำกัดเสมอ)</span>
+        </div>
         <div class="grid-2" style="margin-bottom:10px;">
           <div class="field"><label>อีเมลพนักงาน</label><input id="stEmail" placeholder="staff@example.com" autocomplete="off"></div>
           <div class="field"><label>รหัสผ่าน (ตั้งให้ครั้งแรก ถ้าเป็นผู้ใช้ใหม่)</label><input id="stPass" type="text" placeholder="อย่างน้อย 6 ตัว" autocomplete="off"></div>
@@ -2962,6 +2968,7 @@ function applyBootstrapData(data) {
       businessType: sRow?.business_type || 'fnb',
       vatEnabled: !!sRow?.vat_enabled,
       vatRate: sRow?.vat_rate != null ? Number(sRow.vat_rate) : 7,
+      staffDiscountMax: sRow?.staff_discount_max != null ? Number(sRow.staff_discount_max) : 100,
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -3283,7 +3290,8 @@ async function syncToSupabase() {
       public_menu_enabled: settings.publicMenuEnabled || false,
       use_delivery: settings.useDelivery || false,
       vat_enabled: settings.vatEnabled || false,
-      vat_rate: settings.vatRate != null ? settings.vatRate : 7
+      vat_rate: settings.vatRate != null ? settings.vatRate : 7,
+      staff_discount_max: settings.staffDiscountMax != null ? settings.staffDiscountMax : 100
     },
     shop: { name: settings.shopName },
     _base_version: dataVersion
@@ -6271,7 +6279,14 @@ function posComputeTotals() {
   const grand = posCart.reduce((s, it) => s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0)), 0);
   const discVal = parseFloat($('posDiscVal')?.value) || 0;
   const discType = $('posDiscType')?.value || '%';
-  const disc = discType === '%' ? grand * discVal / 100 : discVal;
+  let disc = discType === '%' ? grand * discVal / 100 : discVal;
+  // เพดานส่วนลดพนักงาน: staff กดลดได้ไม่เกิน staffDiscountMax% ของยอด (เจ้าของ/แอดมินไม่จำกัด)
+  let discCapped = false;
+  if (USER_ROLE === 'staff') {
+    const maxPct = settings.staffDiscountMax != null ? Number(settings.staffDiscountMax) : 100;
+    const capAmt = grand * maxPct / 100;
+    if (disc > capAmt) { disc = capAmt; discCapped = true; }
+  }
   const member = findCustomerByPhone($('posMemberPhone')?.value || '');
   const memberDiscPct = member ? (Number(mcfg().discountPct) || 0) : 0;
   const memberDisc = grand * memberDiscPct / 100;
@@ -6283,7 +6298,7 @@ function posComputeTotals() {
   if (redeemPts > maxRedeem) redeemPts = maxRedeem;
   const redeemDisc = redeemPts * POINT_REDEEM_VALUE;
   const net = Math.max(0, afterDisc - redeemDisc);
-  return { grand, disc, memberDisc, afterDisc, member, maxRedeem, redeemPts, redeemDisc, net };
+  return { grand, disc, memberDisc, afterDisc, member, maxRedeem, redeemPts, redeemDisc, net, discCapped };
 }
 function posMemberLookup() {
   const el = $('posMemberInfo'); if (!el) return;
@@ -6540,6 +6555,11 @@ function renderPosCart() {
     if (t.memberDisc > 0) parts.push('ส่วนลดสมาชิก ' + money(t.memberDisc));
     if (t.redeemDisc > 0) parts.push('แลกแต้ม ' + money(t.redeemDisc));
     $('posCartGrand').title = parts.length ? ('ก่อนลด ' + money(t.grand) + ' − ' + parts.join(' − ')) : '';
+    const capNote = $('posDiscCapNote');
+    if (capNote) {
+      if (t.discCapped) { capNote.textContent = '⚠ พนักงานลดได้สูงสุด ' + (settings.staffDiscountMax != null ? settings.staffDiscountMax : 100) + '% — ปรับให้แล้ว'; capNote.style.display = 'block'; }
+      else capNote.style.display = 'none';
+    }
   }
 }
 
@@ -6567,7 +6587,9 @@ async function posCheckout() {
     memberPhone: ($('posMemberPhone')?.value || '').trim(),
     payMethod: $('posPayMethod')?.value || 'cash',
     redeemedPoints: redeemPts,
-    discV: discVal, discT: discType,
+    // ถ้าโดนเพดานพนักงาน เก็บส่วนลด "จริง" เป็นบาท (ไม่งั้น billTotal จะคิดส่วนลดเกินที่ตัดจริง)
+    discV: tt.discCapped ? Math.round(tt.disc * 100) / 100 : discVal,
+    discT: tt.discCapped ? '฿' : discType,
     taxV: 0, taxT: '%',
     items: posCart.map(it => {
       const r = it.matId ? null : recById(it.recipeId);
@@ -7094,6 +7116,7 @@ function fillSettings() {
   $('setMakeToOrder').checked = settings.makeToOrder || false;
   if ($('setVatEnabled')) $('setVatEnabled').checked = settings.vatEnabled || false;
   if ($('setVatRate')) $('setVatRate').value = settings.vatRate != null ? settings.vatRate : 7;
+  if ($('setStaffDiscMax')) $('setStaffDiscMax').value = settings.staffDiscountMax != null ? settings.staffDiscountMax : 100;
 }
 
 function saveSettings() {
@@ -7108,6 +7131,7 @@ function saveSettings() {
   settings.makeToOrder = $('setMakeToOrder').checked;
   if ($('setVatEnabled')) settings.vatEnabled = $('setVatEnabled').checked;
   if ($('setVatRate')) settings.vatRate = Number($('setVatRate').value) || 0;
+  if ($('setStaffDiscMax')) settings.staffDiscountMax = Math.max(0, Math.min(100, Number($('setStaffDiscMax').value)));
 
   $('sidebarShopName').textContent = settings.shopName;
   syncAccountUI();

@@ -88,7 +88,7 @@ router.post('/sync', async (req, res) => {
         if (s.categories != null && typeof s.categories !== 'string') s.categories = JSON.stringify(s.categories);
         if (s.member_config != null && typeof s.member_config !== 'string') s.member_config = JSON.stringify(s.member_config);
         await upsertRows(client, 'shop_settings',
-          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled', 'use_delivery', 'order_payment_mode', 'public_slug', 'kitchen_ticket_mode', 'member_config', 'business_type', 'vat_enabled', 'vat_rate'],
+          ['shop_id', 'phone', 'tax_id', 'address', 'bank', 'account', 'holder', 'promptpay', 'logo_url', 'theme', 'categories', 'make_to_order', 'use_petty_cash', 'public_menu_enabled', 'use_delivery', 'order_payment_mode', 'public_slug', 'kitchen_ticket_mode', 'member_config', 'business_type', 'vat_enabled', 'vat_rate', 'staff_discount_max'],
           [s], 'shop_id');
       }
 
