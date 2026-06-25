@@ -818,6 +818,7 @@
                 <span class="amount" id="posCartGrand">฿0.00</span>
               </div>
               <button class="btn btn-secondary" onclick="posClearCart()" style="width:100%; margin-bottom:8px; font-size:13px;"><span class="ico" data-icon="trash-2"></span> ล้างตะกร้า</button>
+              <button class="btn btn-secondary" onclick="showQrReceive()" style="width:100%; margin-bottom:8px; font-size:13px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="qr-code"></span> รับเงิน QR พร้อมเพย์</button>
               <button class="btn btn-primary" onclick="posCheckout()" style="width:100%;"><span class="ico" data-icon="banknote"></span> ชำระเงิน</button>
             </div>
           </div>
@@ -6756,6 +6757,70 @@ function renderPosCart() {
       else capNote.style.display = 'none';
     }
   }
+}
+
+// ===== 4.1 QR พร้อมเพย์ที่ POS — สร้าง payload EMVCo เอง (ไม่พึ่งบริการภายนอก) + เรนเดอร์ด้วย qrcode-generator =====
+function _ppTLV(id, val) { const v = String(val); return id + String(v.length).padStart(2, '0') + v; }
+function _ppCRC16(s) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < s.length; i++) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+// สร้าง PromptPay payload จากเบอร์/เลขผู้เสียภาษี + ยอดเงิน (ฝังยอด = dynamic QR)
+function promptpayPayload(id, amount) {
+  const t = String(id || '').replace(/[^0-9]/g, '');
+  if (!t) return '';
+  const type = t.length >= 15 ? '03' : (t.length >= 13 ? '02' : '01');
+  const target = type === '01' ? ('0000000000000' + t.replace(/^0/, '66')).slice(-13) : t;
+  const merchant = _ppTLV('00', 'A000000677010111') + _ppTLV(type, target);
+  const amt = Number(amount) > 0 ? Number(amount).toFixed(2) : null;
+  let p = _ppTLV('00', '01') + _ppTLV('01', amt ? '12' : '11') + _ppTLV('29', merchant)
+    + _ppTLV('53', '764') + (amt ? _ppTLV('54', amt) : '') + _ppTLV('58', 'TH');
+  p += '6304'; // CRC tag+len placeholder ก่อนคำนวณ
+  return p + _ppCRC16(p);
+}
+let _qrLibLoading = null;
+function ensureQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  if (_qrLibLoading) return _qrLibLoading;
+  _qrLibLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+    s.onload = resolve; s.onerror = () => reject(new Error('โหลดตัวสร้าง QR ไม่ได้ (ต้องมีเน็ต)'));
+    document.head.appendChild(s);
+  });
+  return _qrLibLoading;
+}
+async function showQrReceive() {
+  if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
+  if (!settings.pp) { ui.alert('ยังไม่ได้ตั้งเบอร์พร้อมเพย์ — ไปตั้งที่ ตั้งค่า → พร้อมเพย์ ก่อน', { icon: 'alert-triangle' }); return; }
+  const net = posComputeTotals().net;
+  let qrImg = '';
+  try { await ensureQrLib(); const q = qrcode(0, 'M'); q.addData(promptpayPayload(settings.pp, net)); q.make(); qrImg = q.createImgTag(6, 8); }
+  catch (e) { ui.alert(e.message, { icon: 'alert-triangle' }); return; }
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay'; ov.id = 'qrReceiveOverlay';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:360px;width:92%;padding:22px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+      <div style="font-size:15px;font-weight:800;color:#1a1a1a;">${esc(settings.shopName || 'ร้านค้า')}</div>
+      <div style="font-size:12px;color:#666;margin-bottom:10px;">สแกนจ่ายด้วยแอปธนาคาร / พร้อมเพย์</div>
+      <div style="display:inline-block;padding:10px;background:#fff;border:1px solid #eee;border-radius:12px;">${qrImg}</div>
+      <div style="font-size:13px;color:#666;margin-top:10px;">ยอดชำระ</div>
+      <div style="font-size:30px;font-weight:800;color:#2563eb;">${money(net)}</div>
+      <div style="font-size:11px;color:#999;margin-bottom:14px;">พร้อมเพย์: ${esc(settings.pp)}</div>
+      <button class="btn btn-primary" style="width:100%;margin-bottom:8px;background:#16a34a;border-color:#16a34a;" onclick="confirmQrReceived()"><span class="ico" data-icon="check"></span> รับเงินแล้ว — ปิดการขาย</button>
+      <button class="btn btn-ghost" style="width:100%;" onclick="document.getElementById('qrReceiveOverlay').remove()">ยกเลิก</button>
+    </div>`;
+  document.body.appendChild(ov);
+  renderIcons(ov);
+}
+function confirmQrReceived() {
+  const ov = document.getElementById('qrReceiveOverlay'); if (ov) ov.remove();
+  if ($('posPayMethod')) $('posPayMethod').value = 'transfer';   // บันทึกเป็นจ่ายโอน/พร้อมเพย์
+  posCheckout();
 }
 
 async function posCheckout() {
