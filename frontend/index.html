@@ -8602,7 +8602,10 @@ function pettyCashBalance() {
 }
 // M10: ลิ้นชักเงินสด / กะเงิน
 function currentTill() { return cashSessions.find(s => s.status === 'open'); }
-function tillCashSales(date) { return bills.filter(b => b.status === 'paid' && b.date === date && b.channel !== 'qr').reduce((s, b) => s + billTotal(b), 0); }
+// เงินสดเข้าลิ้นชัก = เฉพาะบิลที่จ่าย "เงินสด" (โอน/บัตรไม่เข้าลิ้นชัก) · บิลเก่าที่ไม่มี payMethod ถือเป็นเงินสด
+function tillCashSales(date) { return bills.filter(b => b.status === 'paid' && b.date === date && b.channel !== 'qr' && (b.payMethod || 'cash') === 'cash').reduce((s, b) => s + billTotal(b), 0); }
+// ยอดที่ไม่เข้าลิ้นชัก (โอน/บัตร) วันนั้น — แสดงเป็นบริบทให้เจ้าของเข้าใจว่าทำไมเงินสด ≠ ยอดขายรวม
+function tillNonCashSales(date) { return bills.filter(b => b.status === 'paid' && b.date === date && b.channel !== 'qr' && (b.payMethod || 'cash') !== 'cash').reduce((s, b) => s + billTotal(b), 0); }
 function renderCashDrawer() {
   const el = $('cashDrawerSection'); if (!el) return;
   const open = currentTill();
@@ -8625,7 +8628,9 @@ function renderCashDrawer() {
     </div>`;
     renderIcons(el); return;
   }
-  const sales = tillCashSales(open.bizDate || new Date().toISOString().slice(0, 10));
+  const bizDate = open.bizDate || new Date().toISOString().slice(0, 10);
+  const sales = tillCashSales(bizDate);
+  const nonCash = tillNonCashSales(bizDate);
   const expected = open.openingFloat + sales + open.cashIn - open.cashOut;
   el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -8638,6 +8643,7 @@ function renderCashDrawer() {
       <div style="background:var(--surface-2);border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:var(--color-text-muted);">เติม / เบิก</div><b>+${money(open.cashIn)} / -${money(open.cashOut)}</b></div>
       <div style="background:#E1F5EE;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:11px;color:#0F6E56;">ควรมีในลิ้นชัก</div><b style="color:#0F6E56;font-size:18px;">${money(expected)}</b></div>
     </div>
+    ${nonCash > 0 ? `<div style="font-size:11px;color:var(--color-text-muted);margin:-2px 0 10px;text-align:center;"><span class="ico" data-icon="info"></span> โอน/บัตรวันนี้ ${money(nonCash)} — ไม่เข้าลิ้นชัก (เข้าบัญชี/ร้านบัตร)</div>` : ''}
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
       <input id="tillAdj" type="number" step="any" placeholder="จำนวนเงิน" style="${inp}width:120px;text-align:right;">
       <button class="btn btn-ghost btn-sm" onclick="tillAdjust(1)">+ เติมเงิน</button>
