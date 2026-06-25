@@ -1006,6 +1006,7 @@
           <option value="retail">ร้านขายของ / รีเทล</option>
           <option value="maker">โฮมเมด / ผลิตขาย</option>
         </select>
+        <button class="btn btn-ghost btn-sm" onclick="openSetupWizard()" style="margin-left:10px;"><span class="ico" data-icon="wand-sparkles"></span> ตั้งร้านใหม่ (Wizard)</button>
       </div>
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
@@ -3169,6 +3170,128 @@ function renderManualHeader() {
   if (typeof renderIcons === 'function') { if (ttl) renderIcons(ttl); if (tip) renderIcons(tip); }
 }
 
+// ===== Wizard ตั้งร้านใหม่ (onboarding 5 ขั้น) =====
+const WIZ_BIZ = [
+  { code: 'fnb', icon: 'coffee', label: 'ร้านอาหาร / คาเฟ่ / เบเกอรี่', cats: ['กาแฟ', 'ชา', 'นม/ปั่น', 'ขนม', 'อาหาร'] },
+  { code: 'service', icon: 'sparkles', label: 'ร้านบริการ (คิ้ว/เล็บ/สปา)', cats: ['ทำเล็บ', 'ต่อขนตา', 'นวด/สปา', 'ทรีตเมนต์'] },
+  { code: 'retail', icon: 'shopping-bag', label: 'ร้านขายของ / รีเทล', cats: ['ขายดี', 'เครื่องดื่ม', 'ของใช้', 'อื่นๆ'] },
+  { code: 'maker', icon: 'cake', label: 'โฮมเมด / ผลิตขาย', cats: ['สินค้าหลัก', 'ของฝาก', 'ชุดของขวัญ'] },
+];
+let wizState = null;
+function openSetupWizard() {
+  const cur = WIZ_BIZ.find(b => b.code === (settings.businessType || 'fnb')) || WIZ_BIZ[0];
+  wizState = {
+    step: 1, biz: settings.businessType || '',
+    shopName: settings.shopName && settings.shopName !== 'ร้านเบเกอรี่ของคุณ' && settings.shopName !== 'ร้านเบเกอรี่โฮมเมด' ? settings.shopName : '',
+    vat: !!settings.vatEnabled, vatRate: settings.vatRate != null ? settings.vatRate : 7,
+    pp: settings.pp || '',
+    cats: Array.isArray(settings.posCategories) && settings.posCategories.length ? settings.posCategories.slice() : cur.cats.slice(),
+    products: [{ name: '', price: '', cost: '' }, { name: '', price: '', cost: '' }, { name: '', price: '', cost: '' }],
+  };
+  let ov = $('wizOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'wizOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(20,15,5,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;';
+  wizRender();
+}
+function closeSetupWizard() { const ov = $('wizOverlay'); if (ov) ov.remove(); }
+function wizSet(k, v) { wizState[k] = v; }
+function wizGo(step) { wizState.step = step; wizRender(); }
+function wizRender() {
+  const ov = $('wizOverlay'); if (!ov || !wizState) return;
+  const s = wizState.step;
+  const dot = n => `<span style="width:9px;height:9px;border-radius:50%;background:${n === s ? 'var(--color-primary)' : n < s ? 'var(--green,#16a34a)' : 'var(--border-soft)'};display:inline-block;"></span>`;
+  let body = '', footer = '';
+  if (s === 1) {
+    body = `<h3 style="margin:0 0 4px;">เลือกประเภทธุรกิจ</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px;">ระบบจะปรับคำเรียก + หมวดให้เหมาะกับร้านคุณ</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">` +
+      WIZ_BIZ.map(b => `<button onclick="wizPickBiz('${b.code}')" style="text-align:left;cursor:pointer;border:2px solid ${wizState.biz === b.code ? 'var(--color-primary)' : 'var(--border-soft)'};background:${wizState.biz === b.code ? 'var(--surface-2)' : 'var(--surface-1)'};border-radius:12px;padding:14px;display:flex;gap:10px;align-items:center;">
+        <span class="ico" data-icon="${b.icon}" style="font-size:22px;color:var(--color-primary);"></span>
+        <span style="font-weight:700;font-size:13px;color:var(--color-text-main);">${b.label}</span></button>`).join('') + `</div>`;
+    footer = `<button class="btn btn-ghost" onclick="closeSetupWizard()">ไว้ก่อน</button>
+      <button class="btn btn-primary" onclick="${wizState.biz ? 'wizGo(2)' : ''}" ${wizState.biz ? '' : 'disabled style="opacity:.5;"'}>ถัดไป <span class="ico" data-icon="arrow-right"></span></button>`;
+  } else if (s === 2) {
+    body = `<h3 style="margin:0 0 12px;">ข้อมูลร้าน</h3>
+      <div class="field" style="margin-bottom:12px;"><label>ชื่อร้าน</label><input id="wizShop" value="${esc(wizState.shopName)}" placeholder="เช่น คาเฟ่บ้านสวน" oninput="wizSet('shopName',this.value)" style="width:100%;"></div>
+      <div class="field" style="margin-bottom:12px;"><label>พร้อมเพย์ (เบอร์/เลขบัตร ปชช.) <span style="color:var(--color-text-muted);font-size:11px;">— ไม่บังคับ ใส่แล้วสร้าง QR รับเงินได้</span></label><input id="wizPP" value="${esc(wizState.pp)}" placeholder="08xxxxxxxx" oninput="wizSet('pp',this.value)" style="width:100%;"></div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="wizVat" ${wizState.vat ? 'checked' : ''} onchange="wizSet('vat',this.checked);wizRender();" style="width:auto;"> ร้านจด VAT (คิดภาษีในบิล)</label>
+      ${wizState.vat ? `<div class="field" style="margin-top:10px;max-width:160px;"><label>อัตรา VAT (%)</label><input id="wizVatRate" type="number" value="${wizState.vatRate}" oninput="wizSet('vatRate',+this.value||0)" style="width:100%;"></div>` : ''}`;
+    footer = `<button class="btn btn-ghost" onclick="wizGo(1)"><span class="ico" data-icon="arrow-left"></span> ย้อน</button>
+      <button class="btn btn-primary" onclick="wizGo(3)">ถัดไป <span class="ico" data-icon="arrow-right"></span></button>`;
+  } else if (s === 3) {
+    body = `<h3 style="margin:0 0 4px;">หมวดสินค้าหน้าขาย</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 12px;">แตะ × เพื่อลบ · เพิ่มหมวดใหม่ด้านล่าง (เรียง/แก้ทีหลังได้)</p>
+      <div id="wizCatChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">` +
+      wizState.cats.map((c, i) => `<span style="background:var(--surface-2);border:1px solid var(--border-soft);border-radius:20px;padding:6px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px;">${esc(c)} <span onclick="wizState.cats.splice(${i},1);wizRender()" style="cursor:pointer;color:#e53e3e;font-weight:700;">×</span></span>`).join('') + `</div>
+      <div style="display:flex;gap:8px;"><input id="wizNewCat" placeholder="เพิ่มหมวด เช่น โปรโมชั่น" style="flex:1;" onkeydown="if(event.key==='Enter')wizAddCat()"><button class="btn btn-ghost btn-sm" onclick="wizAddCat()"><span class="ico" data-icon="plus"></span> เพิ่ม</button></div>`;
+    footer = `<button class="btn btn-ghost" onclick="wizGo(2)"><span class="ico" data-icon="arrow-left"></span> ย้อน</button>
+      <button class="btn btn-primary" onclick="wizGo(4)">ถัดไป <span class="ico" data-icon="arrow-right"></span></button>`;
+  } else if (s === 4) {
+    body = `<h3 style="margin:0 0 4px;">เพิ่มสินค้าแรกๆ</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 12px;">ใส่เท่าที่อยากเริ่ม (ข้ามได้) — จะขายบน POS ได้ทันที เพิ่ม/แก้ทีหลังได้</p>
+      <div id="wizProds">` + wizState.products.map((p, i) => `<div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input placeholder="ชื่อสินค้า" value="${esc(p.name)}" oninput="wizState.products[${i}].name=this.value" style="flex:2;">
+        <input type="number" placeholder="ราคาขาย" value="${esc(p.price)}" oninput="wizState.products[${i}].price=this.value" style="flex:1;min-width:80px;">
+        <input type="number" placeholder="ทุน" value="${esc(p.cost)}" oninput="wizState.products[${i}].cost=this.value" style="flex:1;min-width:64px;">
+      </div>`).join('') + `</div>
+      <button class="btn btn-ghost btn-sm" onclick="wizState.products.push({name:'',price:'',cost:''});wizRender()"><span class="ico" data-icon="plus"></span> เพิ่มอีกช่อง</button>`;
+    footer = `<button class="btn btn-ghost" onclick="wizGo(3)"><span class="ico" data-icon="arrow-left"></span> ย้อน</button>
+      <button class="btn btn-primary" onclick="wizGo(5)">ถัดไป <span class="ico" data-icon="arrow-right"></span></button>`;
+  } else {
+    const prods = wizState.products.filter(p => (p.name || '').trim());
+    const bizLabel = (WIZ_BIZ.find(b => b.code === wizState.biz) || {}).label || '';
+    body = `<div style="text-align:center;"><span class="ico" data-icon="party-popper" style="font-size:40px;color:var(--color-primary);"></span>
+      <h3 style="margin:10px 0 4px;">พร้อมเปิดร้านแล้ว!</h3></div>
+      <div style="background:var(--surface-2);border-radius:12px;padding:14px;font-size:13px;line-height:2;margin-top:10px;">
+        <b>ประเภท:</b> ${esc(bizLabel)}<br>
+        <b>ชื่อร้าน:</b> ${esc(wizState.shopName || '(ยังไม่ตั้ง)')}<br>
+        <b>VAT:</b> ${wizState.vat ? wizState.vatRate + '%' : 'ไม่ใช้'} &nbsp;·&nbsp; <b>พร้อมเพย์:</b> ${wizState.pp ? esc(wizState.pp) : 'ยังไม่ใส่'}<br>
+        <b>หมวด POS:</b> ${wizState.cats.length ? esc(wizState.cats.join(', ')) : '—'}<br>
+        <b>สินค้าเริ่มต้น:</b> ${prods.length} รายการ
+      </div>`;
+    footer = `<button class="btn btn-ghost" onclick="wizGo(4)"><span class="ico" data-icon="arrow-left"></span> ย้อน</button>
+      <button class="btn btn-primary" onclick="wizFinish()"><span class="ico" data-icon="check"></span> เริ่มใช้งาน</button>`;
+  }
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:18px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="padding:18px 20px 0;display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-weight:800;color:var(--color-primary);"><span class="ico" data-icon="wand-sparkles"></span> ตั้งร้านใหม่ <span style="color:var(--color-text-muted);font-weight:500;font-size:13px;">ขั้น ${s}/5</span></div>
+      <div style="display:flex;gap:6px;align-items:center;">${[1, 2, 3, 4, 5].map(dot).join('')}</div>
+    </div>
+    <div style="padding:16px 20px;">${body}</div>
+    <div style="padding:0 20px 18px;display:flex;justify-content:space-between;gap:10px;">${footer}</div>
+  </div>`;
+  renderIcons(ov);
+}
+function wizPickBiz(code) { wizState.biz = code; const b = WIZ_BIZ.find(x => x.code === code); if (b && (!wizState.cats.length || wizState._catsAuto !== false)) { wizState.cats = b.cats.slice(); } wizRender(); }
+function wizAddCat() { const i = $('wizNewCat'); const v = (i.value || '').trim(); if (v && !wizState.cats.includes(v)) wizState.cats.push(v); wizState._catsAuto = false; wizRender(); }
+function wizFinish() {
+  if (wizState.biz) { settings.businessType = wizState.biz; }
+  if (wizState.shopName) settings.shopName = wizState.shopName;
+  settings.vatEnabled = !!wizState.vat;
+  settings.vatRate = wizState.vat ? (wizState.vatRate || 0) : settings.vatRate;
+  if (wizState.pp) settings.pp = wizState.pp;
+  settings.posCategories = wizState.cats.slice();
+  const cat0 = wizState.cats[0] || '';
+  const unitByBiz = { fnb: 'แก้ว', service: 'ครั้ง', retail: 'ชิ้น', maker: 'ชิ้น' };
+  const unit = unitByBiz[wizState.biz] || 'ชิ้น';
+  wizState.products.filter(p => (p.name || '').trim()).forEach(p => {
+    materials.push({
+      id: uid(), sku: '', name: p.name.trim(), qty: 1, unit, price: Number(p.cost) || 0, sellPrice: Number(p.price) || 0,
+      supId: '', orderUrl: '', category: cat0, convQty: null, stockUnit: null, stock: 0, lowStock: 0,
+      saleType: 'SELLABLE', showInPos: true, salePrice2: null, itemType: 'SALE', imgData: ''
+    });
+  });
+  try { localStorage.setItem('recipro_wizard_done', '1'); } catch (e) {}
+  closeSetupWizard();
+  if (typeof applyTerminology === 'function') applyTerminology();
+  if ($('sidebarShopName')) $('sidebarShopName').textContent = settings.shopName;
+  saveAll();
+  ui.toast('ตั้งร้านเรียบร้อย! เริ่มขายได้เลย', 'success');
+  switchTab('pos');
+}
+function maybeAutoWizard() {
+  try { if (localStorage.getItem('recipro_wizard_done')) return; } catch (e) {}
+  if (typeof USER_ROLE !== 'undefined' && USER_ROLE === 'staff') return;   // เฉพาะเจ้าของ
+  if ((materials || []).length === 0 && (recipes || []).length === 0) { setTimeout(openSetupWizard, 600); }
+}
+
 // เฟส 3: ตัวสลับสาขา (แสดงเมื่อผู้ใช้เป็นสมาชิก > 1 สาขา)
 let MY_SHOPS = [];
 function renderBranchSwitcher(shops, currentId) {
@@ -3482,6 +3605,7 @@ async function boot() {
   render();
   renderThemePicker();
   syncAccountUI();   // ซิงค์การ์ดผู้ใช้/เมนูบัญชี (avatar + ชื่อร้าน + ป้ายสถานะ) ให้ตรงล่าสุด
+  if (typeof maybeAutoWizard === 'function') maybeAutoWizard();   // เปิด Wizard ตั้งร้านอัตโนมัติถ้าร้านยังว่าง (เจ้าของเท่านั้น)
 
   if (USER_ROLE === 'superadmin') {
     if (isMockMode) {
