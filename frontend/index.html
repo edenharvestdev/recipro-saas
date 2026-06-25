@@ -3089,6 +3089,7 @@ function applyBootstrapData(data) {
       staffDiscountMaxBaht: sRow?.staff_discount_max_baht != null ? Number(sRow.staff_discount_max_baht) : 0,
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
+      posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -3421,7 +3422,8 @@ async function syncToSupabase() {
       staff_discount_max: settings.staffDiscountMax != null ? settings.staffDiscountMax : 100,
       staff_discount_max_baht: settings.staffDiscountMaxBaht != null ? settings.staffDiscountMaxBaht : 0,
       discount_presets: Array.isArray(settings.discountPresets) ? settings.discountPresets : [],
-      staff_permissions: (settings.staffPermissions && typeof settings.staffPermissions === 'object') ? settings.staffPermissions : {}
+      staff_permissions: (settings.staffPermissions && typeof settings.staffPermissions === 'object') ? settings.staffPermissions : {},
+      pos_categories: Array.isArray(settings.posCategories) ? settings.posCategories : []
     },
     shop: { name: settings.shopName },
     _base_version: dataVersion
@@ -6042,16 +6044,94 @@ function posSellableMats() { return materials.filter(m => m.showInPos && m.saleT
 function renderPosCategoryBar() {
   const bar = $('posCategoryBar');
   if (!bar) return;
-  const cats = [...new Set([
-    ...recipes.filter(r => !r.isRaw && r.category).map(r => r.category),
+  // หมวด POS ที่เจ้าของจัดการเอง (เรียงลำดับได้) — ถ้ายังไม่ตั้ง ใช้หมวดที่อนุมานจากสินค้า (back-compat)
+  const managed = Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : [];
+  const cats = managed.length ? managed : [...new Set([
+    ...recipes.filter(r => (r.onMenu != null ? r.onMenu : !r.isRaw) && r.category).map(r => r.category),
     ...posSellableMats().filter(m => m.category).map(m => m.category)
   ])];
-  if (!cats.length) { bar.style.display = 'none'; return; }
+  const canManage = (USER_ROLE === 'owner' || USER_ROLE === 'superadmin');
+  if (!cats.length && !canManage) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
   bar.innerHTML = [
     `<button class="pos-cat-chip${!posCategoryFilter ? ' active' : ''}" onclick="posCategoryFilter=''; renderPosGrid();">ทั้งหมด</button>`,
-    ...cats.map(c => `<button class="pos-cat-chip${posCategoryFilter === c ? ' active' : ''}" onclick="posCategoryFilter='${esc(c)}'; renderPosGrid();">${esc(c)}</button>`)
+    ...cats.map(c => `<button class="pos-cat-chip${posCategoryFilter === c ? ' active' : ''}" onclick="posCategoryFilter='${esc(c)}'; renderPosGrid();">${esc(c)}</button>`),
+    canManage ? `<button class="pos-cat-chip" style="border-style:dashed;opacity:.8;" onclick="openPosCatManager()"><span class="ico" data-icon="settings-2"></span> จัดการหมวด</button>` : ''
   ].join('');
+  renderIcons(bar);
+}
+
+// ===== จัดการหมวดเมนู POS (เจ้าของ) — สร้างหมวดเอง + จัดเมนูเข้าหมวด (แยกจากหมวดวัตถุดิบ) =====
+function openPosCatManager() {
+  if (!Array.isArray(settings.posCategories)) settings.posCategories = [];
+  let ov = document.getElementById('posCatOverlay');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'posCatOverlay'; ov.className = 'modal-overlay';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:16px;max-width:560px;width:94%;max-height:88vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+      <h2 style="margin:0 0 4px;"><span class="ico" data-icon="layout-grid"></span> จัดการหมวดเมนู (POS)</h2>
+      <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 14px;">หมวดสำหรับกดเลือกที่หน้าขาย — แยกจากหมวดวัตถุดิบ/สต๊อก</p>
+      <div id="posCatManagerBody"></div>
+      <button onclick="document.getElementById('posCatOverlay').remove()" class="btn btn-ghost" style="width:100%;margin-top:14px;">ปิด</button>
+    </div>`;
+  document.body.appendChild(ov);
+  renderPosCatManagerBody();
+}
+function renderPosCatManagerBody() {
+  const el = document.getElementById('posCatManagerBody'); if (!el) return;
+  const cats = settings.posCategories || [];
+  const catRows = cats.length ? cats.map((c, i) => `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;">
+      <span style="flex:1;font-size:14px;">${esc(c)}</span>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 7px;" onclick="posCatMove(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 7px;" onclick="posCatMove(${i},1)" ${i === cats.length - 1 ? 'disabled' : ''}>↓</button>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 7px;color:#dc2626;" onclick="posCatRemove(${i})">ลบ</button>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีหมวด — เพิ่มด้านล่าง</div>';
+  // เมนูที่ต้องจัดเข้าหมวด
+  const opts = (cur) => '<option value="">(ไม่มีหมวด)</option>' + cats.map(c => `<option value="${esc(c)}"${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('');
+  const menuRecs = recipes.filter(r => (r.onMenu != null ? r.onMenu : !r.isRaw));
+  const menuMats = posSellableMats();
+  const itemRow = (name, cur, onch) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+      <span style="flex:1;font-size:13px;">${esc(name)}</span>
+      <select onchange="${onch}" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:12px;min-width:130px;">${opts(cur)}</select>
+    </div>`;
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">หมวด (เรียงลำดับการแสดง)</div>
+    <div style="background:var(--surface-2);border-radius:10px;padding:10px 12px;margin-bottom:8px;">${catRows}</div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;">
+      <input id="newPosCat" placeholder="ชื่อหมวดใหม่ เช่น เครื่องดื่มเย็น" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;" onkeydown="if(event.key==='Enter')posCatAdd()">
+      <button class="btn btn-primary btn-sm" onclick="posCatAdd()"><span class="ico" data-icon="plus"></span> เพิ่ม</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">จัดเมนูเข้าหมวด (${menuRecs.length + menuMats.length} รายการ)</div>
+    <div style="background:var(--surface-2);border-radius:10px;padding:8px 12px;max-height:320px;overflow:auto;">
+      ${menuRecs.map(r => itemRow(r.name, r.category || '', `posCatAssign('rec','${r.id}',this.value)`)).join('')}
+      ${menuMats.map(m => itemRow(m.name + ' (สินค้า)', m.category || '', `posCatAssign('mat','${m.id}',this.value)`)).join('')}
+      ${(menuRecs.length + menuMats.length) ? '' : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีเมนู</div>'}
+    </div>`;
+  renderIcons(el);
+}
+function posCatAdd() {
+  const inp = document.getElementById('newPosCat'); if (!inp) return;
+  const name = (inp.value || '').trim(); if (!name) return;
+  if (!Array.isArray(settings.posCategories)) settings.posCategories = [];
+  if (settings.posCategories.includes(name)) { ui.toast('มีหมวดนี้แล้ว', 'warning'); return; }
+  settings.posCategories.push(name); inp.value = '';
+  saveAll(); renderPosCatManagerBody(); renderPosCategoryBar();
+}
+function posCatRemove(i) {
+  settings.posCategories.splice(i, 1);
+  saveAll(); renderPosCatManagerBody(); renderPosCategoryBar();
+}
+function posCatMove(i, dir) {
+  const a = settings.posCategories; const j = i + dir;
+  if (j < 0 || j >= a.length) return;
+  [a[i], a[j]] = [a[j], a[i]];
+  saveAll(); renderPosCatManagerBody(); renderPosCategoryBar();
+}
+function posCatAssign(type, id, value) {
+  if (type === 'rec') { const r = recById(id); if (r) r.category = value; }
+  else { const m = matById(id); if (m) m.category = value; }
+  saveAll(); renderPosGrid();
 }
 
 function renderPosGrid() {

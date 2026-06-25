@@ -40,6 +40,7 @@ const files = [
   '../db/schema-s3.sql',
   '../db/schema-s4.sql',
   '../db/schema-s5.sql',
+  '../db/schema-s6.sql',
   '../db/seed.sql',
 ];
 
