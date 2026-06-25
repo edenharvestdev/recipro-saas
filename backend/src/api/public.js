@@ -20,7 +20,7 @@ router.get('/menu/:token', async (req, res) => {
     const shop = await shopByToken(req.params.token);
     if (!shop) return res.status(404).json({ error: 'menu not found or disabled' });
     const recs = (await query(
-      `select id, name, sell_price, img_data, category, detail from recipes
+      `select id, name, sell_price, img_data, category, detail, link from recipes
         where shop_id = $1 and coalesce(on_menu, not coalesce(is_raw,false)) = true and coalesce(sell_price,0) > 0
         order by category nulls last, name`, [shop.id])).rows;
     const mats = (await query(
@@ -35,7 +35,7 @@ router.get('/menu/:token', async (req, res) => {
     const groupsById = {}; groups.forEach(g => { groupsById[g.id] = { id: g.id, label: g.label, select_type: g.select_type, required: g.required, choices: choicesByGroup[g.id] || [] }; });
     const groupsByRecipe = {}; glinks.forEach(l => { if (groupsById[l.group_id]) (groupsByRecipe[l.recipe_id] = groupsByRecipe[l.recipe_id] || []).push(groupsById[l.group_id]); });
     const items = [
-      ...recs.map(r => ({ id: r.id, type: 'recipe', name: r.name, price: Number(r.sell_price) || 0, img: r.img_data || '', category: r.category || '', detail: r.detail || '', options: (groupsByRecipe[r.id] || []).filter(g => g.choices.length) })),
+      ...recs.map(r => ({ id: r.id, type: 'recipe', name: r.name, price: Number(r.sell_price) || 0, img: r.img_data || '', category: r.category || '', detail: r.detail || '', link: r.link || '', options: (groupsByRecipe[r.id] || []).filter(g => g.choices.length) })),
       ...mats.map(m => ({ id: m.id, type: 'material', name: m.name, price: Number(m.sell_price) || 0, img: m.img_data || '', category: m.category || '', options: [] })),
     ];
     res.json({ shop_name: shop.name, logo: shop.logo_url || '', items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' } });

@@ -48,7 +48,7 @@ router.post('/sync', async (req, res) => {
         withShop(b.materials), 'id', true);
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link'],
         withShop((b.recipes || []).map(r => ({
           ...r,
           opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))

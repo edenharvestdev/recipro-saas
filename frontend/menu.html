@@ -6,20 +6,32 @@
 <title>เมนูร้าน — สั่งออนไลน์</title>
 <style>
   *{box-sizing:border-box;margin:0;font-family:'Sarabun','Segoe UI',system-ui,sans-serif}
-  body{background:#f6f6f7;color:#1a1a1a;padding-bottom:96px}
-  header{background:#fff;padding:16px;position:sticky;top:0;z-index:5;box-shadow:0 1px 6px rgba(0,0,0,.06)}
-  header h1{font-size:20px} header .sub{font-size:12px;color:#777;margin-top:2px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:14px}
-  .card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.07);display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s}
-  .card:active{transform:scale(.98)}
-  .card .img{height:128px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;justify-content:flex-end;font-size:34px;position:relative}
-  .card .swatch{position:absolute;left:10px;bottom:8px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px;text-shadow:0 1px 3px rgba(0,0,0,.35);opacity:.9}
-  .card .b{padding:11px 12px 12px;flex:1;display:flex;flex-direction:column;gap:5px}
-  .card .nm{font-size:15px;font-weight:700;line-height:1.25;color:#1a1a1a}
-  .card .desc{font-size:11px;color:#888;line-height:1.35;max-height:30px;overflow:hidden}
-  .card .pr{font-size:18px;font-weight:800;color:#16a34a}
-  .add{margin-top:auto;border:none;background:#7c3aed;color:#fff;border-radius:12px;padding:9px;font-size:14px;font-weight:700;cursor:pointer}
-  .cat{padding:4px 14px 0;font-size:13px;font-weight:700;color:#7c3aed;grid-column:1/-1}
+  body{background:linear-gradient(180deg,#fff7f2 0%,#f6f4fb 100%);color:#1a1a1a;padding-bottom:96px;min-height:100vh}
+  header{background:linear-gradient(135deg,#fff,#fef3ec);padding:18px 16px;position:sticky;top:0;z-index:5;box-shadow:0 2px 12px rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.06)}
+  header h1{font-size:21px;font-weight:800} header .sub{font-size:12px;color:#9a8aa8;margin-top:3px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;padding:16px}
+  .card{background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 18px rgba(80,60,120,.10);display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;animation:pop .35s ease both}
+  @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+  .card:active{transform:scale(.97)}
+  .card .img{height:148px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;position:relative}
+  .card .img::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.45))}
+  .card .swatch{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.9);color:#7c3aed;font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;z-index:1;letter-spacing:.3px}
+  .card .nm-img{position:absolute;left:12px;right:12px;bottom:9px;color:#fff;font-size:15px;font-weight:800;line-height:1.2;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .card .b{padding:11px 13px 13px;flex:1;display:flex;flex-direction:column;gap:6px}
+  .card .desc{font-size:11.5px;color:#998aa8;line-height:1.4;max-height:32px;overflow:hidden}
+  .card .pr{font-size:19px;font-weight:900;color:#16a34a}
+  .card .rev{font-size:11px;color:#7c3aed;text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:3px}
+  .add{margin-top:auto;border:none;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:13px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(124,58,237,.28)}
+  .cat{padding:8px 14px 0;font-size:14px;font-weight:800;color:#7c3aed;grid-column:1/-1;display:flex;align-items:center;gap:7px}
+  .cat::before{content:'';width:6px;height:18px;background:linear-gradient(#8b5cf6,#ec4899);border-radius:6px}
+  /* 🥕 loader */
+  #loader{position:fixed;inset:0;background:linear-gradient(180deg,#fff7f2,#f6f4fb);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;gap:14px}
+  #loader.hide{opacity:0;pointer-events:none;transition:opacity .4s}
+  .carrot{font-size:64px;animation:spin 1.1s cubic-bezier(.5,.1,.5,.9) infinite;transform-origin:50% 55%}
+  @keyframes spin{0%{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(1.12)}100%{transform:rotate(360deg) scale(1)}}
+  #loader .lt{font-size:15px;color:#9a8aa8;font-weight:700;letter-spacing:.5px}
+  .dots::after{content:'';animation:dots 1.2s steps(4,end) infinite}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
   .cartbar{position:fixed;left:0;right:0;bottom:0;background:#fff;box-shadow:0 -2px 10px rgba(0,0,0,.1);padding:12px 16px;display:flex;gap:10px;align-items:center}
   .cartbar b{flex:1;font-size:15px}
   .cartbar button{border:none;background:#16a34a;color:#fff;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer}
@@ -35,6 +47,7 @@
 </style>
 </head>
 <body>
+<div id="loader"><div class="carrot">🥕</div><div class="lt">กำลังโหลดเมนู<span class="dots"></span></div></div>
 <header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div></header>
 <div class="grid" id="grid"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
@@ -52,31 +65,37 @@ const hueOf = s => { let h=0; for(let i=0;i<String(s).length;i++) h=(h*31+String
 async function load(){
   try{
     const r = await fetch('/public/menu/'+TOKEN);
-    if(!r.ok){ document.getElementById('shopName').textContent='ไม่พบเมนู หรือร้านปิดรับออนไลน์'; return; }
+    if(!r.ok){ document.getElementById('shopName').textContent='ไม่พบเมนู หรือร้านปิดรับออนไลน์'; hideLoader(); return; }
     const d = await r.json();
     document.getElementById('shopName').textContent = d.shop_name || 'เมนู';
     MENU = d.items || [];
     if (d.payment) PAYMENT = d.payment;
     if (d.logo) { const l = document.getElementById('shopLogo'); l.src = d.logo; l.style.display = 'block'; }
     renderGrid();
-  }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; }
+  }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; hideLoader(); }
 }
+function hideLoader(){ const l=document.getElementById('loader'); if(l){ l.classList.add('hide'); setTimeout(()=>l.remove(),450); } }
 function renderGrid(){
   const g = document.getElementById('grid'); let html=''; let lastCat=null;
-  MENU.forEach(it=>{
+  MENU.forEach((it,i)=>{
     if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
     const h = hueOf(it.name || 'x');
-    const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 58% 62%),hsl(${(h + 45) % 360} 62% 50%))`;
-    html += `<div class="card">
-      <div class="img" style="${bg}"><span class="swatch">${esc(it.category || 'เมนู')}</span></div>
+    const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 70% 64%),hsl(${(h + 45) % 360} 72% 52%))`;
+    const link = it.link ? `<a class="rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียด →</a>` : '';
+    html += `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms">
+      <div class="img" style="${bg}">
+        <span class="swatch">${esc(it.category || 'เมนู')}</span>
+        <div class="nm-img">${esc(it.name)}</div>
+      </div>
       <div class="b">
-        <div class="nm">${esc(it.name)}</div>
         ${it.detail ? `<div class="desc">${esc(it.detail)}</div>` : ''}
         <div class="pr">${fmt(it.price)}</div>
-        <button class="add" onclick="addItem('${it.id}')">+ เพิ่ม</button>
+        ${link}
+        <button class="add" onclick="addItem('${it.id}')">+ เพิ่มลงตะกร้า</button>
       </div></div>`;
   });
   g.innerHTML = html || '<p class="muted" style="grid-column:1/-1;text-align:center;padding:30px">ยังไม่มีเมนู</p>';
+  hideLoader();
 }
 // เพิ่มเมนู — ถ้ามีตัวเลือก เปิดให้เลือกก่อน
 function addItem(id){ const it=MENU.find(x=>x.id===id); if(!it) return; if(it.options&&it.options.length){ openOptionSheet(it); } else addLine(it,[]); }
