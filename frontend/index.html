@@ -1012,6 +1012,15 @@
             </div>
           </div>
 
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;padding:10px 12px;background:var(--surface-2);border-radius:10px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0;">
+              <input type="checkbox" id="setVatEnabled" onchange="saveSettings()" style="width:16px;height:16px;"> ออกใบกำกับภาษีอย่างย่อ (แสดง VAT ในใบเสร็จ)
+            </label>
+            <span style="font-size:13px;color:var(--color-text-muted);">อัตรา</span>
+            <input type="number" id="setVatRate" min="0" max="100" step="0.5" onchange="saveSettings()" style="width:64px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
+            <span style="font-size:13px;color:var(--color-text-muted);">% (ราคาขายรวม VAT แล้ว)</span>
+          </div>
+
           <div class="field">
             <label>ที่อยู่ร้านอย่างละเอียด</label>
             <textarea id="setAddr" rows="2" placeholder="ที่อยู่ร้านพิมพ์ลงท้ายเอกสาร..." onchange="saveSettings()"></textarea>
@@ -2951,6 +2960,8 @@ function applyBootstrapData(data) {
       publicSlug: sRow?.public_slug || '',
       kitchenTicketMode: sRow?.kitchen_ticket_mode || 'receipt',
       businessType: sRow?.business_type || 'fnb',
+      vatEnabled: !!sRow?.vat_enabled,
+      vatRate: sRow?.vat_rate != null ? Number(sRow.vat_rate) : 7,
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -3270,7 +3281,9 @@ async function syncToSupabase() {
       business_type: settings.businessType || 'fnb',
       use_petty_cash: settings.usePettyCash || false,
       public_menu_enabled: settings.publicMenuEnabled || false,
-      use_delivery: settings.useDelivery || false
+      use_delivery: settings.useDelivery || false,
+      vat_enabled: settings.vatEnabled || false,
+      vat_rate: settings.vatRate != null ? settings.vatRate : 7
     },
     shop: { name: settings.shopName },
     _base_version: dataVersion
@@ -5396,6 +5409,10 @@ function computeDailyClose(date) {
   const opex = (expenses || []).filter(e => e.kind !== 'income' && (e.date || '') === date).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const net = gross - opex;
   const top = Object.values(prodMap).sort((a, b) => b.rev - a.rev).slice(0, 5);
+  // VAT ที่เก็บได้ (ถ้าเปิด) — ราคารวม VAT แล้ว
+  const vatOn = !!settings.vatEnabled;
+  const vatRate = settings.vatRate != null ? Number(settings.vatRate) : 7;
+  const vat = vatOn ? grand - grand / (1 + vatRate / 100) : 0;
   // ลิ้นชัก: กะของวันนั้น (ถ้ามี)
   const sess = cashSessions.find(s => (s.bizDate || '') === date);
   let till = null;
@@ -5404,7 +5421,7 @@ function computeDailyClose(date) {
     till = { float: sess.openingFloat, cashIn: sess.cashIn || 0, cashOut: sess.cashOut || 0,
       expected, counted: sess.counted || 0, status: sess.status, diff: (sess.counted || 0) - expected };
   }
-  return { date, grand, count: paid.length, pm, cogs, gross, opex, net, top, till };
+  return { date, grand, count: paid.length, pm, cogs, gross, opex, net, top, till, vatOn, vatRate, vat };
 }
 function printDailyClose() {
   const date = ($('zDate') && $('zDate').value) || new Date().toISOString().slice(0, 10);
@@ -5420,6 +5437,7 @@ function printDailyClose() {
     + '<div class="sub">วันที่ ' + e(date) + ' · พิมพ์ ' + e(printed) + '</div>'
     + '<div class="hr"></div>'
     + row('ยอดขายรวม', m(d.grand) + ' <b>(' + d.count + ' บิล)</b>', true)
+    + (d.vatOn ? row('  รวมภาษีมูลค่าเพิ่ม ' + d.vatRate + '%', m(d.vat)) : '')
     + '<div class="hr dash"></div><div class="sec">แยกตามวิธีจ่าย</div>'
     + row('เงินสด (' + d.pm.cash.n + ')', m(d.pm.cash.sum))
     + row('โอน/พร้อมเพย์ (' + d.pm.transfer.n + ')', m(d.pm.transfer.sum))
@@ -6650,6 +6668,15 @@ function showPosReceipt(b, total) {
   }).join('');
   const ppLine = settings.pp ? `<div class="rc-sub">พร้อมเพย์ ${esc(settings.pp)}</div>` : '';
   const phoneLine = settings.phone ? `<div class="rc-sub">โทร. ${esc(settings.phone)}</div>` : '';
+  const vatOn = !!settings.vatEnabled;
+  const vatRate = settings.vatRate != null ? Number(settings.vatRate) : 7;
+  const docLabel = vatOn ? 'ใบกำกับภาษีอย่างย่อ' : 'ใบเสร็จรับเงิน';
+  const taxLine = (vatOn && settings.tax) ? `<div class="rc-sub">เลขผู้เสียภาษี ${esc(settings.tax)}</div>` : '';
+  // ราคาขายรวม VAT แล้ว → แยกมูลค่าก่อนภาษี + ภาษี
+  const vatBase = vatOn ? total / (1 + vatRate / 100) : 0;
+  const vatAmt = vatOn ? total - vatBase : 0;
+  const vatRows = vatOn ? `<div class="rc-sub" style="display:flex;justify-content:space-between;margin-top:4px;"><span>มูลค่าก่อนภาษี</span><span>${money(vatBase)}</span></div>`
+    + `<div class="rc-sub" style="display:flex;justify-content:space-between;"><span>ภาษีมูลค่าเพิ่ม ${vatRate}%</span><span>${money(vatAmt)}</span></div>` : '';
 
   const el = document.createElement('div');
   el.id = 'posReceiptOverlay';
@@ -6660,7 +6687,8 @@ function showPosReceipt(b, total) {
       <div class="rc-header">
         ${settings.logoData ? '<img src="' + esc(settings.logoData) + '" alt="" style="width:60px;height:60px;object-fit:contain;display:block;margin:0 auto 6px;border-radius:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">' : ''}
         <div class="rc-shop">${esc(shopName)}</div>
-        ${phoneLine}${ppLine}
+        <div class="rc-sub" style="font-weight:700;">${docLabel}</div>
+        ${phoneLine}${ppLine}${taxLine}
         <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}${b.tableNo ? ' &nbsp;|&nbsp; คิว/โต๊ะ ' + esc(b.tableNo) : ''}</div>
       </div>
       <div class="rc-divider"></div>
@@ -6670,6 +6698,7 @@ function showPosReceipt(b, total) {
       </table>
       <div class="rc-divider"></div>
       <div class="rc-total">รวม <span>${money(total)}</span></div>
+      ${vatRows}
       <div class="rc-sub" style="text-align:center;margin-top:4px;">ชำระโดย ${esc(PAY_METHOD_LABELS[b.payMethod] || 'เงินสด')}</div>
       ${(() => { const mc = b.memberPhone ? findCustomerByPhone(b.memberPhone) : null; return mc ? `<div class="rc-sub" style="text-align:center;margin-top:4px;">สมาชิก ${esc(mc.name || mc.phone)} · แต้มสะสม ${mc.points}</div>` : ''; })()}
       <div class="rc-footer">ขอบคุณที่ใช้บริการ</div>
@@ -7063,6 +7092,8 @@ function fillSettings() {
   $('setHolder').value = settings.holder;
   $('setPP').value = settings.pp;
   $('setMakeToOrder').checked = settings.makeToOrder || false;
+  if ($('setVatEnabled')) $('setVatEnabled').checked = settings.vatEnabled || false;
+  if ($('setVatRate')) $('setVatRate').value = settings.vatRate != null ? settings.vatRate : 7;
 }
 
 function saveSettings() {
@@ -7075,6 +7106,8 @@ function saveSettings() {
   settings.holder = $('setHolder').value.trim();
   settings.pp = $('setPP').value.trim();
   settings.makeToOrder = $('setMakeToOrder').checked;
+  if ($('setVatEnabled')) settings.vatEnabled = $('setVatEnabled').checked;
+  if ($('setVatRate')) settings.vatRate = Number($('setVatRate').value) || 0;
 
   $('sidebarShopName').textContent = settings.shopName;
   syncAccountUI();
