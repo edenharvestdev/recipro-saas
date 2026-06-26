@@ -3,6 +3,8 @@ const path = require('path');
 const express = require('express');
 const { requireAuth, requireSuperadmin } = require('./auth/middleware');
 const { tenant } = require('./tenant');
+const { computeBillingState, isWriteBlocked } = require('./billing-state');
+const { query: dbq } = require('./db');
 
 const app = express();
 
@@ -32,6 +34,19 @@ app.post('/webhooks/omise-charge', require('./api/pay').omiseWebhook);  // S8: O
 // /api/* — ต้องล็อกอิน + ผูกร้าน (tenant) ก่อนเสมอ
 const api = express.Router();
 api.use(requireAuth, tenant);
+// billing guard: ร้านหมดอายุ (readonly/suspended) → เขียนข้อมูล/ขายไม่ได้ (อ่าน+บูต+จ่ายเงินได้)
+api.use(async (req, res, next) => {
+  try {
+    if (req.method === 'GET' || req.isSuperadmin || !req.shopId) return next();
+    if (/^\/(billing|pay)\b/.test(req.path)) return next();   // ให้จ่าย/ต่ออายุได้เสมอ
+    const sh = (await dbq('select status, trial_ends_at from shops where id=$1', [req.shopId])).rows[0];
+    if (!sh) return next();
+    const sub = (await dbq('select status, current_period_end from subscriptions where shop_id=$1 limit 1', [req.shopId])).rows[0];
+    const bs = computeBillingState(sh.status, sub, sh.trial_ends_at);
+    if (isWriteBlocked(bs.state)) return res.status(423).json({ error: 'แพ็กเกจหมดอายุ — กรุณาต่ออายุเพื่อบันทึก/ขายต่อ', billing_state: bs.state });
+    next();
+  } catch (e) { next(); }   // เช็คพลาด = ไม่บล็อก (กันระบบล่ม)
+});
 api.use(require('./api/bootstrap'));   // GET  /api/bootstrap
 api.use(require('./api/sync'));        // POST /api/sync
 api.use(require('./api/stock'));       // POST /api/stock/{move,produce,sale} · GET /api/stock/movements

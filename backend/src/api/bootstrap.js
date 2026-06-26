@@ -2,6 +2,7 @@
 // คืน column แบบ snake_case ตรงกับที่ frontend map อยู่แล้ว
 const express = require('express');
 const { query } = require('../db');
+const { computeBillingState, GRACE_DAYS } = require('../billing-state');
 const router = express.Router();
 
 router.get('/bootstrap', async (req, res) => {
@@ -39,11 +40,22 @@ router.get('/bootstrap', async (req, res) => {
       query('select * from cash_sessions where shop_id = $1 order by opened_at desc limit 200', [shopId]),
     ]);
 
+    // billing: plan + สถานะ (state/days_left) ให้ frontend โชว์แถบเตือน + ล็อกฟีเจอร์ตามแพ็กเกจ
+    const shopRow = shop.rows[0] || null;
+    const subRow = sub.rows[0] || null;
+    let plan = null;
+    if (subRow && subRow.plan_id) {
+      plan = (await query('select id, code, name, price_month, price_year, features_json from plans where id = $1', [subRow.plan_id])).rows[0] || null;
+    }
+    const bs = shopRow ? computeBillingState(shopRow.status, subRow, shopRow.trial_ends_at) : { state: 'trial', daysLeft: null };
+
     res.json({
       server_now: new Date().toISOString(),
       role: req.role,
       isSuperadmin: req.isSuperadmin,
-      shop: shop.rows[0] || null,
+      shop: shopRow,
+      plan,
+      billing: { state: bs.state, days_left: bs.daysLeft, grace_days: GRACE_DAYS, trial_ends_at: shopRow ? shopRow.trial_ends_at : null },
       settings: (() => { const s = settings.rows[0]; if (s) delete s.omise_secret_key; return s || null; })(),  // S8: ไม่ส่ง secret key ไป frontend
       suppliers: suppliers.rows,
       materials: materials.rows,

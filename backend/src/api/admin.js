@@ -30,7 +30,7 @@ router.post('/shops', async (req, res) => {
     const hash = await bcrypt.hash(ownerPassword, Number(process.env.BCRYPT_ROUNDS) || 10);
     const out = await tx(async (client) => {
       const shop = (await client.query(
-        "insert into shops (name, status) values ($1, 'trial') returning id", [shopName]
+        "insert into shops (name, status, trial_ends_at) values ($1, 'trial', now() + interval '30 days') returning id", [shopName]
       )).rows[0];
       const user = (await client.query(
         'insert into users (email, password_hash) values ($1, $2) returning id', [ownerEmail, hash]
@@ -145,26 +145,7 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // ===== Billing admin (เฟส 1): ดูทุกร้าน + ต่ออายุ manual + จัดการแพ็กเกจ =====
-const GRACE_DAYS = Number(process.env.GRACE_DAYS) || 5;
-const DAY = 86400000;
-
-// คำนวณสถานะแสดงผล: trial | active | expiring | grace | readonly | suspended
-function billingState(shopStatus, sub, trialEndsAt) {
-  if (shopStatus === 'suspended') return { state: 'suspended', daysLeft: null };
-  const end = sub && sub.current_period_end ? new Date(sub.current_period_end) : null;
-  if (!sub || ['trial', 'trialing'].includes(sub.status || '') || !end) {
-    if (trialEndsAt) {
-      const t = new Date(trialEndsAt);
-      const dl = Math.ceil((t - Date.now()) / DAY);
-      if (dl >= 0) return { state: 'trial', daysLeft: dl };
-      return { state: (-dl) <= GRACE_DAYS ? 'grace' : 'readonly', daysLeft: dl };
-    }
-    return { state: 'trial', daysLeft: null };
-  }
-  const dl = Math.ceil((end - Date.now()) / DAY);
-  if (dl >= 0) return { state: dl <= 7 ? 'expiring' : 'active', daysLeft: dl };
-  return { state: (-dl) <= GRACE_DAYS ? 'grace' : 'readonly', daysLeft: dl };
-}
+const { computeBillingState, GRACE_DAYS } = require('../billing-state');
 
 // ภาพรวมบิลลิ่งทุกร้าน (เรียงร้านที่ต้องสนใจขึ้นก่อน)
 router.get('/billing', async (req, res) => {
@@ -181,7 +162,7 @@ router.get('/billing', async (req, res) => {
     const order = { readonly: 0, grace: 1, expiring: 2, suspended: 3, trial: 4, active: 5 };
     const list = shops.rows.map(sh => {
       const sub = subBy[sh.id];
-      const bs = billingState(sh.status, sub, sh.trial_ends_at);
+      const bs = computeBillingState(sh.status, sub, sh.trial_ends_at);
       const plan = sub && sub.plan_id ? planBy[sub.plan_id] : null;
       return {
         shop_id: sh.id, name: sh.name, shop_status: sh.status,
