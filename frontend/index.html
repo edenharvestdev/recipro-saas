@@ -791,6 +791,7 @@
         <button id="posTabQS" class="btn btn-primary" onclick="switchPosTab('quick')"><span class="ico" data-icon="zap"></span> ขายด่วน</button>
         <button id="posTabBill" class="btn btn-ghost" onclick="switchPosTab('bill')"><span class="ico" data-icon="file-text"></span> เอกสารบิล</button>
         <button id="posTabLog" class="btn btn-ghost" onclick="switchPosTab('log')"><span class="ico" data-icon="history"></span> ประวัติ</button>
+        <button id="posTabOnline" class="btn btn-ghost" onclick="switchPosTab('online')"><span class="ico" data-icon="qr-code"></span> ออนไลน์ (QR) <span id="posOnlineBadge" style="display:none;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;margin-left:4px;"></span></button>
       </div>
 
       <!-- ===== QUICK SELL PANEL ===== -->
@@ -1002,6 +1003,11 @@
           <h2><span class="ico" data-icon="history"></span> ประวัติการขาย</h2>
           <div id="salesLogList"></div>
         </div>
+      </div>
+
+      <!-- ===== ONLINE (QR) PANEL — ขายหน้าร้านออนไลน์ + ตั้งค่าเครื่องพิมพ์ ===== -->
+      <div id="posOnlinePanel" class="hidden" style="margin-top:16px;">
+        <div id="onlineMenuSection"></div>
       </div>
 
     </section>
@@ -1439,7 +1445,6 @@
         </div>
       </div>
 
-      <div id="onlineMenuSection"></div>
       <div id="deliverySection"></div>
       <div id="cashDrawerSection"></div>
       <div id="pettyCashSection"></div>
@@ -6875,14 +6880,28 @@ function switchPosTab(tab) {
   const isQuick = tab === 'quick';
   const isBill = tab === 'bill';
   const isLog = tab === 'log';
+  const isOnline = tab === 'online';
   $('posQuickSell').classList.toggle('hidden', !isQuick);
   $('posBillingPanel').classList.toggle('hidden', !isBill);
   $('posSalesLog').classList.toggle('hidden', !isLog);
+  if ($('posOnlinePanel')) $('posOnlinePanel').classList.toggle('hidden', !isOnline);
   $('posTabQS').className = 'btn ' + (isQuick ? 'btn-primary' : 'btn-ghost');
   $('posTabBill').className = 'btn ' + (isBill ? 'btn-primary' : 'btn-ghost');
   $('posTabLog').className = 'btn ' + (isLog ? 'btn-primary' : 'btn-ghost');
+  if ($('posTabOnline')) $('posTabOnline').className = 'btn ' + (isOnline ? 'btn-primary' : 'btn-ghost');
   if (isQuick) renderPosGrid();
   if (isLog) renderSalesLog();
+  if (isOnline && typeof renderOnlineMenu === 'function') renderOnlineMenu();
+}
+
+// แสดงจำนวนออเดอร์ออนไลน์ใหม่บนปุ่ม sub-tab "ออนไลน์ (QR)" (เห็นแม้อยู่แท็บอื่น)
+function updatePosOnlineBadge() {
+  const b = $('posOnlineBadge');
+  if (!b) return;
+  const n = settings.publicMenuEnabled
+    ? (orders || []).filter(o => o.status === 'pending').length : 0;
+  if (n > 0) { b.style.display = ''; b.textContent = '🔔 ' + n; }
+  else { b.style.display = 'none'; }
 }
 
 function posSellableMats() { return materials.filter(m => m.showInPos && m.saleType === 'SELLABLE'); }
@@ -10237,7 +10256,6 @@ function renderExpensePage() {
   const { from, to } = getExpDateRange();
   const catFilter = $('expCatFilter')?.value || '';
   const typeFilter = $('expTypeFilter')?.value || '';
-  if (typeof renderOnlineMenu === 'function') renderOnlineMenu();
   if (typeof renderDeliveryReconcile === 'function') renderDeliveryReconcile();
   if (typeof renderCashDrawer === 'function') renderCashDrawer();
   if (typeof renderPettyCash === 'function') renderPettyCash();
@@ -10891,6 +10909,7 @@ function renderOnlineMenu() {
     <div>${orderRows}</div>
   </div>`;
   renderIcons(el);
+  updatePosOnlineBadge();
   startOrderPolling();
 }
 // เฟส 3: จัดการออเดอร์ออนไลน์ฝั่งร้าน
@@ -11014,6 +11033,7 @@ async function pollNewOrders() {
     if (fresh.length) {
       orders = list.map(o => ({ id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '', total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number, paid: !!o.paid, stockDeducted: !!o.stock_deducted, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json }));
       if (typeof currentTab !== 'undefined' && currentTab === 'pos') renderOnlineMenu();
+      updatePosOnlineBadge();
       notifyNewOrder(fresh.length);
       // B1: พิมพ์ตั๋วครัวอัตโนมัติ (เฉพาะเครื่องที่เปิดไว้ + กรองตามสถานี)
       if (autoPrintOnlineOn()) {
