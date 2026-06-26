@@ -3620,7 +3620,7 @@ function applyBootstrapData(data) {
       active: r.active !== false
     }));
     cashTopups = (data.cash_topups || []).map(c => ({
-      id: c.id, date: (c.topup_date || '').slice(0, 10), amount: Number(c.amount) || 0, note: c.note || ''
+      id: c.id, date: (c.topup_date || '').slice(0, 10), amount: Number(c.amount) || 0, note: c.note || '', slip: c.slip_data || ''
     }));
     const ogData = data.option_groups || [];
     const ocData = data.option_choices || [];
@@ -3892,7 +3892,7 @@ async function syncToSupabase() {
       default_amount: t.defaultAmount, day_of_month: t.dayOfMonth, active: t.active !== false
     })),
     cash_topups: cashTopups.map(c => ({
-      id: c.id, topup_date: c.date, amount: c.amount, note: c.note || ''
+      id: c.id, topup_date: c.date, amount: c.amount, note: c.note || '', slip_data: c.slip || null
     })),
     customers: customers.map(c => ({
       id: c.id, phone: c.phone || '', name: c.name || '', points: c.points || 0,
@@ -10338,7 +10338,7 @@ function renderPettyCash() {
   }
   const { topup, spent, balance } = pettyCashBalance();
   const low = topup > 0 && balance <= topup * 0.15;
-  const recent = (cashTopups || []).slice(0, 3).map(c => `+฿${Number(c.amount).toLocaleString('th-TH')} (${c.date})`).join(' · ');
+  const recent = (cashTopups || []).slice(0, 3).map(c => `<span style="white-space:nowrap;">+฿${Number(c.amount).toLocaleString('th-TH')} (${c.date})${c.slip ? ` <span onclick="openTopupSlip('${c.id}')" style="cursor:pointer;color:#2563eb;" title="ดูสลิป">📎</span>` : ''}</span>`).join(' · ');
   el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="wallet"></span> เงินสดย่อย</h3>
@@ -10353,16 +10353,37 @@ function renderPettyCash() {
     ${recent ? `<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">เติมล่าสุด: ${recent}</div>` : ''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <input id="topupAmount" type="number" step="any" placeholder="เติมเงินก้อน เช่น 2000" style="flex:1;min-width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
+      <input type="file" id="topupSlipInput" accept="image/*" style="display:none;" onchange="handleTopupSlip(event)">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="$('topupSlipInput').click()" style="${_topupSlip ? 'color:#16a34a;border-color:#16a34a;' : ''}">${icon('paperclip')} ${_topupSlip ? 'แนบแล้ว ✓' : 'แนบสลิป'}</button>
       <button class="btn btn-primary btn-sm" onclick="addCashTopup()">${icon('plus')} เติมเงิน</button>
     </div>
     <p style="font-size:11px;color:var(--color-text-muted);margin:6px 0 0;">รายจ่ายที่เลือกชำระด้วย "เงินสดย่อย" จะตัดจากยอดนี้อัตโนมัติ</p>
   </div>`;
   renderIcons(el);
 }
+let _topupSlip = '';   // สลิปแนบของการเติมเงินครั้งถัดไป (บีบแล้ว)
+function handleTopupSlip(e) {
+  const file = e.target.files[0]; if (!file) return;
+  if (file.size > 12 * 1024 * 1024) { ui.toast('ไฟล์ใหญ่เกิน 12MB'); e.target.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = async ev => { let d = ev.target.result; try { d = await compressImage(d, 1280, 0.75); } catch (err) {} _topupSlip = d; renderPettyCash(); };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+function openTopupSlip(id) {
+  const c = (cashTopups || []).find(x => x.id === id);
+  if (!c || !c.slip) { ui.toast('ไม่มีสลิปแนบ'); return; }
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+  ov.onclick = () => ov.remove();
+  ov.innerHTML = `<img src="${esc(c.slip)}" style="max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);">`;
+  document.body.appendChild(ov);
+}
 function addCashTopup() {
   const amount = parseFloat($('topupAmount')?.value) || 0;
   if (amount <= 0) { ui.toast('ใส่จำนวนเงินที่เติม'); return; }
-  cashTopups.unshift({ id: uid(), date: new Date().toISOString().slice(0, 10), amount, note: '' });
+  cashTopups.unshift({ id: uid(), date: new Date().toISOString().slice(0, 10), amount, note: '', slip: _topupSlip || '' });
+  _topupSlip = '';
   saveAll();
   renderPettyCash();
   ui.toast('เติมเงินสดย่อยแล้ว ฿' + amount.toLocaleString('th-TH'));
