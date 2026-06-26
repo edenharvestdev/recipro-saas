@@ -44,12 +44,44 @@
   .paybtn{width:100%;border:none;background:#7c3aed;color:#fff;border-radius:12px;padding:14px;font-size:16px;font-weight:800;margin-top:12px;cursor:pointer}
   .done{text-align:center;padding:30px 16px} .done .qn{font-size:54px;font-weight:900;color:#7c3aed;margin:10px 0}
   .muted{color:#888;font-size:13px}
+  /* 📖 flipbook */
+  .viewtoggle{position:absolute;right:14px;top:16px;display:flex;gap:4px;background:rgba(124,58,237,.08);border-radius:20px;padding:3px}
+  .viewtoggle button{border:none;background:transparent;color:#7c3aed;font-size:13px;font-weight:800;padding:5px 11px;border-radius:18px;cursor:pointer}
+  .viewtoggle button.on{background:#7c3aed;color:#fff;box-shadow:0 2px 8px rgba(124,58,237,.3)}
+  #bookView{padding:14px 8px 0;display:flex;flex-direction:column;align-items:center}
+  .bookwrap{position:relative;width:100%;max-width:860px;perspective:1800px;display:flex;align-items:stretch;gap:4px}
+  .book{flex:1;min-height:60vh;background:linear-gradient(170deg,#fff,#fdf8f4);border-radius:8px 18px 18px 8px;box-shadow:0 10px 34px rgba(80,60,120,.18),inset 7px 0 16px -8px rgba(124,58,237,.18);border-left:5px solid #ece4f5;padding:16px 16px 20px;transform-style:preserve-3d;transition:transform .22s ease,opacity .22s ease;backface-visibility:hidden}
+  .book.flip-next{transform:rotateY(-20deg);opacity:.25}
+  .book.flip-prev{transform:rotateY(20deg);opacity:.25}
+  .page-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  @media(min-width:720px){ .page-grid{grid-template-columns:repeat(3,1fr)} .book{min-height:66vh} }
+  .page-title{font-size:16px;font-weight:900;color:#7c3aed;display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:2px dashed rgba(124,58,237,.2)}
+  .page-title::before{content:'';width:6px;height:20px;background:linear-gradient(#8b5cf6,#ec4899);border-radius:6px}
+  .nav{flex:0 0 auto;width:38px;border:none;background:rgba(255,255,255,.85);color:#7c3aed;font-size:26px;font-weight:900;border-radius:14px;cursor:pointer;box-shadow:0 3px 12px rgba(80,60,120,.14);align-self:center;height:90px}
+  .nav:disabled{opacity:.25;cursor:default}
+  .pageind{margin:12px 0 4px;font-size:12.5px;color:#9a8aa8;font-weight:700;letter-spacing:.4px}
+  .cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;min-height:54vh}
+  .cover .ttl{font-size:26px;font-weight:900;color:#5b2da8;line-height:1.2}
+  .cover .hint{font-size:13px;color:#9a8aa8;font-weight:700;animation:bob 1.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+  .cover .open{border:none;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:14px;padding:12px 26px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(124,58,237,.3)}
+  .endpage{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;min-height:54vh}
 </style>
 </head>
 <body>
 <div id="loader"><div class="carrot">🥕</div><div class="lt">กำลังโหลดเมนู<span class="dots"></span></div></div>
-<header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div></header>
-<div class="grid" id="grid"></div>
+<header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div>
+  <div class="viewtoggle"><button id="vbBook" class="on" onclick="setView('book')">📖 เล่ม</button><button id="vbGrid" onclick="setView('grid')">▦ ตาราง</button></div>
+</header>
+<div id="bookView">
+  <div class="bookwrap">
+    <button class="nav nav-prev" id="navPrev" onclick="goPage(-1)">‹</button>
+    <div class="book" id="book"></div>
+    <button class="nav nav-next" id="navNext" onclick="goPage(1)">›</button>
+  </div>
+  <div class="pageind" id="pageInd"></div>
+</div>
+<div class="grid" id="grid" style="display:none"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
 
 <div class="modal" id="cartModal"><div class="sheet" id="sheet"></div></div>
@@ -57,7 +89,7 @@
 <script>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
-let pendingItem = null, pendingSel = {};
+let pendingItem = null, pendingSel = {}, LAST_ORDER = null;
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hueOf = s => { let h=0; for(let i=0;i<String(s).length;i++) h=(h*31+String(s).charCodeAt(i))%360; return h; };
@@ -71,18 +103,16 @@ async function load(){
     MENU = d.items || [];
     if (d.payment) PAYMENT = d.payment;
     if (d.logo) { const l = document.getElementById('shopLogo'); l.src = d.logo; l.style.display = 'block'; }
-    renderGrid();
+    renderMenu();
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; hideLoader(); }
 }
 function hideLoader(){ const l=document.getElementById('loader'); if(l){ l.classList.add('hide'); setTimeout(()=>l.remove(),450); } }
-function renderGrid(){
-  const g = document.getElementById('grid'); let html=''; let lastCat=null;
-  MENU.forEach((it,i)=>{
-    if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
-    const h = hueOf(it.name || 'x');
-    const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 70% 64%),hsl(${(h + 45) % 360} 72% 52%))`;
-    const link = it.link ? `<a class="rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียด →</a>` : '';
-    html += `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms">
+// การ์ดเมนู (ใช้ร่วมกันทั้งโหมดตารางและโหมดเล่ม)
+function itemCard(it, i){
+  const h = hueOf(it.name || 'x');
+  const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 70% 64%),hsl(${(h + 45) % 360} 72% 52%))`;
+  const link = it.link ? `<a class="rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียด →</a>` : '';
+  return `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms">
       <div class="img" style="${bg}">
         <span class="swatch">${esc(it.category || 'เมนู')}</span>
         <div class="nm-img">${esc(it.name)}</div>
@@ -93,10 +123,94 @@ function renderGrid(){
         ${link}
         <button class="add" onclick="addItem('${it.id}')">+ เพิ่มลงตะกร้า</button>
       </div></div>`;
+}
+function renderGrid(){
+  const g = document.getElementById('grid'); let html=''; let lastCat=null;
+  MENU.forEach((it,i)=>{
+    if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
+    html += itemCard(it, i);
   });
   g.innerHTML = html || '<p class="muted" style="grid-column:1/-1;text-align:center;padding:30px">ยังไม่มีเมนู</p>';
-  hideLoader();
 }
+
+// ===== โหมดเล่ม (flipbook) =====
+let VIEW = 'book', PAGES = [], curPage = 0;
+function perPage(){ return window.innerWidth >= 720 ? 6 : 4; }
+function buildPages(){
+  PAGES = [{ type:'cover' }];
+  if (!MENU.length){ PAGES.push({ type:'empty' }); PAGES.push({ type:'end' }); return; }
+  // จัดกลุ่มตามหมวด คงลำดับเดิม แล้วแบ่งหน้า
+  const groups = []; let lastCat = null;
+  MENU.forEach(it => {
+    const c = it.category || '';
+    if (c !== lastCat || !groups.length){ groups.push({ cat:c, items:[] }); lastCat = c; }
+    groups[groups.length-1].items.push(it);
+  });
+  const pp = perPage();
+  groups.forEach(g => {
+    for (let i=0;i<g.items.length;i+=pp){
+      PAGES.push({ type:'cat', cat:g.cat, items:g.items.slice(i,i+pp), part:i?Math.floor(i/pp)+1:0 });
+    }
+  });
+  PAGES.push({ type:'end' });
+}
+function renderBook(){
+  if (curPage >= PAGES.length) curPage = PAGES.length-1;
+  if (curPage < 0) curPage = 0;
+  const p = PAGES[curPage]; const book = document.getElementById('book');
+  let html = '';
+  if (p.type === 'cover'){
+    const logo = document.getElementById('shopLogo');
+    const logoHtml = (logo && logo.src && logo.style.display!=='none') ? `<img src="${esc(logo.src)}" style="height:72px;border-radius:14px;object-fit:contain">` : '🍵';
+    html = `<div class="cover"><div style="font-size:46px">${logoHtml}</div>
+      <div class="ttl">${esc(document.getElementById('shopName').textContent || 'เมนูร้าน')}</div>
+      <div class="muted">สั่งออนไลน์ · รับที่ร้าน</div>
+      <button class="open" onclick="goPage(1)">เปิดเมนู →</button>
+      <div class="hint">แตะขอบซ้าย-ขวา หรือปัดนิ้วเพื่อพลิกหน้า</div></div>`;
+  } else if (p.type === 'empty'){
+    html = `<div class="endpage"><div style="font-size:40px">🥕</div><div class="muted">ยังไม่มีเมนู</div></div>`;
+  } else if (p.type === 'end'){
+    html = `<div class="endpage"><div style="font-size:40px">🙏</div>
+      <div class="ttl" style="font-size:20px">ขอบคุณที่แวะชม</div>
+      <div class="muted">เลือกเมนูแล้วกด “ดูตะกร้า” ด้านล่างเพื่อสั่งได้เลย</div>
+      <button class="open" onclick="goPage(-1)">← กลับไปดูเมนู</button></div>`;
+  } else {
+    const title = p.cat ? esc(p.cat) + (p.part?` (ต่อ ${p.part})`:'') : 'เมนูแนะนำ';
+    html = `<div class="page-title">${title}</div><div class="page-grid">${p.items.map((it,i)=>itemCard(it,i)).join('')}</div>`;
+  }
+  book.innerHTML = html;
+  document.getElementById('navPrev').disabled = curPage===0;
+  document.getElementById('navNext').disabled = curPage===PAGES.length-1;
+  document.getElementById('pageInd').textContent = `หน้า ${curPage+1} / ${PAGES.length}`;
+}
+function goPage(delta){
+  const next = Math.max(0, Math.min(PAGES.length-1, curPage+delta));
+  if (next === curPage) return;
+  const dir = next > curPage ? 1 : -1;
+  const book = document.getElementById('book');
+  book.classList.add(dir>0 ? 'flip-next' : 'flip-prev');
+  setTimeout(()=>{ curPage = next; renderBook(); book.classList.remove('flip-next','flip-prev'); window.scrollTo({top:0,behavior:'smooth'}); }, 200);
+}
+function setView(v){
+  VIEW = v;
+  document.getElementById('vbBook').classList.toggle('on', v==='book');
+  document.getElementById('vbGrid').classList.toggle('on', v==='grid');
+  document.getElementById('bookView').style.display = v==='book' ? 'flex' : 'none';
+  document.getElementById('grid').style.display = v==='grid' ? 'grid' : 'none';
+  if (v==='book') renderBook(); else renderGrid();
+}
+function renderMenu(){ renderGrid(); buildPages(); curPage=0; renderBook(); setView(VIEW); hideLoader(); }
+// ปัดนิ้ว + แตะขอบ + ปุ่มลูกศรคีย์บอร์ด
+(function(){
+  const wrap = () => document.querySelector('.bookwrap'); let x0=null;
+  document.addEventListener('touchstart', e => { if(VIEW==='book' && wrap() && wrap().contains(e.target)) x0 = e.touches[0].clientX; }, {passive:true});
+  document.addEventListener('touchend', e => {
+    if(x0===null) return; const dx = e.changedTouches[0].clientX - x0; x0=null;
+    if(Math.abs(dx) > 45) goPage(dx<0 ? 1 : -1);
+  }, {passive:true});
+  document.addEventListener('keydown', e => { if(VIEW!=='book') return; if(e.key==='ArrowRight') goPage(1); if(e.key==='ArrowLeft') goPage(-1); });
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt=setTimeout(()=>{ if(!MENU.length) return; buildPages(); if(curPage>=PAGES.length)curPage=PAGES.length-1; if(VIEW==='book')renderBook(); }, 200); });
+})();
 // เพิ่มเมนู — ถ้ามีตัวเลือก เปิดให้เลือกก่อน
 function addItem(id){ const it=MENU.find(x=>x.id===id); if(!it) return; if(it.options&&it.options.length){ openOptionSheet(it); } else addLine(it,[]); }
 function openOptionSheet(it){ pendingItem=it; pendingSel={}; renderOptionSheet(); document.getElementById('cartModal').classList.add('open'); }
@@ -155,13 +269,46 @@ async function submitOrder(){
       ? `<div style="margin:10px 0;"><img src="https://promptpay.io/${encodeURIComponent(pay.promptpay)}/${Number(d.total).toFixed(2)}.png" alt="PromptPay QR" style="width:200px;height:200px;border:1px solid #ddd;border-radius:10px;background:#fff;padding:6px;"></div>
          <p class="muted">สแกนพร้อมเพย์เพื่อโอน ${fmt(d.total)} แล้วแจ้งสลิปกับร้าน · ร้านจะเริ่มทำเมื่อยืนยันยอด</p>`
       : `<p class="muted">กรุณารอรับที่ร้าน · จ่ายเงินตอนรับของ · แจ้งหมายเลขคิวกับพนักงาน</p>`;
+    LAST_ORDER = { order_no: d.order_no, queue: d.queue_number, total: d.total, name: body.customer_name || '', note: body.note || '',
+      shop: document.getElementById('shopName').textContent || 'ร้าน', items: items.map(it => ({ name: it.name, qty: it.qty, price: it.price, options: it.options })) };
     document.getElementById('sheet').innerHTML = `<div class="done"><div>สั่งสำเร็จ! 🎉</div>
       <div class="qn">คิว ${d.queue_number}</div>
       <div>เลขออเดอร์ ${esc(d.order_no)}</div><div style="margin:8px 0">ยอดรวม ${fmt(d.total)}</div>
       ${qrBlock}
+      <button class="paybtn" style="background:#16a34a" onclick="saveBillPdf()">💾 บันทึกบิล (PDF)</button>
       <button class="paybtn" onclick="location.reload()">สั่งเพิ่ม</button></div>`;
     CART=[]; updateBar();
   }catch(e){ alert('สั่งไม่สำเร็จ ลองใหม่'); }
+}
+// บันทึกบิลเป็น PDF บนมือถือลูกค้า — เปิดหน้าต่างพิมพ์ (มือถือเลือก "บันทึกเป็น PDF" ได้)
+function saveBillPdf(){
+  const o = LAST_ORDER; if(!o){ alert('ยังไม่มีบิล'); return; }
+  const rows = o.items.map(it=>{ const opt=(it.options||[]).map(x=>(x&&x.label)||x).join(', ');
+    return `<tr><td>${esc(it.name)}${opt?`<div class="o">${esc(opt)}</div>`:''}</td><td class="c">${it.qty}</td><td class="r">${fmt(it.price*it.qty)}</td></tr>`; }).join('');
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>บิล ${esc(o.order_no)}</title><style>
+    *{font-family:'Sarabun','Segoe UI',sans-serif;margin:0;box-sizing:border-box}
+    body{padding:16px;color:#111;max-width:420px;margin:auto}
+    .h{text-align:center;border-bottom:2px dashed #999;padding-bottom:10px;margin-bottom:10px}
+    .h .nm{font-size:20px;font-weight:800}.h .q{font-size:34px;font-weight:900;color:#7c3aed;margin-top:4px}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}td{padding:6px 2px;vertical-align:top;border-bottom:1px dotted #ccc}
+    .c{text-align:center;width:38px}.r{text-align:right;white-space:nowrap}.o{font-size:12px;color:#777}
+    .tot{display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin-top:10px;border-top:2px solid #000;padding-top:8px}
+    .meta{font-size:12px;color:#666;margin-top:8px;text-align:center}
+    @media print{.noprint{display:none}}
+    .noprint{display:block;width:100%;padding:13px;margin-top:16px;border:none;border-radius:10px;background:#7c3aed;color:#fff;font-size:15px;font-weight:800}
+    </style></head><body>
+    <div class="h"><div class="nm">${esc(o.shop)}</div><div style="font-size:12px;color:#777">ใบรับออเดอร์</div><div class="q">คิว ${esc(String(o.queue))}</div></div>
+    <div style="font-size:12px;color:#666">เลขออเดอร์ ${esc(o.order_no)}${o.name?` · ${esc(o.name)}`:''}</div>
+    <table>${rows}</table>
+    <div class="tot"><span>รวม</span><span>${fmt(o.total)}</span></div>
+    ${o.note?`<div class="meta">หมายเหตุ: ${esc(o.note)}</div>`:''}
+    <div class="meta">ขอบคุณที่ใช้บริการ 🙏</div>
+    <button class="noprint" onclick="window.print()">💾 บันทึก / พิมพ์บิล</button>
+    <scr`+`ipt>setTimeout(function(){window.print()},500)<\/scr`+`ipt></body></html>`;
+  const w = window.open('','_blank');
+  if(!w){ alert('กรุณาอนุญาต popup เพื่อบันทึกบิล'); return; }
+  w.document.write(html); w.document.close();
 }
 load();
 </script>

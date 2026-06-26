@@ -813,7 +813,7 @@
             </div>
             <div id="posCartFooter" class="pos-cart-footer" style="display:none;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
-                <span style="font-size:13px;color:var(--color-text-muted);">คิว / โต๊ะ</span>
+                <span id="posTableLabel" style="font-size:13px;color:var(--color-text-muted);">คิว / โต๊ะ</span>
                 <input id="posTableNo" placeholder="เช่น 5, A2 (ไม่บังคับ)" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;text-align:right;">
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px;">
@@ -1019,6 +1019,16 @@
           <option value="factory">โรงงานผลิต / อาหารเสริม / OEM</option>
         </select>
         <button class="btn btn-ghost btn-sm" onclick="openSetupWizard()" style="margin-left:10px;"><span class="ico" data-icon="wand-sparkles"></span> ตั้งร้านใหม่ (Wizard)</button>
+        <!-- A3: ป้ายตัวระบุบิล -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border-soft);">
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px;"><span class="ico" data-icon="tag"></span> ตัวระบุบิล / คิว</div>
+          <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 8px;">ตั้งคำเรียกในช่องระบุบิลหน้าขาย + ตั๋วครัว (เช่น คิว, โต๊ะ, ห้อง, ชื่อ+คิว) — ใช้ได้ทุกธุรกิจ/ครัวกลาง</p>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="setBillIdLabel" list="billIdPresets" placeholder="คิว / โต๊ะ" onchange="saveSettings();applyBillIdLabel();" style="width:200px;padding:8px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;">
+            <datalist id="billIdPresets"><option value="คิว / โต๊ะ"><option value="คิว"><option value="โต๊ะ"><option value="ห้อง"><option value="ชื่อ + คิว"><option value="ชื่อ + หมายเลข"><option value="หมายเลขออเดอร์"></datalist>
+            <span style="font-size:11px;color:var(--color-text-muted);">เว้นว่าง = ใช้ "คิว / โต๊ะ"</span>
+          </div>
+        </div>
       </div>
       <div class="glass-card" id="staffCard" style="margin-bottom:18px;">
         <h2 style="margin:0 0 4px;"><span class="ico" data-icon="users"></span> ทีมงาน / พนักงาน</h2>
@@ -3667,7 +3677,9 @@ function applyBootstrapData(data) {
     applyTheme(settings.theme);
     applyBrand();
     applyLang();
+    applyBillIdLabel();
     setTimeout(checkLowStockAlert, 1500);
+    setTimeout(checkRecurringDueAlert, 2600);
     const status = data.shop?.status || 'trial';
     $('shopStatusBadge').textContent = status;
     $('shopStatusBadge').className = 'shop-status-badge status-' + status;
@@ -5477,16 +5489,27 @@ function renderRecipeList() {
     (!q || r.name.toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q) || (r.category || '').toLowerCase().includes(q)) &&
     (!recTypeFilter || (recTypeFilter === 'RAW' ? !recIsOnMenu(r) : recIsOnMenu(r)))
   );
+  // จัดกลุ่มตามหมวด (กันหมวดกระโดด) — เรียงหมวด ก-ฮ แล้วชื่อ, "ไม่ระบุหมวด" ท้ายสุด
+  const REC_NOCAT = 'ไม่ระบุหมวด';
+  const recCatKey = r => ((r.category || '').trim()) || REC_NOCAT;
+  filtered.sort((a, b) => {
+    const ca = recCatKey(a), cb = recCatKey(b);
+    if (ca !== cb) { if (ca === REC_NOCAT) return 1; if (cb === REC_NOCAT) return -1; return ca.localeCompare(cb, 'th'); }
+    return (a.name || '').localeCompare(b.name || '', 'th');
+  });
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / REC_PAGE_SIZE));
   if (recPage > pages) recPage = pages;
   if (recPage < 1) recPage = 1;
   const pageItems = filtered.slice((recPage - 1) * REC_PAGE_SIZE, recPage * REC_PAGE_SIZE);
 
+  let _rlCat = null;
   $('recipeList').innerHTML = pageItems.map(r => {
     const cost = recipeCost(r.items) / (r.batchYield || 1);
     const chk = selectedRecs.has(r.id);
-    return `<tr class="${chk ? 'row-selected' : ''}">
+    const ck = recCatKey(r);
+    const hdr = ck !== _rlCat ? (_rlCat = ck, `<tr class="cat-head"><td colspan="7" style="background:var(--surface-2);font-weight:800;font-size:12px;padding:6px 12px;color:var(--color-text-soft);">${esc(ck)}</td></tr>`) : '';
+    return hdr + `<tr class="${chk ? 'row-selected' : ''}">
       <td><input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:15px;height:15px;accent-color:var(--color-primary);cursor:pointer;"></td>
       <td>
         <b>[${r.code || '-'}] ${r.name}</b><br>
@@ -5509,6 +5532,7 @@ function renderRecipeList() {
   // Mobile card view
   const rcCards = $('recipeListCards');
   if (rcCards) {
+    let _rcCat = null;
     rcCards.innerHTML = pageItems.length ? pageItems.map(r => {
       const cost = recipeCost(r.items) / (r.batchYield || 1);
       const profit = r.sell - cost;
@@ -5516,7 +5540,9 @@ function renderRecipeList() {
       const profitColor = profit >= 0 ? '#16a34a' : '#dc2626';
       const marginBg = profit >= 0 ? '#22c55e22' : '#e53e3e22';
       const chk = selectedRecs.has(r.id);
-      return `<div class="item-card${chk ? ' card-selected' : ''}">
+      const ck = recCatKey(r);
+      const hdr = ck !== _rcCat ? (_rcCat = ck, `<div class="cat-head-card" style="font-weight:800;font-size:12px;color:var(--color-text-soft);padding:10px 4px 2px;letter-spacing:.3px;">${esc(ck)}</div>`) : '';
+      return hdr + `<div class="item-card${chk ? ' card-selected' : ''}">
         <div class="item-card-row">
           <input type="checkbox" ${chk ? 'checked' : ''} onchange="toggleRecSelect('${r.id}',this.checked)" style="width:18px;height:18px;accent-color:var(--color-primary);cursor:pointer;flex-shrink:0;margin-top:2px;" onclick="event.stopPropagation()">
           <div style="flex:1; min-width:0;" onclick="editRecipe('${r.id}')">
@@ -6966,12 +6992,21 @@ function renderPosGrid() {
     sellable = sellable.filter(r => (r.name || '').toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q));
     mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
   }
+  // จัดกลุ่มตามหมวด (กันหมวดกระโดดในมุมมอง "ทุกหมวด") — เรียงหมวด ก-ฮ แล้วชื่อ
+  const POS_NOCAT = '￿';
+  const posCatSort = (a, b) => {
+    const ca = (a.category || '').trim() || POS_NOCAT, cb = (b.category || '').trim() || POS_NOCAT;
+    if (ca !== cb) return ca.localeCompare(cb, 'th');
+    return (a.name || '').localeCompare(b.name || '', 'th');
+  };
+  sellable.sort(posCatSort);
+  mats.sort(posCatSort);
   if (!sellable.length && !mats.length) {
     grid.innerHTML = `<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">${posCategoryFilter ? 'ไม่มีสินค้าในหมวดนี้' : 'ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู หรือตั้งวัตถุดิบเป็น "ขายได้เลย"'}</p>`;
     return;
   }
   const hasOpts = r => (r.optGroups || []).length > 0 || optionGroups.some(g => g.enabled && (g.recipeIds || []).includes(r.id));
-  const matCards = mats.map(m => {
+  const matCardHtml = m => {
     const stock = Number(m.stock) || 0;
     const oos = stock <= 0;
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
@@ -6983,8 +7018,8 @@ function renderPosGrid() {
       <div class="ppc-price">${money(price)}</div>
       <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${esc(m.unit || '')}`}</div>
     </div>`;
-  }).join('');
-  grid.innerHTML = sellable.map(r => {
+  };
+  const recCardHtml = r => {
     const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
     if (settings.makeToOrder) {
       // ทำสดตอนสั่ง: ดูสถานะจาก "วัตถุดิบในสูตร" ไม่ใช่ fgStock — เตือนทั้งใกล้หมด (ต่ำกว่าลิมิต) และไม่พอ
@@ -7024,7 +7059,25 @@ function renderPosGrid() {
       <div class="ppc-price">${money(r.sell)}</div>
       <div class="ppc-stock" style="color:${stockColor}">${oos ? 'หมดสต๊อก' : `${stock} ${r.yieldUnit || 'ชิ้น'}`}</div>
     </div>`;
-  }).join('') + matCards;
+  };
+  // จัดกลุ่มเมนู+สินค้าเป็นหมวด แล้วใส่หัวข้อหมวดคั่น (จัดเหมือนแฟ้ม กดง่าย ไม่ติดกัน)
+  const catOf = x => (x.category || '').trim() || POS_NOCAT;
+  const groups = new Map();
+  const pushItem = (cat, html) => { if (!groups.has(cat)) groups.set(cat, []); groups.get(cat).push(html); };
+  sellable.forEach(r => pushItem(catOf(r), recCardHtml(r)));
+  mats.forEach(m => pushItem(catOf(m), matCardHtml(m)));
+  const cats = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'th'));
+  const showHeaders = !posCategoryFilter && !posSearch && cats.length > 1;
+  let html = '';
+  cats.forEach(cat => {
+    const cards = groups.get(cat);
+    if (showHeaders) {
+      const label = cat === POS_NOCAT ? 'อื่นๆ' : esc(cat);
+      html += `<div class="pos-cat-section">${label}<span class="pcs-count">${cards.length}</span></div>`;
+    }
+    html += cards.join('');
+  });
+  grid.innerHTML = html;
   renderIcons(grid);
 }
 
@@ -7958,6 +8011,7 @@ async function posCheckout() {
   posDisplayPush(0, 'paid');
   setTimeout(() => posDisplayPush(0, 'idle'), 6000);
   showPosReceipt(newBill, total);
+  if (autoPrintBillOn()) printPosBillWindow(newBill, total, posBillCopies());   // B2: พิมพ์บิลอัตโนมัติ N ใบ
 }
 
 function showPosReceipt(b, total) {
@@ -7993,7 +8047,7 @@ function showPosReceipt(b, total) {
         <div class="rc-shop">${esc(shopName)}</div>
         <div class="rc-sub" style="font-weight:700;">${docLabel}</div>
         ${phoneLine}${ppLine}${taxLine}
-        <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}${b.tableNo ? ' &nbsp;|&nbsp; คิว/โต๊ะ ' + esc(b.tableNo) : ''}</div>
+        <div class="rc-sub">${b.date || ''} &nbsp;|&nbsp; # ${esc(b.billNo || '')}${b.tableNo ? ' &nbsp;|&nbsp; ' + esc(billIdLabel()) + ' ' + esc(b.tableNo) : ''}</div>
       </div>
       <div class="rc-divider"></div>
       <table class="rc-items">
@@ -8007,7 +8061,7 @@ function showPosReceipt(b, total) {
       ${(() => { const mc = b.memberPhone ? findCustomerByPhone(b.memberPhone) : null; return mc ? `<div class="rc-sub" style="text-align:center;margin-top:4px;">สมาชิก ${esc(mc.name || mc.phone)} · แต้มสะสม ${mc.points}</div>` : ''; })()}
       <div class="rc-footer">ขอบคุณที่ใช้บริการ</div>
       <div class="rc-actions no-print">
-        <button class="btn btn-primary" onclick="window.print()"><span class="ico" data-icon="printer"></span> พิมพ์ใบเสร็จ</button>
+        <button class="btn btn-primary" onclick="printPosBillWindow(bills.find(x=>x.id==='${b.id}'), ${total}, posBillCopies())"><span class="ico" data-icon="printer"></span> พิมพ์บิล${posBillCopies() > 1 ? ' ×' + posBillCopies() : ''}</button>
         <button class="btn btn-secondary" onclick="printKitchen('${b.id}')"><span class="ico" data-icon="clipboard-list"></span> ส่งหลังร้าน</button>
         <button class="btn btn-secondary" onclick="closePosReceipt(); switchPosTab('log');"><span class="ico" data-icon="history"></span> ดูบิล</button>
         <button class="btn btn-ghost" onclick="closePosReceipt()">ปิด</button>
@@ -8020,6 +8074,68 @@ function showPosReceipt(b, total) {
 function closePosReceipt() {
   const el = document.getElementById('posReceiptOverlay');
   if (el) el.remove();
+}
+
+// ===== B2: พิมพ์บิลหน้าร้านอัตโนมัติ / หลายสำเนา (print-window 80mm, 1 งาน N ใบ) =====
+function autoPrintBillOn() { return localStorage.getItem('recipro_autoprint_bill') === 'on'; }
+function setAutoPrintBill(on) { localStorage.setItem('recipro_autoprint_bill', on ? 'on' : 'off'); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
+function posBillCopies() { return Math.max(1, Math.min(3, Number(settings.posBillCopies) || 1)); }
+function setPosBillCopies(n) { settings.posBillCopies = Math.max(1, Math.min(3, Number(n) || 1)); saveAll(); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
+function posBillReceiptHtml(b, total) {
+  const shopName = settings.shopName || 'Recipro';
+  const vatOn = !!settings.vatEnabled;
+  const vatRate = settings.vatRate != null ? Number(settings.vatRate) : 7;
+  const docLabel = vatOn ? 'ใบกำกับภาษีอย่างย่อ' : 'ใบเสร็จรับเงิน';
+  const rows = (b.items || []).map(it => {
+    const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
+    const nm = it.rewardName ? ('🎁 ' + it.rewardName) : (prod ? prod.name : '-');
+    const optsLine = Object.keys(it.options || {}).length
+      ? `<div style="font-size:10px;color:#555;">${Object.entries(it.options).map(([k, v]) => esc(k + ': ' + v)).join(', ')}</div>` : '';
+    return `<tr><td>${esc(nm)}${optsLine}</td><td style="text-align:center;">${it.qty}</td><td style="text-align:right;">${money(it.qty * (it.price || 0))}</td></tr>`;
+  }).join('');
+  const vatBase = vatOn ? total / (1 + vatRate / 100) : 0;
+  const vatAmt = vatOn ? total - vatBase : 0;
+  const vatRows = vatOn ? `<div class="sub" style="display:flex;justify-content:space-between;"><span>มูลค่าก่อนภาษี</span><span>${money(vatBase)}</span></div>`
+    + `<div class="sub" style="display:flex;justify-content:space-between;"><span>VAT ${vatRate}%</span><span>${money(vatAmt)}</span></div>` : '';
+  const taxLine = (vatOn && settings.tax) ? `<div class="sub">เลขภาษี ${esc(settings.tax)}</div>` : '';
+  const ppLine = settings.pp ? `<div class="sub">พร้อมเพย์ ${esc(settings.pp)}</div>` : '';
+  const phoneLine = settings.phone ? `<div class="sub">โทร. ${esc(settings.phone)}</div>` : '';
+  const idLine = b.tableNo ? ' | ' + esc(billIdLabel()) + ' ' + esc(b.tableNo) : '';
+  return `<div class="rcpt">
+    ${settings.logoData ? '<img src="' + esc(settings.logoData) + '" style="width:52px;height:52px;object-fit:contain;display:block;margin:0 auto 4px;">' : ''}
+    <div class="shop">${esc(shopName)}</div>
+    <div class="sub" style="font-weight:700;">${docLabel}</div>
+    ${phoneLine}${ppLine}${taxLine}
+    <div class="sub">${esc(b.date || '')} | # ${esc(b.billNo || '')}${idLine}</div>
+    <div class="hr"></div>
+    <table><tbody>${rows}</tbody></table>
+    <div class="hr"></div>
+    <div class="total"><span>รวม</span><span>${money(total)}</span></div>
+    ${vatRows}
+    <div class="sub" style="text-align:center;">ชำระโดย ${esc(PAY_METHOD_LABELS[b.payMethod] || 'เงินสด')}</div>
+    <div class="foot">ขอบคุณที่ใช้บริการ</div>
+  </div>`;
+}
+function printPosBillWindow(b, total, copies) {
+  copies = Math.max(1, Math.min(3, Number(copies) || 1));
+  const one = posBillReceiptHtml(b, total);
+  const body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + one).join('');
+  const css = 'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    + 'body{font-family:Tahoma,\'TH Sarabun New\',sans-serif;margin:0;padding:0;color:#111;}'
+    + '.rcpt{width:72mm;margin:0 auto;padding:4mm 2mm;font-size:12px;}'
+    + '.shop{text-align:center;font-size:16px;font-weight:800;}'
+    + '.sub{text-align:center;font-size:11px;color:#333;}'
+    + '.hr{border-top:1px dashed #999;margin:6px 0;}'
+    + 'table{width:100%;border-collapse:collapse;}td{padding:2px 0;font-size:12px;vertical-align:top;}'
+    + '.total{display:flex;justify-content:space-between;font-weight:800;font-size:15px;margin:4px 0;}'
+    + '.foot{text-align:center;margin-top:8px;font-size:11px;color:#555;}'
+    + '.copybreak{page-break-before:always;}'
+    + '@page{size:80mm auto;margin:0;}';
+  const w = window.open('', '_blank', 'width=380,height=640');
+  if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>บิล ' + esc(b.billNo || '') + '</title><style>' + css + '</style></head><body>'
+    + body + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>');
+  w.document.close();
 }
 
 function renderSalesLog() {
@@ -8099,7 +8215,8 @@ async function voidBill(billId) {
 }
 
 // ใบส่งงานหลังร้าน — รองรับ 2 แบบตาม settings.kitchenTicketMode: 'receipt' (ใบรวม 80mm) | 'sticker' (สติกเกอร์ต่อแก้ว 50×40)
-function printBackOfHouse(metaText, items) {
+function printBackOfHouse(metaText, items, copies) {
+  copies = Math.max(1, Math.min(5, Number(copies) || 1));
   const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const mode = settings.kitchenTicketMode || 'receipt';
   let css, body;
@@ -8108,14 +8225,17 @@ function printBackOfHouse(metaText, items) {
     css = '@page{size:50mm 40mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{margin:0}'
       + '.lb{width:50mm;height:40mm;padding:2.5mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;overflow:hidden}'
       + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0}.lo{font-size:11px;line-height:1.2}';
-    body = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
+    const oneSet = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
+    body = Array(copies).fill(oneSet).join('');
   } else {
     css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
       + 'body{width:80mm;padding:4mm 3mm}.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
       + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
-      + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}';
+      + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}'
+      + '.copybreak{page-break-before:always}';
     const rows = items.map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name) + (it.opts ? '<div class="ko">' + e(it.opts) + '</div>' : '') + '</div></div>').join('');
-    body = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;
+    const oneSet = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;
+    body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + oneSet).join('');
   }
   const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>' + body
     + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
@@ -8130,7 +8250,7 @@ function printKitchen(billId) {
     const prod = it.matId ? matById(it.matId) : recById(it.recipeId);
     return { qty: it.qty, name: prod ? prod.name : 'สินค้า', opts: Object.entries(it.options || {}).map(([k, v]) => k + ': ' + v).join(' · ') };
   });
-  printBackOfHouse((b.tableNo ? 'คิว/โต๊ะ ' + b.tableNo + ' · ' : '') + 'บิล: ' + (b.billNo || '') + ' · ' + new Date().toLocaleString('th-TH') + (b.cust ? ' · ' + b.cust : ''), items);
+  printBackOfHouse((b.tableNo ? billIdLabel() + ' ' + b.tableNo + ' · ' : '') + 'บิล: ' + (b.billNo || '') + ' · ' + new Date().toLocaleString('th-TH') + (b.cust ? ' · ' + b.cust : ''), items, posKitchenCopies());
 }
 
 // ============================================================
@@ -8327,6 +8447,37 @@ function checkLowStockAlert() {
   }
 }
 
+// C1: เตือนรายจ่ายประจำตามวันครบกำหนด — เลยกำหนด / ครบวันนี้ / ใกล้ครบ (ภายใน 3 วัน)
+function recurringDueStatus(t) {
+  // คืน {state, days} โดย state: 'overdue' | 'today' | 'soon' | 'upcoming' | 'done'
+  if (recurringPostedThisMonth(t.id)) return { state: 'done', days: 0 };
+  const now = new Date();
+  const today = now.getDate();
+  // จำนวนวันในเดือนนี้ (กันกรณีตั้งวันที่ 31 แต่เดือนนี้มี 30)
+  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const due = Math.min(t.dayOfMonth || 1, dim);
+  const diff = due - today; // >0 = ยังไม่ถึง, 0 = วันนี้, <0 = เลยมาแล้ว
+  if (diff < 0) return { state: 'overdue', days: -diff };
+  if (diff === 0) return { state: 'today', days: 0 };
+  if (diff <= 3) return { state: 'soon', days: diff };
+  return { state: 'upcoming', days: diff };
+}
+function checkRecurringDueAlert() {
+  if (!Array.isArray(recurringExpenses) || !recurringExpenses.length) return;
+  const due = recurringExpenses
+    .filter(t => t.active)
+    .map(t => ({ t, s: recurringDueStatus(t) }))
+    .filter(x => x.s.state === 'overdue' || x.s.state === 'today');
+  if (!due.length) return;
+  const overdue = due.filter(x => x.s.state === 'overdue');
+  const names = due.slice(0, 2).map(x => x.t.name).join(', ');
+  const more = due.length > 2 ? ` และอีก ${due.length - 2}` : '';
+  const msg = overdue.length
+    ? `🔔 รายจ่ายประจำเลยกำหนด/ครบกำหนด ${due.length} รายการ — ${names}${more} (ยังไม่ลงบัญชี)`
+    : `🔔 รายจ่ายประจำครบกำหนดวันนี้ ${due.length} รายการ — ${names}${more}`;
+  ui.toast(msg, 'warning');
+}
+
 function printReport() {
   const el = $('reportPage');
   if (!el) return;
@@ -8435,6 +8586,7 @@ function fillSettings() {
   if ($('setVatRate')) $('setVatRate').value = settings.vatRate != null ? settings.vatRate : 7;
   if ($('setStaffDiscMax')) $('setStaffDiscMax').value = settings.staffDiscountMax != null ? settings.staffDiscountMax : 100;
   if ($('setStaffDiscMaxBaht')) $('setStaffDiscMaxBaht').value = settings.staffDiscountMaxBaht != null ? settings.staffDiscountMaxBaht : 0;
+  if ($('setBillIdLabel')) $('setBillIdLabel').value = settings.billIdLabel || '';
   renderDiscPresetList();
   renderStaffPerms();
 }
@@ -8494,10 +8646,18 @@ function saveSettings() {
   if ($('setVatRate')) settings.vatRate = Number($('setVatRate').value) || 0;
   if ($('setStaffDiscMax')) settings.staffDiscountMax = Math.max(0, Math.min(100, Number($('setStaffDiscMax').value)));
   if ($('setStaffDiscMaxBaht')) settings.staffDiscountMaxBaht = Math.max(0, Number($('setStaffDiscMaxBaht').value) || 0);
+  if ($('setBillIdLabel')) settings.billIdLabel = $('setBillIdLabel').value.trim();
 
   $('sidebarShopName').textContent = settings.shopName;
   syncAccountUI();
   saveAll();
+}
+// A3: ป้ายตัวระบุบิล (คิว/โต๊ะ/ห้อง/…) — ใช้ทั้งหน้าขาย ตั๋วครัว และประวัติบิล
+function billIdLabel() { return (settings.billIdLabel || '').trim() || 'คิว / โต๊ะ'; }
+function applyBillIdLabel() {
+  const lab = billIdLabel();
+  const sp = $('posTableLabel'); if (sp) sp.textContent = lab;
+  const inp = $('posTableNo'); if (inp) inp.placeholder = 'เช่น 5, A2 (ไม่บังคับ)';
 }
 
 function applyTheme(k) {
@@ -10253,17 +10413,33 @@ function renderRecurringSection() {
   const el = $('recurringSection');
   if (!el) return;
   const unposted = recurringExpenses.filter(t => t.active && !recurringPostedThisMonth(t.id));
-  const rows = recurringExpenses.length ? recurringExpenses.map(t => {
-    const done = recurringPostedThisMonth(t.id);
+  // C1: ป้ายสถานะครบกำหนด
+  function dueBadge(t) {
+    const s = recurringDueStatus(t);
+    if (s.state === 'done') return ' <span style="color:#16a34a;font-size:11px;white-space:nowrap;">✓ ลงแล้ว</span>';
+    if (s.state === 'overdue') return ` <span style="background:#fee2e2;color:#b91c1c;font-size:11px;padding:1px 8px;border-radius:20px;white-space:nowrap;">⏰ เลยกำหนด ${s.days} วัน</span>`;
+    if (s.state === 'today') return ' <span style="background:#fef3c7;color:#92400e;font-size:11px;padding:1px 8px;border-radius:20px;white-space:nowrap;">🔔 ครบกำหนดวันนี้</span>';
+    if (s.state === 'soon') return ` <span style="background:#fef9c3;color:#854d0e;font-size:11px;padding:1px 8px;border-radius:20px;white-space:nowrap;">อีก ${s.days} วัน</span>`;
+    return ` <span style="color:var(--color-text-muted);font-size:11px;white-space:nowrap;">อีก ${s.days} วัน</span>`;
+  }
+  // เรียง: เลยกำหนด → ครบวันนี้ → ใกล้ครบ → อื่นๆ → ลงแล้วท้ายสุด
+  const order = { overdue: 0, today: 1, soon: 2, upcoming: 3, done: 4 };
+  const sorted = [...recurringExpenses].sort((a, b) => order[recurringDueStatus(a).state] - order[recurringDueStatus(b).state]);
+  const rows = recurringExpenses.length ? sorted.map(t => {
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
-      <span style="flex:1;min-width:0;">${esc(t.name)} <span style="color:var(--color-text-muted);">· ฿${Number(t.defaultAmount).toLocaleString('th-TH')} · ทุกวันที่ ${t.dayOfMonth}</span>${done ? ' <span style="color:#16a34a;font-size:11px;white-space:nowrap;">✓ ลงแล้ว</span>' : ''}</span>
+      <span style="flex:1;min-width:0;">${esc(t.name)} <span style="color:var(--color-text-muted);">· ฿${Number(t.defaultAmount).toLocaleString('th-TH')} · ทุกวันที่ ${t.dayOfMonth}</span>${dueBadge(t)}</span>
       <button class="btn btn-ghost btn-sm" onclick="delRecurring('${t.id}')" style="padding:3px 8px;color:var(--color-danger,#e53e3e);">${icon('trash-2')}</button>
     </div>`;
   }).join('') : '<div style="color:var(--color-text-muted);font-size:13px;padding:6px 0;">ยังไม่มีรายจ่ายประจำ — เพิ่มด้านล่าง (เช่น ค่าเช่า เงินเดือน ค่าน้ำไฟ)</div>';
   el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
       <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="repeat"></span> รายจ่ายประจำ</h3>
-      ${unposted.length ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ยังไม่ลง ${unposted.length} รายการเดือนนี้</span>` : ''}
+      ${(() => {
+        const dueNow = unposted.filter(t => ['overdue', 'today'].includes(recurringDueStatus(t).state));
+        if (dueNow.length) return `<span style="background:#fee2e2;color:#b91c1c;padding:3px 10px;border-radius:20px;font-size:12px;">⏰ ครบกำหนด/เลยกำหนด ${dueNow.length} รายการ</span>`;
+        if (unposted.length) return `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ยังไม่ลง ${unposted.length} รายการเดือนนี้</span>`;
+        return '';
+      })()}
     </div>
     ${rows}
     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
@@ -10592,7 +10768,12 @@ function renderOnlineMenu() {
   const isPrepay = settings.orderPaymentMode === 'prepay';
   const btn = (oid, st, lbl, primary) => `<button class="btn ${primary ? 'btn-primary' : 'btn-ghost'} btn-sm" style="font-size:11px;padding:3px 8px;" onclick="setOrderStatus('${oid}','${st}')">${lbl}</button>`;
   const parseOrderItems = o => { let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } return d || {}; };
-  const orderRows = (orders || []).slice(0, 15).map(o => {
+  // B3: แยก view ออเดอร์ออนไลน์ — กรองตามสถานะ (กำลังทำ / เสร็จแล้ว / ทั้งหมด)
+  const ofilter = window._orderFilter || 'active';
+  const isOActive = o => o.status !== 'collected' && o.status !== 'cancelled';
+  const visibleOrders = (orders || []).filter(o => ofilter === 'all' ? true : ofilter === 'done' ? !isOActive(o) : isOActive(o));
+  const activeCount = (orders || []).filter(isOActive).length;
+  const orderRows = visibleOrders.slice(0, 30).map(o => {
     const done = o.status === 'collected' || o.status === 'cancelled';
     const nx = NEXT[o.status];
     const dj = parseOrderItems(o);
@@ -10641,6 +10822,53 @@ function renderOnlineMenu() {
             <option value="sticker"${settings.kitchenTicketMode === 'sticker' ? ' selected' : ''}>สติกเกอร์ต่อแก้ว (50×40)</option>
           </select>
         </div>
+        ${(() => {
+          const cats = [...new Set([...recipes.map(r => r.category), ...materials.map(m => m.category)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
+          const stOpt = (sel) => ['<option value="">ทุกเครื่อง</option>'].concat(PRINT_STATIONS.map(s => `<option value="${esc(s)}"${sel === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
+          const dev = deviceStation();
+          const routeRows = window._showRoute ? `<div style="margin-top:6px;padding:8px 10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
+            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">หมวดเมนู → สถานี (หมวดที่ไม่กำหนด = พิมพ์ทุกเครื่อง)</div>
+            ${cats.length ? cats.map(c => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;"><span style="flex:1;min-width:0;">${esc(c)}</span>
+              <select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;padding:3px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
+          </div>` : '';
+          return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
+            <div style="font-size:12px;font-weight:700;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ (เครื่องนี้)</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
+              <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวอัตโนมัติ:</span>
+              <select onchange="setAutoPrintOnline(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <option value="off"${!autoPrintOnlineOn() ? ' selected' : ''}>ปิด</option>
+                <option value="on"${autoPrintOnlineOn() ? ' selected' : ''}>เปิด (ออเดอร์เข้า→พิมพ์เอง)</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
+              <span style="color:var(--color-text-muted);">เครื่องนี้คือสถานี:</span>
+              <select onchange="setDeviceStation(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <option value="all"${dev === 'all' ? ' selected' : ''}>ทุกสถานี (เครื่องเดียว)</option>
+                ${PRINT_STATIONS.map(s => `<option value="${esc(s)}"${dev === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+              </select>
+              <span style="font-size:10px;color:var(--color-text-muted);">(ตั้งแยกแต่ละเครื่อง)</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
+              <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวกี่ใบ:</span>
+              <select onchange="setPosKitchenCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                ${[1, 2, 3].map(n => `<option value="${n}"${posKitchenCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
+              </select>
+              <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=!window._showRoute;renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${window._showRoute ? 'ซ่อนเส้นทาง' : 'เส้นทางเมนู→เครื่อง'}</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
+              <span style="color:var(--color-text-muted);">พิมพ์บิลหน้าร้านอัตโนมัติ:</span>
+              <select onchange="setAutoPrintBill(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <option value="off"${!autoPrintBillOn() ? ' selected' : ''}>ปิด (กดพิมพ์เอง)</option>
+                <option value="on"${autoPrintBillOn() ? ' selected' : ''}>เปิด (ขายเสร็จ→พิมพ์เอง)</option>
+              </select>
+              <span style="color:var(--color-text-muted);">กี่ใบ:</span>
+              <select onchange="setPosBillCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                ${[1, 2, 3].map(n => `<option value="${n}"${posBillCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
+              </select>
+            </div>
+            ${routeRows}
+          </div>`;
+        })()}
         <div style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="color:var(--color-text-muted);">เสียงเตือนออเดอร์ใหม่:</span>
           <select onchange="setOrderSound(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
@@ -10652,9 +10880,13 @@ function renderOnlineMenu() {
         </div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;margin-bottom:2px;">
-      <b style="font-size:13px;"><span class="ico" data-icon="list-ordered"></span> คิวออเดอร์</b>
-      <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="refreshOrders()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรชคิว</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+      <b style="font-size:13px;"><span class="ico" data-icon="list-ordered"></span> คิวออเดอร์ออนไลน์${activeCount ? ` <span style="font-weight:700;color:var(--color-primary);">(${activeCount} กำลังทำ)</span>` : ''}</b>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${[['active', 'กำลังทำ'], ['done', 'เสร็จ/ยกเลิก'], ['all', 'ทั้งหมด']].map(([k, lbl]) => `<button class="btn ${ofilter === k ? 'btn-primary' : 'btn-ghost'} btn-sm" style="font-size:11px;padding:3px 9px;" onclick="window._orderFilter='${k}';renderOnlineMenu();">${lbl}</button>`).join('')}
+        <button class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="centralKitchenDoc()"><span class="ico" data-icon="send"></span> ใบส่งครัวกลาง</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="refreshOrders()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรช</button>
+      </div>
     </div>
     <div>${orderRows}</div>
   </div>`;
@@ -10724,6 +10956,43 @@ async function setOrderPaid(id, paid) {
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
 function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
+
+// ============================================================
+// B1: ตั้งค่าเครื่องพิมพ์ + พิมพ์ตั๋วครัวอัตโนมัติ + routing หมวด→สถานี
+//   - "สถานี" = ตั้งต่อเครื่อง (localStorage) เพราะเครื่องพิมพ์ผูกกับเครื่องที่เปิดแอป
+//   - routing (settings.printRouting) = หมวดเมนู → สถานี (sync ทุกเครื่อง)
+//   - หมวดที่ยังไม่กำหนด → พิมพ์ทุกเครื่อง (fail-open กันออเดอร์ตกหล่น)
+// ============================================================
+const PRINT_STATIONS = ['ครัว', 'บาร์', 'เคาน์เตอร์', 'ของหวาน'];
+function deviceStation() { return localStorage.getItem('recipro_print_station') || 'all'; }
+function setDeviceStation(v) { localStorage.setItem('recipro_print_station', v || 'all'); if (typeof ui !== 'undefined' && ui.toast) ui.toast(v === 'all' ? 'เครื่องนี้พิมพ์ทุกสถานี' : 'เครื่องนี้ = สถานี ' + v); renderOnlineMenu(); }
+function setAutoPrintOnline(on) { localStorage.setItem('recipro_autoprint', on ? 'on' : 'off'); if (typeof ui !== 'undefined' && ui.toast) ui.toast(on ? '🖨 เปิดพิมพ์ตั๋วครัวอัตโนมัติ (เครื่องนี้)' : 'ปิดพิมพ์อัตโนมัติแล้ว'); renderOnlineMenu(); }
+function autoPrintOnlineOn() { return localStorage.getItem('recipro_autoprint') === 'on'; }
+function posKitchenCopies() { return Math.max(1, Math.min(3, Number(settings.posKitchenCopies) || 1)); }
+function setPosKitchenCopies(n) { settings.posKitchenCopies = Math.max(1, Math.min(3, Number(n) || 1)); saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('พิมพ์ตั๋วครัว ' + posKitchenCopies() + ' ใบ'); renderOnlineMenu(); }
+// หมวดของรายการในออเดอร์ (resolve จากสูตร/วัตถุดิบ)
+function itemCategory(it) {
+  const prod = it && (it.type === 'material' ? matById(it.id) : recById(it.id));
+  return (prod && prod.category) || '';
+}
+function itemStation(it) { const r = settings.printRouting || {}; return r[itemCategory(it)] || ''; }
+// คัดเฉพาะรายการที่เครื่องนี้ต้องพิมพ์ ('all' = ทั้งหมด; สถานีเจาะจง = ตรงสถานี หรือหมวดที่ยังไม่กำหนด)
+function itemsForThisStation(items) {
+  const st = deviceStation();
+  if (st === 'all') return items;
+  return items.filter(it => { const s = itemStation(it); return s === st || s === ''; });
+}
+function setPrintRoute(cat, station) { settings.printRouting = settings.printRouting || {}; if (station) settings.printRouting[cat] = station; else delete settings.printRouting[cat]; saveAll(); renderOnlineMenu(); }
+// พิมพ์ตั๋วครัวอัตโนมัติสำหรับออเดอร์ออนไลน์ใหม่ (กรองตามสถานีของเครื่องนี้)
+function autoPrintOrder(o) {
+  let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } d = d || {};
+  const all = (d.items || []);
+  const mine = itemsForThisStation(all);
+  if (!mine.length) return;
+  const items = mine.map(it => ({ qty: it.qty || 1, name: it.name || '', opts: Array.isArray(it.options) ? it.options.map(x => (x && x.label) || x).join(' · ') : '' }));
+  const meta = 'ออนไลน์ · คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + (o.name || 'ลูกค้า') + (d.note ? ' · หมายเหตุ: ' + d.note : '');
+  try { printBackOfHouse(meta, items, posKitchenCopies()); } catch (e) {}
+}
 function setBusinessType(v) { settings.businessType = v; saveAll(); applyTerminology(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('ปรับเป็น: ' + ((BIZ_TEMPLATES[v] || {}).label || v)); }
 
 // #1: แจ้งเตือนออเดอร์ออนไลน์ใหม่ — โพลทุก 30 วิ เมื่อเปิดเมนูออนไลน์ + เสียง/เด้งเตือน
@@ -10746,6 +11015,11 @@ async function pollNewOrders() {
       orders = list.map(o => ({ id: o.id, orderNo: o.order_no, name: o.customer_name || '', phone: o.customer_phone || '', total: Number(o.total) || 0, status: o.status || 'pending', queue: o.queue_number, paid: !!o.paid, stockDeducted: !!o.stock_deducted, date: (o.created_at || '').slice(0, 10), itemsJson: o.items_json }));
       if (typeof currentTab !== 'undefined' && currentTab === 'pos') renderOnlineMenu();
       notifyNewOrder(fresh.length);
+      // B1: พิมพ์ตั๋วครัวอัตโนมัติ (เฉพาะเครื่องที่เปิดไว้ + กรองตามสถานี)
+      if (autoPrintOnlineOn()) {
+        const byId = new Map(orders.map(o => [o.id, o]));
+        fresh.forEach(f => { const o = byId.get(f.id); if (o) autoPrintOrder(o); });
+      }
     }
   } catch (e) {}
 }
@@ -10783,6 +11057,51 @@ function printKitchenOrder(orderId) {
   const items = (d.items || []).map(it => ({ qty: it.qty || 1, name: it.name || '', opts: Array.isArray(it.options) ? it.options.map(x => (x && x.label) || x).join(' · ') : '' }));
   const meta = 'ออนไลน์ · คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + (o.name || 'ลูกค้า') + (d.note ? ' · หมายเหตุ: ' + d.note : '');
   printBackOfHouse(meta, items);
+}
+
+// ===== B3: ใบส่งครัวกลาง — รวมออเดอร์ออนไลน์ที่ยัง active เป็นเอกสารผลิตชุดเดียว =====
+function activeOnlineOrders() {
+  return (orders || []).filter(o => o.status !== 'collected' && o.status !== 'cancelled');
+}
+function centralKitchenDoc() {
+  const act = activeOnlineOrders();
+  if (!act.length) { ui.toast('ยังไม่มีออเดอร์ออนไลน์ที่ต้องผลิต', 'warning'); return; }
+  const parse = o => { let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } return d || {}; };
+  // รวมยอดเมนู+option เป็นบรรทัดผลิต (key = ชื่อ + option)
+  const agg = new Map();
+  act.forEach(o => {
+    const d = parse(o);
+    (d.items || []).forEach(it => {
+      const opts = Array.isArray(it.options) ? it.options.map(x => (x && x.label) || x).filter(Boolean).join(' · ') : '';
+      const key = (it.name || '') + '||' + opts;
+      const cur = agg.get(key) || { name: it.name || '', opts, qty: 0, queues: [] };
+      cur.qty += Number(it.qty) || 1;
+      cur.queues.push((o.queue != null ? o.queue : '?'));
+      agg.set(key, cur);
+    });
+  });
+  const lines = [...agg.values()].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  const totalCups = lines.reduce((s, l) => s + l.qty, 0);
+  const now = new Date();
+  const rows = lines.map(l => `<tr><td style="text-align:center;font-weight:800;font-size:15px;">${l.qty}</td>`
+    + `<td>${esc(l.name)}${l.opts ? `<div style="font-size:11px;color:#555;">${esc(l.opts)}</div>` : ''}</td>`
+    + `<td style="font-size:10px;color:#777;">คิว ${l.queues.join(', ')}</td></tr>`).join('');
+  const css = 'body{font-family:Tahoma,sans-serif;margin:0;padding:14px;color:#111;}'
+    + 'h1{font-size:18px;margin:0 0 2px;}.meta{font-size:12px;color:#555;margin-bottom:10px;}'
+    + 'table{width:100%;border-collapse:collapse;}th,td{border-bottom:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top;}'
+    + 'th{background:#f3f3f3;font-size:12px;}.sum{margin-top:10px;font-weight:800;font-size:14px;}'
+    + '@media print{button{display:none;}}@page{margin:8mm;}';
+  const html = '<html><head><meta charset="utf-8"><title>ใบส่งครัวกลาง</title><style>' + css + '</style></head><body>'
+    + '<h1>📋 ใบส่งครัวกลาง — ' + esc(settings.shopName || 'ร้าน') + '</h1>'
+    + '<div class="meta">' + now.toLocaleString('th-TH') + ' · ' + act.length + ' ออเดอร์ · รวม ' + totalCups + ' รายการ</div>'
+    + '<table><thead><tr><th style="width:48px;text-align:center;">จำนวน</th><th>เมนู / ตัวเลือก</th><th>อ้างอิงคิว</th></tr></thead><tbody>'
+    + rows + '</tbody></table>'
+    + '<div class="sum">รวมทั้งหมด ' + totalCups + ' รายการ จาก ' + act.length + ' ออเดอร์</div>'
+    + '<button onclick="window.print()" style="margin-top:14px;padding:8px 16px;font-size:14px;">🖨 พิมพ์ / บันทึก PDF</button>'
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},400)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank', 'width=560,height=720');
+  if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่าง — อนุญาต popup ก่อน', 'warning'); return; }
+  w.document.write(html); w.document.close();
 }
 function togglePublicMenu(on) {
   settings.publicMenuEnabled = !!on;
