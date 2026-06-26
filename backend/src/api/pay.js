@@ -2,6 +2,7 @@
 // ปลอดภัย: secret key อ่าน/ใช้ฝั่ง server เท่านั้น (ไม่ส่งไป frontend); แต่ละร้านใช้คีย์ของตัวเอง
 const express = require('express');
 const { query } = require('../db');
+const slipverify = require('../slipverify');
 const router = express.Router();
 
 const OMISE_API = 'https://api.omise.co';
@@ -30,7 +31,34 @@ router.get('/pay/status', async (req, res) => {
   try {
     const g = await shopGateway(req.shopId);
     res.json({ gateway: g.pay_gateway || '', enabled: g.pay_gateway === 'omise' && !!g.omise_secret_key,
-      has_secret: !!g.omise_secret_key, public_key: g.omise_public_key || '' });
+      has_secret: !!g.omise_secret_key, public_key: g.omise_public_key || '',
+      slip_verify: slipverify.hasKeys() });   // ตรวจสลิปอัตโนมัติเปิดอยู่ไหม (SlipOK ระดับแพลตฟอร์ม)
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/pay/verify-slip { amount, slip_image, bill_no } — ตรวจสลิปลูกค้า → ยืนยันรับเงินอัตโนมัติ
+// ใช้กับ QR พร้อมเพย์ฟรีของร้าน: ลูกค้าโอน → พนักงานถ่ายสลิป → ตรวจยอด+กันซ้ำ → frontend ปิดการขายเอง
+router.post('/pay/verify-slip', async (req, res) => {
+  if (!req.shopId) return res.status(400).json({ error: 'no shop' });
+  if (!slipverify.hasKeys()) return res.status(503).json({ error: 'ยังไม่เปิดตรวจสลิปอัตโนมัติ (ต้องตั้งค่า SlipOK)' });
+  const expect = Number(req.body.amount) || 0;
+  const img = req.body.slip_image;
+  if (!img) return res.status(400).json({ error: 'ไม่พบรูปสลิป' });
+  try {
+    let v;
+    try { v = await slipverify.verifySlipImage(img); }
+    catch (e) { return res.status(402).json({ error: 'ตรวจสลิปไม่ผ่าน: ' + e.message }); }
+    if (expect > 0 && v.amount + 0.5 < expect) {
+      return res.status(402).json({ error: `ยอดในสลิป ${v.amount}฿ น้อยกว่ายอดที่ต้องชำระ ${expect}฿` });
+    }
+    const ref = 'slip:' + (v.transRef || (Date.now().toString(36)));
+    // กันสลิปซ้ำด้วย pay_charges.id (unique)
+    const ins = await query(
+      `insert into pay_charges (id, shop_id, amount, status, source_type, bill_no)
+       values ($1,$2,$3,'paid','promptpay_slip',$4) on conflict (id) do nothing returning id`,
+      [ref, req.shopId, v.amount, req.body.bill_no || '']);
+    if (!ins.rowCount) return res.status(409).json({ error: 'สลิปนี้ถูกใช้ไปแล้ว' });
+    res.json({ ok: true, amount: v.amount, ref, receiver: v.receiver });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

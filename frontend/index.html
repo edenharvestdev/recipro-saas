@@ -3953,7 +3953,7 @@ async function syncToSupabase() {
   } catch (e) {
     if (e && e.status === 409) { handleSyncConflict(); return; }
     if (e && e.status === 423) {   // แพ็กเกจหมดอายุ → readonly: เด้งแถบเตือน + หน้าต่ออายุ
-      BILLING = Object.assign({}, BILLING, { state: (e.body && e.body.billing_state) || 'readonly' });
+      BILLING = Object.assign({}, BILLING, { state: (e.data && e.data.billing_state) || 'readonly' });
       if (typeof applyBillingUI === 'function') applyBillingUI();
       updateCloudStatus("แพ็กเกจหมดอายุ — ต่ออายุเพื่อบันทึก", "circle-x");
       if (typeof openRenewalPage === 'function') openRenewalPage();
@@ -7685,6 +7685,8 @@ async function showQrReceive() {
   let qrImg = '';
   try { await ensureQrLib(); const q = qrcode(0, 'M'); q.addData(promptpayPayload(settings.pp, net)); q.make(); qrImg = q.createImgTag(6, 8); }
   catch (e) { ui.alert(e.message, { icon: 'alert-triangle' }); return; }
+  let slipOn = false; try { slipOn = !!(await API.get('/api/pay/status')).slip_verify; } catch (e) {}
+  posDisplayPush(net, 'await');   // ส่งยอดไปจอ QR Box ลูกค้าด้วย
   const ov = document.createElement('div');
   ov.className = 'modal-overlay'; ov.id = 'qrReceiveOverlay';
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
@@ -7695,7 +7697,10 @@ async function showQrReceive() {
       <div style="font-size:13px;color:#666;margin-top:10px;">ยอดชำระ</div>
       <div style="font-size:30px;font-weight:800;color:#2563eb;">${money(net)}</div>
       <div style="font-size:11px;color:#999;margin-bottom:14px;">พร้อมเพย์: ${esc(settings.pp)}</div>
-      <button class="btn btn-primary" style="width:100%;margin-bottom:8px;background:#16a34a;border-color:#16a34a;" onclick="confirmQrReceived()"><span class="ico" data-icon="check"></span> รับเงินแล้ว — ปิดการขาย</button>
+      ${slipOn ? `<input type="file" id="posSlipInput" accept="image/*" capture="environment" style="display:none;" onchange="verifyPosSlip(this)">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:6px;" onclick="document.getElementById('posSlipInput').click()"><span class="ico" data-icon="scan-line"></span> ถ่ายสลิป → ยืนยันอัตโนมัติ</button>
+      <div id="posSlipMsg" style="font-size:12px;color:#666;min-height:16px;margin-bottom:6px;"></div>` : ''}
+      <button class="btn ${slipOn ? 'btn-ghost' : 'btn-primary'}" style="width:100%;margin-bottom:8px;${slipOn ? '' : 'background:#16a34a;border-color:#16a34a;'}" onclick="confirmQrReceived()"><span class="ico" data-icon="check"></span> ${slipOn ? 'ยืนยันรับเงินเอง (ไม่ใช้สลิป)' : 'รับเงินแล้ว — ปิดการขาย'}</button>
       <button class="btn btn-ghost" style="width:100%;" onclick="document.getElementById('qrReceiveOverlay').remove()">ยกเลิก</button>
     </div>`;
   document.body.appendChild(ov);
@@ -7705,6 +7710,22 @@ function confirmQrReceived() {
   const ov = document.getElementById('qrReceiveOverlay'); if (ov) ov.remove();
   if ($('posPayMethod')) $('posPayMethod').value = 'transfer';   // บันทึกเป็นจ่ายโอน/พร้อมเพย์
   posCheckout();
+}
+// ถ่ายสลิปลูกค้า → ตรวจยอดอัตโนมัติ (SlipOK) → ปิดการขายเอง
+async function verifyPosSlip(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  const msg = $('posSlipMsg');
+  const set = (t, c) => { if (msg) { msg.style.color = c || '#666'; msg.textContent = t; } };
+  set('กำลังตรวจสลิป…');
+  try {
+    const raw = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+    let img = raw; try { img = await compressImage(raw, 1200, 0.8); } catch (e) {}
+    const net = posComputeTotals().net;
+    const r = await API.post('/api/pay/verify-slip', { amount: net, slip_image: img, bill_no: '' });
+    if (r && r.ok) { set('✓ ยอดถูกต้อง ' + money(r.amount) + ' — กำลังปิดการขาย', '#16a34a'); posDisplayPush(0, 'paid'); setTimeout(confirmQrReceived, 400); }
+    else set('ตรวจไม่ผ่าน', '#dc2626');
+  } catch (e) { set('ไม่สำเร็จ: ' + (e.message || ''), '#dc2626'); }
+  input.value = '';
 }
 
 // ===== QR Box (จอลูกค้า) — แคชเชียร์ push ยอด → จอลูกค้า poll มาแสดง QR =====

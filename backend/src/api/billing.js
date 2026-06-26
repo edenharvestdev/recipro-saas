@@ -3,6 +3,7 @@ const express = require('express');
 const { query } = require('../db');
 const omise = require('../omise');
 const stripe = require('../stripe');
+const slipverify = require('../slipverify');
 const { sendReceipt } = require('../email');
 const { logEvent } = require('../logs');
 const router = express.Router();
@@ -21,8 +22,14 @@ function provider() {
 // แพ็กเกจที่เปิดขาย
 router.get('/plans', async (req, res) => {
   try {
-    const { rows } = await query('select * from plans where active = true order by price_month');
-    res.json({ plans: rows, provider: provider() });
+    const { rows } = await query('select * from plans where active = true order by sort, price_month');
+    res.json({
+      plans: rows,
+      provider: provider(),
+      promptpay: process.env.RECIPRO_PROMPTPAY || null,   // บัญชีรับเงินแพลตฟอร์ม (โชว์ QR ให้โอน)
+      slip_verify: slipverify.hasKeys(),                   // เปิดตรวจสลิปอัตโนมัติไหม
+      card_auto: stripe.hasKeys() || omise.hasKeys(),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
