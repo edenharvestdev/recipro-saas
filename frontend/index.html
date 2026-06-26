@@ -6347,16 +6347,23 @@ function exportExpensesCSV() {
   downloadCSV('recipro-รายจ่าย-' + mo + '.csv', rows);
 }
 // Export รายการวัตถุดิบเป็น Excel/CSV (เปิดด้วย Excel/Sheets, ภาษาไทยไม่เพี้ยน)
+// แปลงวัตถุดิบ 1 ตัว → record ตามคอลัมน์ import (ใช้ทั้ง export และ template)
+function matToImportRecord(m) {
+  const supName = id => { const s = (suppliers || []).find(x => x.id === id); return s ? s.name : ''; };
+  return {
+    sku: m.sku || '', name: m.name || '', category: m.category || m.itemType || '',
+    qty: Number(m.qty) || 1, unit: m.unit || '', price: Number(m.price) || 0,
+    convQty: m.convQty || '', stockUnit: m.stockUnit || '', sellPrice: m.sellPrice || '',
+    stock: Number(m.stock) || 0, lowStock: Number(m.lowStock) || 0,
+    supplier: supName(m.supId), orderUrl: m.orderUrl || ''
+  };
+}
+// Export = ฟอร์แมตเดียวกับ import → โหลดออก แก้สต๊อก แล้วโหลดกลับเข้าได้เลย
 function exportMaterialsCSV() {
   const list = (materials || []).filter(m => !m.isConsumable);
   if (!list.length) { ui.alert('ยังไม่มีวัตถุดิบ', { icon: 'info' }); return; }
-  const supName = id => { const s = (suppliers || []).find(x => x.id === id); return s ? s.name : ''; };
-  const rows = [['ลำดับ', 'ชื่อวัตถุดิบ', 'SKU', 'หมวดสินค้า', 'หน่วย', 'ราคาทุน', 'ราคาขาย', 'สต๊อกคงเหลือ', 'จุดสั่งซื้อ', 'ผู้ขาย']];
-  list.forEach((m, i) => rows.push([
-    i + 1, m.name || '', m.sku || '', m.itemType || '', m.unit || '',
-    (Number(m.price) || 0).toFixed(2), m.sellPrice ? Number(m.sellPrice).toFixed(2) : '',
-    (Number(m.stock) || 0), (Number(m.lowStock) || 0), supName(m.supId)
-  ]));
+  const rows = [IMPORT_COLS.map(c => c.label + (c.required ? '*' : ''))];
+  list.forEach(m => { const r = matToImportRecord(m); rows.push(IMPORT_COLS.map(c => r[c.key])); });
   downloadCSV('recipro-วัตถุดิบ-' + new Date().toISOString().slice(0, 10) + '.csv', rows);
 }
 
@@ -9069,6 +9076,8 @@ const IMPORT_COLS = [
   { key: 'convQty',   label: 'ปริมาณ/หน่วยซื้อ', num: true, hint: '2000 (มล./ขวด)', w: 130 },
   { key: 'stockUnit', label: 'หน่วยตัดสต๊อก',  hint: 'มล./กรัม/ชิ้น',   w: 110 },
   { key: 'sellPrice', label: 'ราคาขาย(บาท)',   num: true, hint: '0',       w: 110 },
+  { key: 'stock',     label: 'สต๊อกคงเหลือ',   num: true, hint: 'เว้นว่าง=ไม่แก้', w: 110 },
+  { key: 'lowStock',  label: 'จุดเตือนสต๊อก',  num: true, hint: '0',       w: 110 },
   { key: 'supplier',  label: 'แหล่งซื้อ',      hint: 'ชื่อร้าน',           w: 120 },
   { key: 'orderUrl',  label: 'ลิงก์สั่งซื้อ',  hint: 'https://...',        w: 130 },
 ];
@@ -9106,12 +9115,13 @@ function downloadBlob(content, filename, type) {
 
 function templateAOA() {
   const header = IMPORT_COLS.map(c => c.label + (c.required ? '*' : ''));
-  return [
-    header,
-    ['MA-001', 'ฝาแก้ว สีใส',        'สินค้าหมุนเวียน', 1, 'ชิ้น', 1.195, 1.396, 'Hibi Matcha House', ''],
-    ['MA-014', 'Hibi ถุงพลาสติกกลับบ้าน(ถุงเดี่ยว)', 'บรรจุภัณฑ์ (Package)', 1, 'ชิ้น', 0.569, 0.686, 'Hibi Matcha House', ''],
-    ['MA-018', 'ถ้วยมัทฉะ Hibi Tsuki 500ml', 'อุปกรณ์', 1, 'ชิ้น', 259.898, 313.648, 'Hibi Matcha House', ''],
+  // สร้างแถวตัวอย่างจาก key เพื่อกันคอลัมน์เลื่อน (ต้องตรง IMPORT_COLS เสมอ)
+  const samples = [
+    { sku: 'MA-001', name: 'ฝาแก้ว สีใส', category: 'สินค้าหมุนเวียน', qty: 1, unit: 'ชิ้น', price: 1.195, convQty: '', stockUnit: '', sellPrice: '', stock: 500, lowStock: 100, supplier: 'Hibi Matcha House', orderUrl: '' },
+    { sku: 'MA-018', name: 'ถ้วยมัทฉะ Hibi Tsuki 500ml', category: 'อุปกรณ์', qty: 1, unit: 'ชิ้น', price: 259.898, convQty: '', stockUnit: '', sellPrice: '', stock: 30, lowStock: 5, supplier: 'Hibi Matcha House', orderUrl: '' },
+    { sku: 'RAW-01', name: 'นมสด', category: 'วัตถุดิบ', qty: 1, unit: 'ขวด', price: 55, convQty: 2000, stockUnit: 'มล.', sellPrice: '', stock: 12, lowStock: 4, supplier: '', orderUrl: '' },
   ];
+  return [header, ...samples.map(s => IMPORT_COLS.map(c => s[c.key] ?? ''))];
 }
 
 async function exportTemplate(format) {
@@ -9397,10 +9407,14 @@ function rowsToRecords(rows) {
       if (/ชื่อ|name/.test(h)) return 'name';
       if (/หมวด|category|ประเภท/.test(h)) return 'category';
       if (/จำนวน|บรรจุ|qty|quantity/.test(h)) return 'qty';
+      if (/หน่วยตัด|stock.?unit|หน่วยสต/.test(h)) return 'stockUnit';
+      if (/ปริมาณ|conv/.test(h)) return 'convQty';
       if (/หน่วย|unit/.test(h)) return 'unit';
       if (/ราคาขาย|sell.?price/.test(h)) return 'sellPrice';
-      if (/ราคาซื้อ|ราคา|price|บาท|cost/.test(h)) return 'price';
-      if (/แหล่ง|supplier|ร้าน/.test(h)) return 'supplier';
+      if (/ราคาซื้อ|ราคาทุน|ราคา|price|cost/.test(h)) return 'price';
+      if (/จุดเตือน|จุดสั่ง|low.?stock|reorder|ขั้นต่ำ|จุดสต/.test(h)) return 'lowStock';
+      if (/สต๊อก|สต็อก|stock|คงเหลือ|on.?hand/.test(h)) return 'stock';
+      if (/แหล่ง|supplier|ร้าน|ผู้ขาย/.test(h)) return 'supplier';
       if (/ลิงก์|ลิ้ง|link|url/.test(h)) return 'orderUrl';
       return null;
     });
@@ -9409,7 +9423,7 @@ function rowsToRecords(rows) {
   for (let i = start; i < rows.length; i++) {
     const cells = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
     if (!cells.some(c => c)) continue;
-    const rec = { sku: '', name: '', category: '', qty: '', unit: '', price: '', sellPrice: '', supplier: '', orderUrl: '' };
+    const rec = { sku: '', name: '', category: '', qty: '', unit: '', price: '', convQty: '', stockUnit: '', sellPrice: '', stock: '', lowStock: '', supplier: '', orderUrl: '' };
     cells.forEach((val, idx) => { const k = colOrder[idx]; if (k && !rec[k]) rec[k] = val; });
     recs.push(rec);
   }
@@ -9531,7 +9545,7 @@ function updateImportWarn() {
     ? icon('alert-triangle') + ` มี ${bad}/${importRecords.length} แถวที่ยังไม่ครบ/ผิด (ช่องสีแดง)`
     : icon('check-circle') + ` ข้อมูลครบ ${importRecords.length} รายการ พร้อมนำเข้า`;
 }
-function addImportRow() { importRecords.push({ sku: '', name: '', category: '', qty: '', unit: '', price: '', sellPrice: '', supplier: '', orderUrl: '' }); renderImportRows(); }
+function addImportRow() { importRecords.push({ sku: '', name: '', category: '', qty: '', unit: '', price: '', convQty: '', stockUnit: '', sellPrice: '', stock: '', lowStock: '', supplier: '', orderUrl: '' }); renderImportRows(); }
 function removeImportRow(i) { importRecords.splice(i, 1); renderImportRows(); }
 function closeImportReview() { const ov = $('importModalOverlay'); if (ov) ov.remove(); }
 
@@ -9562,15 +9576,22 @@ async function commitImport() {
       convQty: Number(r.convQty) || null, stockUnit: (r.stockUnit || '').trim() || null,
       supId, orderUrl: (r.orderUrl || '').trim(), category
     };
+    // สต๊อก/จุดเตือน: มีค่าในไฟล์ = ตั้งตามไฟล์ (overwrite); เว้นว่าง = ไม่แตะของเดิม
+    const hasStock = String(r.stock ?? '').trim() !== '';
+    const hasLow = String(r.lowStock ?? '').trim() !== '';
+    const stockVal = Number(r.stock) || 0;
+    const lowVal = Number(r.lowStock) || 0;
     // จับคู่ของเดิมเพื่อกันสร้างซ้ำ: SKU ก่อน ถ้าไม่เจอใช้ชื่อ (case-insensitive)
     const existing =
       (sku && materials.find(m => (m.sku || '').trim().toLowerCase() === sku.toLowerCase())) ||
       materials.find(m => (m.name || '').trim().toLowerCase() === name.toLowerCase());
     if (existing) {
-      Object.assign(existing, fields); // คงสต๊อก/เกณฑ์เตือน/id เดิมไว้
+      Object.assign(existing, fields); // คง id เดิมไว้
+      if (hasStock) existing.stock = stockVal;
+      if (hasLow) existing.lowStock = lowVal;
       updated++;
     } else {
-      materials.push({ id: uid(), ...fields, stock: 0, lowStock: 0 });
+      materials.push({ id: uid(), ...fields, stock: hasStock ? stockVal : 0, lowStock: hasLow ? lowVal : 0 });
       added++;
     }
   });
