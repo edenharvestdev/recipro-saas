@@ -1016,6 +1016,7 @@
           <option value="service">ร้านบริการ (คิ้ว/เล็บ/สปา)</option>
           <option value="retail">ร้านขายของ / รีเทล</option>
           <option value="maker">โฮมเมด / ผลิตขาย</option>
+          <option value="factory">โรงงานผลิต / อาหารเสริม / OEM</option>
         </select>
         <button class="btn btn-ghost btn-sm" onclick="openSetupWizard()" style="margin-left:10px;"><span class="ico" data-icon="wand-sparkles"></span> ตั้งร้านใหม่ (Wizard)</button>
       </div>
@@ -3172,6 +3173,7 @@ const BIZ_TEMPLATES = {
   service: { label: 'ร้านบริการ (คิ้ว/เล็บ/สปา)',   terms: { menu: 'บริการ', recipe: 'สูตรบริการ', ingredient: 'วัสดุ/อุปกรณ์', boh: 'ใบสั่งงาน' } },
   retail:  { label: 'ร้านขายของ / รีเทล',          terms: { menu: 'สินค้า', recipe: 'ชุดสินค้า', ingredient: 'สต๊อกสินค้า', boh: 'ใบจัดของ' } },
   maker:   { label: 'โฮมเมด / ผลิตขาย',            terms: { menu: 'สินค้า', recipe: 'สูตร', ingredient: 'วัตถุดิบ', boh: 'ใบผลิต' } },
+  factory: { label: 'โรงงานผลิต / อาหารเสริม / OEM', terms: { menu: 'สินค้า/ไลน์ผลิต', recipe: 'สูตรผลิต (BOM)', ingredient: 'วัตถุดิบ/ส่วนผสม', boh: 'ใบสั่งผลิต' } },
 };
 function bizTerms() { return (BIZ_TEMPLATES[settings.businessType] || BIZ_TEMPLATES.fnb).terms; }
 function bt(key) { return bizTerms()[key] || BIZ_TEMPLATES.fnb.terms[key] || key; }   // business-term (อย่าชนกับ t() ของ i18n)
@@ -3189,6 +3191,7 @@ const MANUAL_BIZ_TIPS = {
   service: 'สำหรับ <b>ร้านบริการ (คิ้ว/เล็บ/สปา)</b>: “เมนู” = บริการ · “สูตร” = วัสดุ+ขั้นตอนที่ใช้ต่อครั้ง (ระบบจะตัดวัสดุให้ตอนปิดงาน) · “วัตถุดิบ” = วัสดุ/อุปกรณ์ · ของขายหน้าร้าน (ครีม/สครับ) ใช้ “ขายของตรง” (หัวข้อ 3)',
   retail:  'สำหรับ <b>ร้านขายของ / รีเทล</b>: ส่วนใหญ่ใช้ “ขายของตรง” (หัวข้อ 3) — ตั้งสินค้าเป็น “ของขาย” + ราคา ไม่ต้องทำสูตร · “สต๊อกสินค้า” = นับของในร้าน · ใช้ “ชุดสินค้า” (สูตร) เฉพาะตอนจัดเซต/บันเดิล',
   maker:   'สำหรับ <b>โฮมเมด / ผลิตขาย</b>: “สูตร” = ส่วนผสมต่อชิ้น/ล็อต → กด “ผลิต” เก็บสต๊อก → ขาย (ตัดจากของที่ผลิต) · ของที่ทำเสร็จพร้อมขายเลยใช้ “ขายของตรง” (หัวข้อ 3) ก็ได้',
+  factory: 'สำหรับ <b>โรงงานผลิต / อาหารเสริม / OEM</b>: “สูตรผลิต (BOM)” = ส่วนผสม+ปริมาณต่อล็อตการผลิต → กด “ผลิต” เพื่อแปลงวัตถุดิบ→สินค้าสำเร็จรูปเก็บสต๊อก (ตัดวัตถุดิบ/ส่วนผสมอัตโนมัติ) · งานรับจ้างผลิต (OEM) สร้างเป็น “สินค้า/ไลน์ผลิต” แล้วผูก BOM ของลูกค้าแต่ละราย · ใช้ “ตรวจนับสต๊อก” คุมวัตถุดิบตั้งต้น/บรรจุภัณฑ์เป็นล็อต',
 };
 function renderManualHeader() {
   const tpl = BIZ_TEMPLATES[settings.businessType] || BIZ_TEMPLATES.fnb;
@@ -3205,6 +3208,7 @@ const WIZ_BIZ = [
   { code: 'service', icon: 'sparkles', label: 'ร้านบริการ (คิ้ว/เล็บ/สปา)', cats: ['ทำเล็บ', 'ต่อขนตา', 'นวด/สปา', 'ทรีตเมนต์'] },
   { code: 'retail', icon: 'shopping-bag', label: 'ร้านขายของ / รีเทล', cats: ['ขายดี', 'เครื่องดื่ม', 'ของใช้', 'อื่นๆ'] },
   { code: 'maker', icon: 'cake', label: 'โฮมเมด / ผลิตขาย', cats: ['สินค้าหลัก', 'ของฝาก', 'ชุดของขวัญ'] },
+  { code: 'factory', icon: 'factory', label: 'โรงงานผลิต / อาหารเสริม / OEM', cats: ['สินค้าสำเร็จรูป', 'วัตถุดิบตั้งต้น', 'บรรจุภัณฑ์', 'OEM/รับจ้างผลิต'] },
 ];
 let wizState = null;
 function openSetupWizard() {
@@ -5733,6 +5737,24 @@ async function adjFg(id) {
   render();
 }
 
+// จัดกลุ่มวัตถุดิบตามหมวด + เรียงลำดับคงที่ (deterministic) → ทุกเครื่องเห็นลำดับเหมือนกัน
+// (เดิม stock list ไม่ sort เลย เรียงตามลำดับ sync ที่ต่างกันแต่ละเครื่อง = หน้าไม่ตรงกัน)
+const STK_NO_CAT = 'ไม่ระบุหมวด';
+function stockGroups(list) {
+  const groups = {};
+  list.forEach(m => {
+    const c = (m.category || '').trim() || STK_NO_CAT;
+    (groups[c] = groups[c] || []).push(m);
+  });
+  const keys = Object.keys(groups).sort((a, b) => {
+    if (a === STK_NO_CAT) return 1;          // "ไม่ระบุหมวด" อยู่ท้ายสุดเสมอ
+    if (b === STK_NO_CAT) return -1;
+    return a.localeCompare(b, 'th');
+  });
+  keys.forEach(k => groups[k].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th')));
+  return keys.map(k => ({ cat: k, items: groups[k] }));
+}
+
 function renderStockList() {
   // จดจำสถานะที่ติ๊กและจำนวนที่กรอกไว้ก่อน re-render
   const saved = {};
@@ -5745,7 +5767,7 @@ function renderStockList() {
   const q = ($('stkSearch').value || '').trim().toLowerCase();
   const list = materials.filter(m => !m.isConsumable && (!q || m.name.toLowerCase().includes(q)));
 
-  $('stockList').innerHTML = list.map(m => {
+  const rowHtml = m => {
     const st = matStockBase(m);
     const lo = matLowBase(m);
     const isLow = lo > 0 && st <= lo;
@@ -5757,7 +5779,12 @@ function renderStockList() {
       <td class="r"><input type="number" min="0" placeholder="0" class="stk-recv-qty" data-id="${m.id}" style="width:88px; text-align:right; padding:4px;" oninput="autoCheckOnQty(this)"> <span style="font-size:11px; color:var(--color-text-muted);">${m.unit}</span></td>
       <td class="r"><button class="btn btn-ghost btn-sm" onclick="adjMat('${m.id}')" style="padding:5px 8px;">${icon('pencil')} ปรับค่า</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" style="color:#999; text-align:center; padding:16px;">ยังไม่มีวัตถุดิบในคลัง</td></tr>';
+  };
+  const groups = stockGroups(list);
+  $('stockList').innerHTML = groups.length ? groups.map(g => {
+    const head = `<tr class="stk-cat-head"><td colspan="6" style="background:var(--surface-2,#f3f4f6); font-weight:700; font-size:12px; color:var(--color-text-muted); padding:6px 10px; border-top:1px solid var(--border-soft);">${esc(g.cat)} <span style="font-weight:400;">· ${g.items.length} รายการ</span></td></tr>`;
+    return head + g.items.map(rowHtml).join('');
+  }).join('') : '<tr><td colspan="6" style="color:#999; text-align:center; padding:16px;">ยังไม่มีวัตถุดิบในคลัง</td></tr>';
 
   // คืนสถานะที่บันทึกไว้
   Object.entries(saved).forEach(([id, s]) => {
@@ -6067,10 +6094,9 @@ function renderStockCount() {
   const q = ($('countSearch')?.value || '').trim().toLowerCase();
   let mats = (materials || []).filter(m => !m.isConsumable);
   if (q) mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
-  mats.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
   renderCountInfo();
   if (!mats.length) { tb.innerHTML = '<tr><td colspan="4" style="color:#999;text-align:center;padding:16px;">ไม่พบวัตถุดิบ</td></tr>'; updateCountSummary(); return; }
-  tb.innerHTML = mats.map(m => {
+  const countRow = m => {
     const sys = Number(m.stock) || 0;
     const has = countDraft[m.id] !== undefined && countDraft[m.id] !== '';
     const diff = has ? (Number(countDraft[m.id]) || 0) - sys : null;
@@ -6083,6 +6109,10 @@ function renderStockCount() {
       <td class="r"><input type="number" step="any" inputmode="decimal" value="${has ? esc(String(countDraft[m.id])) : ''}" placeholder="${_cnt2(sys)}" oninput="countDraftInput('${m.id}',this.value)" style="width:96px;text-align:right;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"></td>
       <td class="r" data-cntdiff="${m.id}">${diffHtml}</td>
     </tr>`;
+  };
+  tb.innerHTML = stockGroups(mats).map(g => {
+    const head = `<tr class="stk-cat-head"><td colspan="4" style="background:var(--surface-2,#f3f4f6); font-weight:700; font-size:12px; color:var(--color-text-muted); padding:6px 10px; border-top:1px solid var(--border-soft);">${esc(g.cat)} <span style="font-weight:400;">· ${g.items.length} รายการ</span></td></tr>`;
+    return head + g.items.map(countRow).join('');
   }).join('');
   updateCountSummary();
 }
