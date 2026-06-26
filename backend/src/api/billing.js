@@ -105,6 +105,15 @@ router.post('/billing/checkout', async (req, res) => {
   }
 });
 
+// เจ้าของแจ้งว่าโอนชำระแล้ว (manual) → บันทึก event ให้ superadmin ตามไปยืนยัน/ต่ออายุ
+router.post('/billing/notify-paid', async (req, res) => {
+  try {
+    if (!req.shopId) return res.status(400).json({ error: 'ไม่พบร้าน' });
+    logEvent(req.shopId, req.userId, 'billing.paid_notice', { note: (req.body && req.body.note) || '', at: new Date().toISOString() });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function nextPeriodEnd(cycle) {
   const d = new Date();
   if (cycle === 'year') d.setFullYear(d.getFullYear() + 1);

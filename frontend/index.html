@@ -259,6 +259,8 @@
 
     <!-- 0. DASHBOARD PAGE -->
     <section id="dashPage" class="page-section hidden">
+      <!-- เช็คลิสต์เริ่มต้น (onboarding) — เติมโดย JS, ซ่อนเมื่อครบ/กดซ่อน -->
+      <div id="onboardCard" style="margin-bottom:20px;display:none;"></div>
       <!-- KPI row (4 cards, filled by JS) -->
       <div id="dashKpiRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;"></div>
       <!-- Chart row -->
@@ -2283,6 +2285,8 @@ let SESSION = null;
 let CURRENT_USER = null;
 let CURRENT_SHOP = null;
 let USER_ROLE = null; // superadmin | owner | staff
+let BILLING = null;   // { state, days_left, grace_days } จาก bootstrap
+let SHOP_PLAN = null; // แพ็กเกจปัจจุบัน { code, name, features_json } — null = ยังไม่กำหนด (เปิดเต็ม)
 // S4: สิทธิ์ย่อยพนักงาน — ค่าเริ่มต้นปลอดภัย (ตรงกับ STAFF_PERM_DEFAULTS ฝั่ง backend)
 const DEFAULT_STAFF_PERMS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false };
 const STAFF_PERM_LABELS = { discount: 'ให้ส่วนลด (ตามเพดาน)', void: 'ยกเลิกบิล', stock_receive: 'รับของเข้า/นับสต๊อก', waste: 'ตัดของเสีย', edit_recipes: 'เพิ่ม/แก้ วัตถุดิบ-สูตร', view_cost: 'ดูต้นทุน/กำไร', petty_cash: 'ดูเงินสดย่อย/ลิ้นชัก' };
@@ -3308,6 +3312,138 @@ function maybeAutoWizard() {
   if ((materials || []).length === 0 && (recipes || []).length === 0) { setTimeout(openSetupWizard, 600); }
 }
 
+// ===== เฟส 3-4: บิลลิ่งฝั่งลูกค้า — แถบเตือนหมดอายุ + ล็อกฟีเจอร์ตามแพ็กเกจ =====
+function _planFeatures() {
+  if (!SHOP_PLAN || !SHOP_PLAN.features_json) return null;       // ยังไม่กำหนดแพ็กเกจ = เปิดเต็ม
+  let fj = SHOP_PLAN.features_json;
+  if (typeof fj === 'string') { try { fj = JSON.parse(fj); } catch (e) { return null; } }
+  return fj || null;
+}
+function planHas(feature) {
+  if (USER_ROLE === 'superadmin') return true;
+  const fj = _planFeatures();
+  if (!fj || !Array.isArray(fj.features)) return true;           // ไม่มีนิยาม = เปิดเต็ม (ไม่กระทบร้านเดิม)
+  return fj.features.includes(feature);
+}
+function planLimit(key) {
+  const fj = _planFeatures();
+  return (fj && fj.limits && fj.limits[key] != null) ? Number(fj.limits[key]) : Infinity;
+}
+function applyPlanGates() {
+  if (!document.getElementById('planGateStyle')) {
+    const st = document.createElement('style'); st.id = 'planGateStyle';
+    st.textContent = 'body.plan-no-accounting #menuReport,body.plan-no-accounting #menuExpense{display:none !important;}'
+      + 'body.plan-no-multibranch #branchSwitcher{display:none !important;}';
+    document.head.appendChild(st);
+  }
+  document.body.classList.toggle('plan-no-accounting', !planHas('accounting'));
+  document.body.classList.toggle('plan-no-multibranch', !planHas('multi_branch'));
+}
+function billingBlocksWrite() { return BILLING && (BILLING.state === 'readonly' || BILLING.state === 'suspended'); }
+function applyBillingUI() {
+  if (!document.getElementById('billingBannerStyle')) {
+    const st = document.createElement('style'); st.id = 'billingBannerStyle';
+    st.textContent = '#billingBanner{position:fixed;left:0;right:0;top:0;z-index:9998;padding:9px 14px;font-size:13px;font-weight:600;text-align:center;line-height:1.5;display:none;}'
+      + '#billingBanner button{margin-left:10px;padding:3px 12px;border:0;border-radius:7px;background:#fff;color:#111;font-weight:700;cursor:pointer;}'
+      + 'body.billing-readonly main{opacity:.55;}';
+    document.head.appendChild(st);
+  }
+  document.body.classList.toggle('billing-readonly', billingBlocksWrite());
+  let bn = $('billingBanner');
+  if (!bn) { bn = document.createElement('div'); bn.id = 'billingBanner'; document.body.appendChild(bn); }
+  const b = BILLING || {}, st = b.state, dl = b.days_left;
+  if (USER_ROLE === 'superadmin') { bn.style.display = 'none'; return; }
+  let bg = '', txt = '', show = true;
+  if (st === 'readonly' || st === 'suspended') { bg = '#b91c1c'; txt = '⛔ แพ็กเกจหมดอายุ — ขาย/บันทึกไม่ได้ (ข้อมูลยังอยู่ครบ) ต่ออายุเพื่อใช้งานต่อ'; }
+  else if (st === 'grace') { bg = '#ea580c'; txt = `⚠️ เลยกำหนดชำระ ${dl != null ? Math.abs(dl) : ''} วัน — ต่ออายุภายใน ${Math.max(0, (b.grace_days || 5) + (dl || 0))} วัน ไม่งั้นจะใช้ได้แค่ดูอย่างเดียว`; }
+  else if (st === 'expiring' || (st === 'trial' && dl != null && dl <= 7)) { bg = '#b45309'; txt = `⏳ แพ็กเกจ${st === 'trial' ? 'ทดลอง' : ''}จะหมดใน ${dl} วัน — ต่ออายุเพื่อใช้งานต่อเนื่อง`; }
+  else show = false;
+  if (!show) { bn.style.display = 'none'; document.body.style.paddingTop = ''; return; }
+  bn.style.background = bg; bn.style.color = '#fff';
+  bn.innerHTML = txt + '<button onclick="openRenewalPage()">ต่ออายุ</button>';
+  bn.style.display = 'block';
+  document.body.style.paddingTop = bn.offsetHeight + 'px';
+}
+function applyAccountState() { try { applyBillingUI(); applyPlanGates(); renderOnboarding(); } catch (e) { console.warn('account state', e); } }
+
+// หน้าต่ออายุ/จ่ายเงิน (เจ้าของ) — โอน/พร้อมเพย์ตอนนี้ + บัตรภายหลัง
+async function openRenewalPage() {
+  let plans = [];
+  try { plans = (await API.get('/api/plans')).plans || []; } catch (e) {}
+  const b = BILLING || {};
+  const cur = SHOP_PLAN ? SHOP_PLAN.name : '—';
+  const endTxt = b.trial_ends_at && (b.state === 'trial') ? ('ทดลองถึง ' + new Date(b.trial_ends_at).toLocaleDateString('th-TH'))
+    : (b.days_left != null ? (b.days_left >= 0 ? 'เหลือ ' + b.days_left + ' วัน' : 'เลยกำหนด ' + (-b.days_left) + ' วัน') : '—');
+  const cards = plans.sort((a, c) => (a.price_month || 0) - (c.price_month || 0)).map(p => {
+    let fj = p.features_json; if (typeof fj === 'string') { try { fj = JSON.parse(fj); } catch (e) { fj = {}; } }
+    return `<div style="border:1px solid var(--border-soft);border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><b>${esc(p.name)}</b><span style="color:var(--color-primary);font-weight:800;">${money(p.price_month)}/ด</span></div>
+      <div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;">${esc((fj && fj.label) || '')} · รายปี ${money(p.price_year)}</div>
+    </div>`;
+  }).join('');
+  let ov = $('renewOverlay'); if (!ov) { ov = document.createElement('div'); ov.id = 'renewOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(20,15,5,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:18px;max-width:480px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h3 style="margin:0;"><span class="ico" data-icon="crown"></span> ต่ออายุแพ็กเกจ</h3><button class="drawer-close" onclick="$('renewOverlay').remove()"><span class="ico" data-icon="x"></span></button></div>
+    <div style="background:var(--surface-2);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px;">แพ็กเกจปัจจุบัน: <b>${esc(cur)}</b> · ${endTxt}</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;">เลือกแพ็กเกจ</div>
+    ${cards || '<p style="color:var(--color-text-muted);">ยังไม่มีแพ็กเกจ</p>'}
+    <div style="background:#FFF7E6;border:1px solid #F0D9A8;border-radius:10px;padding:12px;font-size:13px;line-height:1.7;margin-top:8px;">
+      <b><span class="ico" data-icon="banknote"></span> วิธีชำระ</b><br>
+      โอน/พร้อมเพย์มาที่บัญชี Recipro แล้วกด "แจ้งชำระแล้ว" — แอดมินจะยืนยันและต่ออายุให้<br>
+      <span style="color:var(--color-text-muted);font-size:12px;">จ่ายผ่านบัตรอัตโนมัติ — เร็ว ๆ นี้</span>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn btn-ghost" onclick="$('renewOverlay').remove()">ปิด</button>
+      <button class="btn btn-primary" onclick="renewNotifyPaid()"><span class="ico" data-icon="send"></span> แจ้งชำระแล้ว</button>
+    </div></div>`;
+  renderIcons(ov);
+}
+async function renewNotifyPaid() {
+  try { await API.post('/api/billing/notify-paid', { note: 'owner แจ้งโอนชำระ' }); } catch (e) {}
+  const ov = $('renewOverlay'); if (ov) ov.remove();
+  ui.alert('แจ้งชำระเรียบร้อย — แอดมินจะตรวจสอบและต่ออายุให้เร็วที่สุด ขอบคุณค่ะ', { icon: 'check', variant: 'success' });
+}
+
+// ===== เช็คลิสต์เริ่มต้น (Onboarding) — จูงมือร้านใหม่ทีละสเตป =====
+function _onboardSteps() {
+  const sellableMat = (materials || []).some(m => m.saleType === 'SELLABLE' || m.itemType === 'SALE');
+  const counted = (typeof movementSource === 'function' ? movementSource() : []).some(m => m.kind === 'count');
+  return [
+    { k: 'biz', t: 'เลือกประเภทธุรกิจ', done: !!(settings && settings.businessType), tab: 'set' },
+    { k: 'mat', t: 'เพิ่มวัตถุดิบ/สินค้า', done: (materials || []).length > 0, tab: 'materials' },
+    { k: 'cat', t: 'ตั้งหมวดหน้าขาย', done: Array.isArray(settings && settings.posCategories) && settings.posCategories.length > 0, tab: 'pos' },
+    { k: 'rec', t: 'ทำสูตร หรือ ตั้งของขายตรง', done: (recipes || []).length > 0 || sellableMat, tab: 'recipes' },
+    { k: 'cnt', t: 'นับสต๊อกตั้งต้น', done: counted, tab: 'stock' },
+    { k: 'sale', t: 'ขายบิลแรก', done: (bills || []).length > 0, tab: 'pos' },
+  ];
+}
+function renderOnboarding() {
+  const host = $('onboardCard'); if (!host) return;
+  if (USER_ROLE === 'staff') { host.style.display = 'none'; return; }
+  let hidden = false; try { hidden = localStorage.getItem('recipro_onboard_hidden') === '1'; } catch (e) {}
+  const steps = _onboardSteps();
+  const doneN = steps.filter(s => s.done).length;
+  if (hidden || doneN === steps.length) { host.style.display = 'none'; return; }
+  const pct = Math.round(doneN / steps.length * 100);
+  host.style.display = 'block';
+  host.innerHTML = `<div class="glass-card" style="border:2px solid var(--color-primary);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 style="margin:0;"><span class="ico" data-icon="rocket"></span> เริ่มต้นใช้งาน <span style="font-size:13px;font-weight:500;color:var(--color-text-muted);">${doneN}/${steps.length} (${pct}%)</span></h2>
+      <button class="btn btn-ghost btn-sm" onclick="dismissOnboard()">ซ่อน</button>
+    </div>
+    <div style="background:var(--surface-2);border-radius:99px;height:8px;margin:10px 0 14px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--color-primary);border-radius:99px;transition:width .3s;"></div></div>
+    <div style="display:flex;flex-direction:column;gap:6px;">${steps.map(s => `
+      <div onclick="${s.done ? '' : `switchTab('${s.tab}')`}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:${s.done ? 'default' : 'pointer'};background:${s.done ? 'transparent' : 'var(--surface-2)'};">
+        <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${s.done ? 'var(--green,#16a34a)' : 'var(--border-soft)'};color:#fff;font-size:13px;">${s.done ? '✓' : ''}</span>
+        <span style="font-size:14px;${s.done ? 'color:var(--color-text-muted);text-decoration:line-through;' : 'font-weight:600;'}">${esc(s.t)}</span>
+        ${s.done ? '' : '<span class="ico" data-icon="chevron-right" style="margin-left:auto;color:var(--color-text-muted);"></span>'}
+      </div>`).join('')}</div>
+  </div>`;
+  renderIcons(host);
+}
+function dismissOnboard() { try { localStorage.setItem('recipro_onboard_hidden', '1'); } catch (e) {} renderOnboarding(); }
+
 // เฟส 3: ตัวสลับสาขา (แสดงเมื่อผู้ใช้เป็นสมาชิก > 1 สาขา)
 let MY_SHOPS = [];
 function renderBranchSwitcher(shops, currentId) {
@@ -3366,6 +3502,8 @@ async function openHqSummary() {
 
 function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
+  BILLING = data.billing || { state: 'trial', days_left: null, grace_days: 5 };
+  SHOP_PLAN = data.plan || null;
   document.body.classList.toggle('role-staff', USER_ROLE === 'staff');
   if (!document.getElementById('roleStaffStyle')) {
     const st = document.createElement('style'); st.id = 'roleStaffStyle';
@@ -3622,6 +3760,7 @@ async function boot() {
   renderThemePicker();
   syncAccountUI();   // ซิงค์การ์ดผู้ใช้/เมนูบัญชี (avatar + ชื่อร้าน + ป้ายสถานะ) ให้ตรงล่าสุด
   if (typeof maybeAutoWizard === 'function') maybeAutoWizard();   // เปิด Wizard ตั้งร้านอัตโนมัติถ้าร้านยังว่าง (เจ้าของเท่านั้น)
+  if (typeof applyAccountState === 'function') applyAccountState();   // แถบเตือนหมดอายุ + ล็อกฟีเจอร์ตามแพ็กเกจ + เช็คลิสต์เริ่มต้น
 
   if (USER_ROLE === 'superadmin') {
     if (isMockMode) {
@@ -3813,6 +3952,13 @@ async function syncToSupabase() {
     updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
   } catch (e) {
     if (e && e.status === 409) { handleSyncConflict(); return; }
+    if (e && e.status === 423) {   // แพ็กเกจหมดอายุ → readonly: เด้งแถบเตือน + หน้าต่ออายุ
+      BILLING = Object.assign({}, BILLING, { state: (e.body && e.body.billing_state) || 'readonly' });
+      if (typeof applyBillingUI === 'function') applyBillingUI();
+      updateCloudStatus("แพ็กเกจหมดอายุ — ต่ออายุเพื่อบันทึก", "circle-x");
+      if (typeof openRenewalPage === 'function') openRenewalPage();
+      return;
+    }
     throw e;
   }
 }
@@ -4002,6 +4148,7 @@ function switchTab(t) {
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
   if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); loadPayStatus(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
   if (t === 'manual') renderManualHeader();
+  if (t === 'dash' && typeof renderOnboarding === 'function') renderOnboarding();
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
@@ -7580,6 +7727,7 @@ async function qrBoxPoll() {
 
 async function posCheckout() {
   if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
+  if (typeof billingBlocksWrite === 'function' && billingBlocksWrite()) { openRenewalPage(); return; }   // หมดอายุ → ต่ออายุก่อนขาย
 
   const tt = posComputeTotals();
   const sub = tt.grand;
