@@ -4985,6 +4985,43 @@ async function deleteCategory(cat) {
   ui.toast('ลบหมวดหมู่ "' + cat + '" แล้ว');
 }
 
+// ปุ่มลัด: ตั้งวัตถุดิบเป็น "สินค้าขาย" (ขายตรงบน POS + ตัดสต๊อกตัวเอง) — กดทีเดียว ใส่ราคา
+function openQuickSell(id) {
+  const m = matById(id); if (!m) return;
+  const cats = Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : [];
+  const dl = cats.map(c => `<option value="${esc(c)}">`).join('');
+  let ov = $('quickSellOverlay'); if (!ov) { ov = document.createElement('div'); ov.id = 'quickSellOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10002;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <h3 style="margin:0 0 4px;"><span class="ico" data-icon="tag"></span> ตั้งเป็นสินค้าขาย</h3>
+    <p style="color:var(--color-text-muted);font-size:12px;margin:0 0 12px;">${esc(m.name)} · ทุน ${money(m.price)}/${esc(m.unit || 'ชิ้น')} → ขายตรงบน POS ตัดสต๊อกเอง</p>
+    <div class="grid-2" style="gap:10px;">
+      <div class="field" style="margin:0;"><label>ราคาขาย (฿) *</label><input id="qsPrice" type="number" step="any" value="${m.sellPrice || ''}" placeholder="0" style="width:100%;"></div>
+      <div class="field" style="margin:0;"><label>หมวดหน้าขาย</label><input id="qsCat" list="qsCatList" value="${esc(m.category || '')}" placeholder="เช่น ขนม" style="width:100%;"><datalist id="qsCatList">${dl}</datalist></div>
+    </div>
+    <div class="field" style="margin:10px 0 0;"><label>คงเหลือตอนนี้ (ชิ้น) <span style="color:var(--color-text-muted);font-size:11px;">— ใส่จำนวนที่มี</span></label><input id="qsStock" type="number" step="any" value="${m.stock || ''}" placeholder="0" style="width:100%;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="$('quickSellOverlay').remove()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveQuickSell('${m.id}')"><span class="ico" data-icon="check"></span> ตั้งขาย</button>
+    </div></div>`;
+  renderIcons(ov);
+  setTimeout(() => { const e = $('qsPrice'); if (e) e.focus(); }, 50);
+}
+function saveQuickSell(id) {
+  const m = matById(id); if (!m) return;
+  const price = parseFloat($('qsPrice').value);
+  if (!(price > 0)) { ui.alert('ใส่ราคาขายก่อนค่ะ', { icon: 'tag' }); return; }
+  m.itemType = 'SALE'; m.saleType = 'SELLABLE'; m.showInPos = true;
+  m.sellPrice = price;
+  const cat = ($('qsCat').value || '').trim(); if (cat) m.category = cat;
+  const stk = parseFloat($('qsStock').value); if (!isNaN(stk)) m.stock = stk;
+  const ov = $('quickSellOverlay'); if (ov) ov.remove();
+  saveAll();
+  renderMatList();
+  if (typeof renderPosGrid === 'function') renderPosGrid();
+  ui.toast(`ตั้ง "${m.name}" เป็นสินค้าขายแล้ว — ขายบน POS ได้เลย`, 'success');
+}
+
 function renderMatList() {
   renderMatCatChips();
   renderMatTypeChips();
@@ -5018,6 +5055,7 @@ function renderMatList() {
       <td class="r" style="font-size:12px; color:var(--color-text-muted);">${costPerBase} / ${baseU(m)}</td>
       <td style="font-size:12px;">${sp ? esc(sp.name) : '<span style="color:var(--color-text-muted)">—</span>'}${m.orderUrl ? ` <a href="${m.orderUrl}" target="_blank" title="ลิงก์สั่งซื้อ" style="color:var(--brand);">${icon('external-link')}</a>` : ''}</td>
       <td>
+        ${m.itemType !== 'SALE' ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="padding:6px 10px;color:var(--green,#16a34a);" title="ตั้งเป็นสินค้าขาย">${icon('tag')}</button>` : `<span title="ขายบน POS แล้ว" style="color:var(--green,#16a34a);font-size:11px;padding:0 4px;">●ขาย</span>`}
         <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="padding:6px 10px;" title="แก้ไข">${icon('pencil')}</button>
         <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
       </td>
@@ -5052,6 +5090,7 @@ function renderMatList() {
           ${m.orderUrl ? `<a href="${m.orderUrl}" target="_blank" class="item-card-stat" style="color:var(--color-primary);text-decoration:none;"><span>สั่งซื้อ</span><b>${icon('external-link')}</b></a>` : ''}
         </div>
         <div class="item-card-actions">
+          ${m.itemType !== 'SALE' ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="flex:1;color:var(--green,#16a34a);">${icon('tag')} ตั้งขาย</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="flex:1;">${icon('pencil')} แก้ไข</button>
           <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="flex:1;">${icon('trash-2')} ลบ</button>
         </div>
