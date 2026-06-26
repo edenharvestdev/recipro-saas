@@ -5,25 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>เมนูร้าน — สั่งออนไลน์</title>
 <style>
+  /* ===== ธีม/กรอบเมนู (เลือกได้หลายแบบ — ค่าเริ่มต้น = ธีม recipro เดิม) ===== */
+  :root{
+    --m-bg1:#fff7f2; --m-bg2:#f6f4fb; --m-head1:#fff; --m-head2:#fef3ec;
+    --m-accent:#7c3aed; --m-accent2:#8b5cf6; --m-accent3:#ec4899;
+    --m-card:#fff; --m-cardr:20px; --m-cardbd:0px solid transparent; --m-cardsh:0 4px 18px rgba(80,60,120,.10);
+    --m-price:#16a34a; --m-text:#1a1a1a; --m-muted:#9a8aa8;
+  }
+  html[data-theme="matcha"]{--m-bg1:#f3f8f0;--m-bg2:#e9f2e4;--m-head1:#fff;--m-head2:#eef6ea;--m-accent:#3f7d4f;--m-accent2:#5a9a68;--m-accent3:#86b049;--m-price:#2f7d32;--m-muted:#7c9a82}
+  html[data-theme="night"]{--m-bg1:#1c1b22;--m-bg2:#141318;--m-head1:#26242e;--m-head2:#1d1b24;--m-accent:#c9a14a;--m-accent2:#d8b766;--m-accent3:#e0c07a;--m-card:#26242e;--m-price:#7fd18a;--m-text:#f2efe9;--m-muted:#a59db3;--m-cardsh:0 6px 20px rgba(0,0,0,.4)}
+  html[data-theme="sakura"]{--m-bg1:#fff5f7;--m-bg2:#fdeef4;--m-head1:#fff;--m-head2:#ffeef4;--m-accent:#d94f86;--m-accent2:#ec6fa0;--m-accent3:#f5a3c0;--m-price:#e0457a;--m-muted:#c08aa0}
+  html[data-theme="ocean"]{--m-bg1:#eef6fb;--m-bg2:#e3f0f7;--m-head1:#fff;--m-head2:#e9f3f9;--m-accent:#2b7fae;--m-accent2:#3f9cc9;--m-accent3:#5bb3d4;--m-price:#1f8a8a;--m-muted:#7d9bab}
+  html[data-theme="mono"]{--m-bg1:#f5f5f4;--m-bg2:#eeeeec;--m-head1:#fff;--m-head2:#f4f4f2;--m-accent:#2b2b2b;--m-accent2:#444;--m-accent3:#777;--m-price:#111;--m-muted:#999}
+  html[data-theme="earth"]{--m-bg1:#f4efe6;--m-bg2:#ece3d4;--m-head1:#fff;--m-head2:#f1e9dc;--m-accent:#a4582f;--m-accent2:#bd6f3e;--m-accent3:#cf9b56;--m-price:#5d7a3a;--m-muted:#a08c74}
+  /* กรอบการ์ด */
+  html[data-frame="sharp"]{--m-cardr:7px;--m-cardbd:1px solid rgba(0,0,0,.10);--m-cardsh:0 2px 8px rgba(0,0,0,.07)}
+  html[data-frame="bold"]{--m-cardr:18px;--m-cardbd:2.5px solid var(--m-accent);--m-cardsh:0 4px 14px rgba(0,0,0,.10)}
+  html[data-frame="ticket"]{--m-cardr:16px;--m-cardbd:2px dashed var(--m-accent);--m-cardsh:none}
+  html[data-frame="polaroid"]{--m-cardr:8px;--m-cardbd:1px solid rgba(0,0,0,.08);--m-cardsh:0 6px 16px rgba(0,0,0,.14)}
   *{box-sizing:border-box;margin:0;font-family:'Sarabun','Segoe UI',system-ui,sans-serif}
-  body{background:linear-gradient(180deg,#fff7f2 0%,#f6f4fb 100%);color:#1a1a1a;padding-bottom:96px;min-height:100vh}
-  header{background:linear-gradient(135deg,#fff,#fef3ec);padding:18px 16px;position:sticky;top:0;z-index:5;box-shadow:0 2px 12px rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.06)}
-  header h1{font-size:21px;font-weight:800} header .sub{font-size:12px;color:#9a8aa8;margin-top:3px}
+  body{background:linear-gradient(180deg,var(--m-bg1) 0%,var(--m-bg2) 100%);color:var(--m-text);padding-bottom:96px;min-height:100vh}
+  header{background:linear-gradient(135deg,var(--m-head1),var(--m-head2));padding:18px 16px;position:sticky;top:0;z-index:5;box-shadow:0 2px 12px rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.06)}
+  header h1{font-size:21px;font-weight:800} header .sub{font-size:12px;color:var(--m-muted);margin-top:3px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;padding:16px}
-  .card{background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 18px rgba(80,60,120,.10);display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;animation:pop .35s ease both}
+  .card{background:var(--m-card);border-radius:var(--m-cardr);border:var(--m-cardbd);overflow:hidden;box-shadow:var(--m-cardsh);display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;animation:pop .35s ease both}
   @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
   .card:active{transform:scale(.97)}
   .card .img{height:148px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;position:relative}
   .card .img::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.45))}
-  .card .swatch{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.9);color:#7c3aed;font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;z-index:1;letter-spacing:.3px}
+  .card .swatch{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.92);color:var(--m-accent);font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;z-index:1;letter-spacing:.3px}
   .card .nm-img{position:absolute;left:12px;right:12px;bottom:9px;color:#fff;font-size:15px;font-weight:800;line-height:1.2;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.4)}
   .card .b{padding:11px 13px 13px;flex:1;display:flex;flex-direction:column;gap:6px}
-  .card .desc{font-size:11.5px;color:#998aa8;line-height:1.4;max-height:32px;overflow:hidden}
-  .card .pr{font-size:19px;font-weight:900;color:#16a34a}
-  .card .rev{font-size:11px;color:#7c3aed;text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:3px}
-  .add{margin-top:auto;border:none;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:13px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(124,58,237,.28)}
-  .cat{padding:8px 14px 0;font-size:14px;font-weight:800;color:#7c3aed;grid-column:1/-1;display:flex;align-items:center;gap:7px}
-  .cat::before{content:'';width:6px;height:18px;background:linear-gradient(#8b5cf6,#ec4899);border-radius:6px}
+  .card .desc{font-size:11.5px;color:var(--m-muted);line-height:1.4;max-height:32px;overflow:hidden}
+  .card .pr{font-size:19px;font-weight:900;color:var(--m-price)}
+  .card .rev{font-size:11px;color:var(--m-accent);text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:3px}
+  .add{margin-top:auto;border:none;background:linear-gradient(135deg,var(--m-accent2),var(--m-accent));color:#fff;border-radius:13px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(124,58,237,.28)}
+  .cat{padding:8px 14px 0;font-size:14px;font-weight:800;color:var(--m-accent);grid-column:1/-1;display:flex;align-items:center;gap:7px}
+  .cat::before{content:'';width:6px;height:18px;background:linear-gradient(var(--m-accent2),var(--m-accent3));border-radius:6px}
+  /* 📁 แท็บโฟลเดอร์ตามหมวด */
+  .foldertabs{display:flex;gap:0;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .foldertabs::-webkit-scrollbar{display:none}
+  .ftab{flex:0 0 auto;border:none;background:var(--m-head2);color:var(--m-accent);font-size:13px;font-weight:800;padding:9px 16px;border-radius:12px 12px 0 0;cursor:pointer;margin-right:4px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.05);opacity:.7;transition:opacity .15s,transform .15s;position:relative;top:2px}
+  .ftab.on{opacity:1;background:var(--m-card);color:var(--m-accent);box-shadow:0 -2px 8px rgba(0,0,0,.08);top:0;border-bottom:3px solid var(--m-accent)}
+  /* 🎉 หน้าโปรโมชั่น/สื่อก่อนเข้าเมนู */
+  #showcase{position:fixed;inset:0;background:linear-gradient(180deg,var(--m-bg1),var(--m-bg2));z-index:30;display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:24px 16px 30px}
+  #showcase.hide{display:none}
+  #showcase .sc-ttl{font-size:22px;font-weight:900;color:var(--m-accent);margin:6px 0 14px;text-align:center}
+  #showcase .sc-imgs{display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px}
+  #showcase .sc-imgs img{width:100%;border-radius:18px;box-shadow:0 6px 22px rgba(0,0,0,.16);display:block}
+  #showcase .sc-enter{margin-top:22px;border:none;background:linear-gradient(135deg,var(--m-accent2),var(--m-accent));color:#fff;border-radius:16px;padding:15px 40px;font-size:17px;font-weight:900;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.2);position:sticky;bottom:10px}
+  /* 🖥 kiosk mode (วางหน้าร้าน touchscreen) */
+  body.kiosk .viewtoggle{display:none}
+  body.kiosk .grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  body.kiosk .card .nm-img{font-size:17px}
   /* 🥕 loader */
   #loader{position:fixed;inset:0;background:linear-gradient(180deg,#fff7f2,#f6f4fb);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;gap:14px}
   #loader.hide{opacity:0;pointer-events:none;transition:opacity .4s}
@@ -44,20 +78,20 @@
   @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
   .cartbar{position:fixed;left:0;right:0;bottom:0;background:#fff;box-shadow:0 -2px 10px rgba(0,0,0,.1);padding:12px 16px;display:flex;gap:10px;align-items:center}
   .cartbar b{flex:1;font-size:15px}
-  .cartbar button{border:none;background:#16a34a;color:#fff;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer}
+  .cartbar button{border:none;background:var(--m-price);color:#fff;border-radius:12px;padding:12px 18px;font-size:15px;font-weight:800;cursor:pointer}
   .cartbar button:disabled{background:#ccc}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;z-index:10}
   .modal.open{display:flex} .sheet{background:#fff;width:100%;max-height:85vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px}
   .row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:14px}
   .row .q{display:flex;align-items:center;gap:6px} .row .q button{width:28px;height:28px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:16px;cursor:pointer}
   input,textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:15px;margin-top:8px}
-  .paybtn{width:100%;border:none;background:#7c3aed;color:#fff;border-radius:12px;padding:14px;font-size:16px;font-weight:800;margin-top:12px;cursor:pointer}
-  .done{text-align:center;padding:30px 16px} .done .qn{font-size:54px;font-weight:900;color:#7c3aed;margin:10px 0}
+  .paybtn{width:100%;border:none;background:var(--m-accent);color:#fff;border-radius:12px;padding:14px;font-size:16px;font-weight:800;margin-top:12px;cursor:pointer}
+  .done{text-align:center;padding:30px 16px} .done .qn{font-size:54px;font-weight:900;color:var(--m-accent);margin:10px 0}
   .muted{color:#888;font-size:13px}
   /* 📖 flipbook */
   .viewtoggle{position:absolute;right:14px;top:16px;display:flex;gap:4px;background:rgba(124,58,237,.08);border-radius:20px;padding:3px}
-  .viewtoggle button{border:none;background:transparent;color:#7c3aed;font-size:13px;font-weight:800;padding:5px 11px;border-radius:18px;cursor:pointer}
-  .viewtoggle button.on{background:#7c3aed;color:#fff;box-shadow:0 2px 8px rgba(124,58,237,.3)}
+  .viewtoggle button{border:none;background:transparent;color:var(--m-accent);font-size:13px;font-weight:800;padding:5px 11px;border-radius:18px;cursor:pointer}
+  .viewtoggle button.on{background:var(--m-accent);color:#fff;box-shadow:0 2px 8px rgba(124,58,237,.3)}
   #bookView{padding:14px 8px 0;display:flex;flex-direction:column;align-items:center}
   .bookwrap{position:relative;width:100%;max-width:860px;perspective:1800px;display:flex;align-items:stretch;gap:4px}
   .book{flex:1;min-height:60vh;background:linear-gradient(170deg,#fff,#fdf8f4);border-radius:8px 18px 18px 8px;box-shadow:0 10px 34px rgba(80,60,120,.18),inset 7px 0 16px -8px rgba(124,58,237,.18);border-left:5px solid #ece4f5;padding:16px 16px 20px;transform-style:preserve-3d;transition:transform .22s ease,opacity .22s ease;backface-visibility:hidden}
@@ -65,13 +99,13 @@
   .book.flip-prev{transform:rotateY(20deg);opacity:.25}
   .page-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
   @media(min-width:720px){ .page-grid{grid-template-columns:repeat(3,1fr)} .book{min-height:66vh} }
-  .page-title{font-size:16px;font-weight:900;color:#7c3aed;display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:2px dashed rgba(124,58,237,.2)}
-  .page-title::before{content:'';width:6px;height:20px;background:linear-gradient(#8b5cf6,#ec4899);border-radius:6px}
-  .nav{flex:0 0 auto;width:38px;border:none;background:rgba(255,255,255,.85);color:#7c3aed;font-size:26px;font-weight:900;border-radius:14px;cursor:pointer;box-shadow:0 3px 12px rgba(80,60,120,.14);align-self:center;height:90px}
+  .page-title{font-size:16px;font-weight:900;color:var(--m-accent);display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:2px dashed rgba(124,58,237,.2)}
+  .page-title::before{content:'';width:6px;height:20px;background:linear-gradient(var(--m-accent2),var(--m-accent3));border-radius:6px}
+  .nav{flex:0 0 auto;width:38px;border:none;background:rgba(255,255,255,.85);color:var(--m-accent);font-size:26px;font-weight:900;border-radius:14px;cursor:pointer;box-shadow:0 3px 12px rgba(80,60,120,.14);align-self:center;height:90px}
   .nav:disabled{opacity:.25;cursor:default}
   .pageind{margin:12px 0 4px;font-size:12.5px;color:#9a8aa8;font-weight:700;letter-spacing:.4px}
   .cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;min-height:54vh}
-  .cover .ttl{font-size:26px;font-weight:900;color:#5b2da8;line-height:1.2}
+  .cover .ttl{font-size:26px;font-weight:900;color:var(--m-accent);line-height:1.2}
   .cover .hint{font-size:13px;color:#9a8aa8;font-weight:700;animation:bob 1.6s ease-in-out infinite}
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
   .cover .open{border:none;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:14px;padding:12px 26px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(124,58,237,.3)}
@@ -83,6 +117,7 @@
 <header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div>
   <div class="viewtoggle"><button id="vbBook" class="on" onclick="setView('book')">📖 เล่ม</button><button id="vbGrid" onclick="setView('grid')">▦ ตาราง</button></div>
 </header>
+<div class="foldertabs" id="foldertabs" style="display:none"></div>
 <div id="bookView">
   <div class="bookwrap">
     <button class="nav nav-prev" id="navPrev" onclick="goPage(-1)">‹</button>
@@ -92,14 +127,28 @@
   <div class="pageind" id="pageInd"></div>
 </div>
 <div class="grid" id="grid" style="display:none"></div>
+<div id="showcase" class="hide"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
 
 <div class="modal" id="cartModal"><div class="sheet" id="sheet"></div></div>
 
 <script>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+const QS = new URLSearchParams(location.search);
+const KIOSK = QS.get('kiosk') === '1';
 let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
+let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false };
+let catFilter = '';   // '' = ทุกหมวด (แท็บโฟลเดอร์)
 let pendingItem = null, pendingSel = {}, LAST_ORDER = null;
+
+// ใช้ธีม/กรอบจาก config ของร้าน (เพิ่ม ไม่ลบ — ค่าเริ่มต้น = ธีม recipro เดิม)
+function applyConfig(cfg){
+  CONFIG = Object.assign(CONFIG, cfg || {});
+  const root = document.documentElement;
+  if (CONFIG.theme && CONFIG.theme !== 'recipro') root.setAttribute('data-theme', CONFIG.theme); else root.removeAttribute('data-theme');
+  if (CONFIG.frame && CONFIG.frame !== 'soft') root.setAttribute('data-frame', CONFIG.frame); else root.removeAttribute('data-frame');
+  if (KIOSK) document.body.classList.add('kiosk');
+}
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hueOf = s => { let h=0; for(let i=0;i<String(s).length;i++) h=(h*31+String(s).charCodeAt(i))%360; return h; };
@@ -112,8 +161,10 @@ async function load(){
     document.getElementById('shopName').textContent = d.shop_name || 'เมนู';
     MENU = d.items || [];
     if (d.payment) PAYMENT = d.payment;
+    if (d.menu) applyConfig(d.menu);
     if (d.logo) { const l = document.getElementById('shopLogo'); l.src = d.logo; l.style.display = 'block'; }
     renderMenu();
+    maybeShowShowcase();
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; hideLoader(); }
 }
 function hideLoader(){ const l=document.getElementById('loader'); if(l){ l.classList.add('hide'); setTimeout(()=>l.remove(),450); } }
@@ -134,10 +185,24 @@ function itemCard(it, i){
         <button class="add" onclick="addItem('${it.id}')">+ เพิ่มลงตะกร้า</button>
       </div></div>`;
 }
+function menuCats(){
+  const seen=[]; MENU.forEach(it=>{ const c=it.category||''; if(c && !seen.includes(c)) seen.push(c); }); return seen;
+}
+function renderFolderTabs(){
+  const bar=document.getElementById('foldertabs'); if(!bar) return;
+  const cats=menuCats();
+  // โชว์แท็บเฉพาะโหมดตาราง + มีหมวดตั้งแต่ 2 ขึ้นไป
+  if(VIEW!=='grid' || cats.length<2){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  const tab=(key,label)=>`<button class="ftab${catFilter===key?' on':''}" onclick="setCatFilter('${key.replace(/'/g,"\\'")}')">${esc(label)}</button>`;
+  bar.innerHTML = tab('','📋 ทั้งหมด') + cats.map(c=>tab(c,c)).join('');
+}
+function setCatFilter(c){ catFilter=c; renderFolderTabs(); renderGrid(); window.scrollTo({top:0,behavior:'smooth'}); }
 function renderGrid(){
   const g = document.getElementById('grid'); let html=''; let lastCat=null;
-  MENU.forEach((it,i)=>{
-    if((it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
+  const list = catFilter ? MENU.filter(it=>(it.category||'')===catFilter) : MENU;
+  list.forEach((it,i)=>{
+    if(!catFilter && (it.category||'')!==lastCat){ lastCat=it.category||''; if(lastCat) html+=`<div class="cat">${esc(lastCat)}</div>`; }
     html += itemCard(it, i);
   });
   g.innerHTML = html || '<p class="muted" style="grid-column:1/-1;text-align:center;padding:30px">ยังไม่มีเมนู</p>';
@@ -208,8 +273,23 @@ function setView(v){
   document.getElementById('bookView').style.display = v==='book' ? 'flex' : 'none';
   document.getElementById('grid').style.display = v==='grid' ? 'grid' : 'none';
   if (v==='book') renderBook(); else renderGrid();
+  renderFolderTabs();
 }
-function renderMenu(){ renderGrid(); buildPages(); curPage=0; renderBook(); setView(VIEW); hideLoader(); }
+// 🎉 หน้าโปรโมชั่น/สื่อ ก่อนเข้าเลือกสินค้า — โชว์เฉพาะมีรูป + เปิดไว้ + ไม่ใช่ kiosk ที่ข้าม
+function maybeShowShowcase(){
+  const promos = (CONFIG.promos||[]).filter(p=>p && p.img);
+  if(!CONFIG.showcaseOn || !promos.length){ return; }
+  const sc=document.getElementById('showcase');
+  sc.innerHTML = `<div class="sc-ttl">${esc(document.getElementById('shopName').textContent||'')}</div>
+    <div class="sc-imgs">${promos.map(p=>{
+      const inner=`<img src="${esc(p.img)}" alt="">`;
+      return p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${inner}</a>` : inner;
+    }).join('')}</div>
+    <button class="sc-enter" onclick="enterMenu()">เลือกเมนู / สั่งเลย →</button>`;
+  sc.classList.remove('hide');
+}
+function enterMenu(){ const sc=document.getElementById('showcase'); if(sc) sc.classList.add('hide'); window.scrollTo({top:0}); }
+function renderMenu(){ if(KIOSK) VIEW='grid'; renderGrid(); buildPages(); curPage=0; renderBook(); setView(VIEW); hideLoader(); }
 // ปัดนิ้ว + แตะขอบ + ปุ่มลูกศรคีย์บอร์ด
 (function(){
   const wrap = () => document.querySelector('.bookwrap'); let x0=null;

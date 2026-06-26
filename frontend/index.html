@@ -3609,6 +3609,7 @@ function applyBootstrapData(data) {
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
       posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
+      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -3969,7 +3970,8 @@ async function syncToSupabase() {
       staff_discount_max_baht: settings.staffDiscountMaxBaht != null ? settings.staffDiscountMaxBaht : 0,
       discount_presets: Array.isArray(settings.discountPresets) ? settings.discountPresets : [],
       staff_permissions: (settings.staffPermissions && typeof settings.staffPermissions === 'object') ? settings.staffPermissions : {},
-      pos_categories: Array.isArray(settings.posCategories) ? settings.posCategories : []
+      pos_categories: Array.isArray(settings.posCategories) ? settings.posCategories : [],
+      menu_config: settings.menuConfig || {}
     },
     shop: { name: settings.shopName },
     _base_version: dataVersion
@@ -10813,7 +10815,30 @@ function renderOnlineMenu() {
     </div>`;
   }).join('') || '<div style="font-size:12px;color:var(--color-text-muted);padding:6px 0;">ยังไม่มีออเดอร์ออนไลน์</div>';
   const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=' + encodeURIComponent(url);
-  el.innerHTML = `<div class="glass-card" style="margin-bottom:14px;">
+  el.innerHTML = `${(() => {
+    const mc = settings.menuConfig || (settings.menuConfig = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false });
+    const themes = [['recipro','Recipro · ม่วง'],['matcha','Matcha · เขียว'],['sakura','Sakura · ชมพู'],['ocean','Ocean · ฟ้า'],['earth','Earth · น้ำตาล'],['night','Night · มืด'],['mono','Mono · ขาวดำ']];
+    const frames = [['soft','นุ่ม (มน)'],['sharp','คม'],['bold','ขอบหนา'],['ticket','ตั๋ว (ประ)'],['polaroid','โพลารอยด์']];
+    const promos = Array.isArray(mc.promos) ? mc.promos : [];
+    const selStyle = 'font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:3px;';
+    return `<div class="glass-card" style="margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px;"><span class="ico" data-icon="palette"></span> การแสดงผลเมนูออนไลน์ <span style="font-size:11px;color:var(--color-text-muted);font-weight:400;">(ลูกค้าเห็น — เปลี่ยนได้ทุกเมื่อ)</span></div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+        <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">ธีมสี<select onchange="setMenuTheme(this.value)" style="${selStyle}">${themes.map(([v,l]) => `<option value="${v}"${(mc.theme||'recipro')===v?' selected':''}>${l}</option>`).join('')}</select></label>
+        <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">กรอบการ์ด<select onchange="setMenuFrame(this.value)" style="${selStyle}">${frames.map(([v,l]) => `<option value="${v}"${(mc.frame||'soft')===v?' selected':''}>${l}</option>`).join('')}</select></label>
+        <a href="${esc(url)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('eye')} ดูตัวอย่าง</a>
+        <a href="${esc(url)}?kiosk=1" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('monitor')} โหมดจอร้าน (kiosk)</a>
+      </div>
+      <div style="margin-top:10px;border-top:1px dashed var(--border-soft);padding-top:8px;">
+        <label style="font-size:12.5px;display:flex;align-items:center;gap:7px;cursor:pointer;"><input type="checkbox" ${mc.showcaseOn?'checked':''} onchange="setShowcaseOn(this.checked)" style="width:16px;height:16px;"> โชว์หน้าโปรโมชั่น/สื่อ ก่อนเข้าเลือกเมนู</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
+          ${promos.map((p,i) => `<div style="position:relative;"><img src="${esc(p.img)}" style="width:78px;height:78px;object-fit:cover;border-radius:10px;border:1px solid var(--border-soft);"><button onclick="removePromo(${i})" title="ลบ" style="position:absolute;top:-7px;right:-7px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:21px;height:21px;cursor:pointer;font-size:13px;line-height:1;">×</button></div>`).join('')}
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer;font-size:12px;">${icon('image-plus')} เพิ่มรูปโปร<input type="file" accept="image/*" onchange="addPromo(this.files[0]);this.value='';" style="display:none;"></label>
+        </div>
+        <div style="font-size:11px;color:var(--color-text-muted);margin-top:5px;">แบนเนอร์โปรโมชั่น/เมนูพิเศษ — ลูกค้าเห็นก่อนเลือกสินค้า แล้วกด "เลือกเมนู" เข้าต่อได้</div>
+      </div>
+    </div>`;
+  })()}<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="qr-code"></span> เมนูออนไลน์ (QR)</h3>
       ${pending.length ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ${pending.length} ออเดอร์ใหม่</span>` : ''}
@@ -10974,6 +10999,24 @@ async function setOrderPaid(id, paid) {
   catch (e) { ui.alert('อัปเดตการจ่ายเงินไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
+// ===== M11: ตั้งค่าธีม/กรอบ/โปรโมชั่น เมนูออนไลน์ =====
+function _menuCfg() { if (!settings.menuConfig || typeof settings.menuConfig !== 'object') settings.menuConfig = { theme: 'recipro', frame: 'soft', promos: [], showcaseOn: false }; if (!Array.isArray(settings.menuConfig.promos)) settings.menuConfig.promos = []; return settings.menuConfig; }
+function setMenuTheme(v) { _menuCfg().theme = v || 'recipro'; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เปลี่ยนธีมเมนูแล้ว'); renderOnlineMenu(); }
+function setMenuFrame(v) { _menuCfg().frame = v || 'soft'; saveAll(); renderOnlineMenu(); }
+function setShowcaseOn(on) { _menuCfg().showcaseOn = !!on; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(on ? 'เปิดหน้าโปรโมชั่นก่อนเข้าเมนู' : 'ปิดหน้าโปรโมชั่น'); renderOnlineMenu(); }
+async function addPromo(file) {
+  if (!file) return;
+  try {
+    const raw = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    let img = raw; try { img = await compressImage(raw, 1280, 0.75); } catch (e) {}
+    const mc = _menuCfg();
+    if (mc.promos.length >= 6) { ui.alert('ใส่รูปโปรได้สูงสุด 6 รูป', { icon: 'info' }); return; }
+    mc.promos.push({ img, link: '' });
+    if (!mc.showcaseOn) mc.showcaseOn = true;  // ใส่รูปแรก = เปิดให้อัตโนมัติ
+    saveAll(); renderOnlineMenu();
+  } catch (e) { if (typeof ui !== 'undefined' && ui.alert) ui.alert('เพิ่มรูปไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+function removePromo(i) { const mc = _menuCfg(); mc.promos.splice(i, 1); saveAll(); renderOnlineMenu(); }
 function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
 
 // ============================================================

@@ -35,6 +35,7 @@ const files = [
   '../db/schema-m8.sql',
   '../db/schema-m9.sql',
   '../db/schema-m10.sql',
+  '../db/schema-m11.sql',
   '../db/schema-s1.sql',
   '../db/schema-s2.sql',
   '../db/schema-s3.sql',
