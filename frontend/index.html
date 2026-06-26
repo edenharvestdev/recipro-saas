@@ -843,8 +843,17 @@
                   <option value="cash">เงินสด</option>
                   <option value="transfer">โอน / พร้อมเพย์</option>
                   <option value="card">บัตร</option>
+                  <option value="lineman">LINE MAN</option>
+                  <option value="grab">Grab</option>
+                  <option value="shopee">Shopee</option>
+                  <option value="staff50">พนักงานลด 50%</option>
                 </select>
               </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+                <span style="font-size:13px;color:var(--color-text-muted);">วันที่บิล <span style="font-size:11px;color:#d97706;">(ลงย้อนหลังได้)</span></span>
+                <input type="date" id="posBillDate" onchange="posBillDateHint()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+              </div>
+              <div id="posBillDateNote" style="display:none;font-size:11px;color:#d97706;text-align:right;margin:-4px 0 8px;">⚠️ ลงขายย้อนหลัง — ตัดสต๊อก + ลงรายได้ตามวันที่นี้</div>
               <div class="pos-cart-grand">
                 <span class="label">ยอดรวม</span>
                 <span class="amount" id="posCartGrand">฿0.00</span>
@@ -6269,15 +6278,16 @@ function loadReport() {
 }
 
 // ===== สรุปยอดแยกตามวิธีจ่าย =====
-const PAY_METHOD_LABELS = { cash: 'เงินสด', transfer: 'โอน / พร้อมเพย์', card: 'บัตร' };
-const PAY_METHOD_SHORT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร' };
-const PAY_METHOD_ICONS = { cash: 'banknote', transfer: 'smartphone', card: 'credit-card' };
-const PAY_METHOD_COLORS = { cash: '#0F6E56', transfer: '#2563eb', card: '#8b5cf6' };
+const PAY_METHOD_LABELS = { cash: 'เงินสด', transfer: 'โอน / พร้อมเพย์', card: 'บัตร', lineman: 'LINE MAN', grab: 'Grab', shopee: 'Shopee', staff50: 'พนักงานลด 50%' };
+const PAY_METHOD_SHORT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร', lineman: 'LINE MAN', grab: 'Grab', shopee: 'Shopee', staff50: 'พนง.50%' };
+const PAY_METHOD_ICONS = { cash: 'banknote', transfer: 'smartphone', card: 'credit-card', lineman: 'bike', grab: 'bike', shopee: 'shopping-bag', staff50: 'user' };
+const PAY_METHOD_COLORS = { cash: '#0F6E56', transfer: '#2563eb', card: '#8b5cf6', lineman: '#06C167', grab: '#00B14F', shopee: '#EE4D2D', staff50: '#d97706' };
+const PAY_METHODS_ALL = ['cash', 'transfer', 'card', 'lineman', 'grab', 'shopee', 'staff50'];
 function renderPayBreakdown(billsArr) {
   const el = $('rptPayBreakdown'); if (!el) return;
-  const acc = { cash: { sum: 0, n: 0 }, transfer: { sum: 0, n: 0 }, card: { sum: 0, n: 0 } };
+  const acc = {}; PAY_METHODS_ALL.forEach(m => acc[m] = { sum: 0, n: 0 });
   billsArr.forEach(b => { const m = acc[b.payMethod] ? b.payMethod : 'cash'; acc[m].sum += billTotal(b); acc[m].n++; });
-  el.innerHTML = ['cash', 'transfer', 'card'].map(m => `
+  el.innerHTML = PAY_METHODS_ALL.filter(m => acc[m].n > 0 || ['cash', 'transfer', 'card'].includes(m)).map(m => `
     <div style="flex:1; min-width:130px; text-align:center; background:var(--surface-2); border-radius:10px; padding:12px;">
       <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:4px;"><span class="ico" data-icon="${PAY_METHOD_ICONS[m]}"></span> ${PAY_METHOD_LABELS[m]}</div>
       <div style="font-size:22px; font-weight:800; color:${PAY_METHOD_COLORS[m]};">${money(acc[m].sum)}</div>
@@ -7299,6 +7309,7 @@ function posClearCart() {
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
   if ($('posPayMethod')) $('posPayMethod').value = 'cash';
+  if ($('posBillDate')) { $('posBillDate').value = new Date().toISOString().slice(0, 10); if (typeof posBillDateHint === 'function') posBillDateHint(); }   // รีเซ็ตวันที่กลับเป็นวันนี้
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
   if ($('posRedeemPts')) $('posRedeemPts').value = 0;
   if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
@@ -7587,6 +7598,12 @@ async function downloadSnapshot(id) {
   } catch (e) { ui.alert('ดาวน์โหลดไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 
+function posBillDateHint() {
+  const bd = $('posBillDate'), note = $('posBillDateNote');
+  if (!bd || !note) return;
+  const today = new Date().toISOString().slice(0, 10);
+  note.style.display = (bd.value && bd.value !== today) ? 'block' : 'none';
+}
 function renderPosCart() {
   const cartEl = $('posCartItems');
   const footerEl = $('posCartFooter');
@@ -7624,6 +7641,7 @@ function renderPosCart() {
 
   if (footerEl) {
     footerEl.style.display = '';
+    const bd = $('posBillDate'); if (bd && !bd.value) { bd.value = new Date().toISOString().slice(0, 10); posBillDateHint(); }
     renderPosDiscPresets();   // ปุ่มส่วนลดสำเร็จรูป
     const t = posComputeTotals();
     // คุมค่า input แลกแต้มไม่ให้เกินสิทธิ์ + อัปเดตป้าย "มี X"
@@ -7803,7 +7821,7 @@ async function posCheckout() {
     id: uid(),
     billNo: 'QS-' + String(counter + 1).padStart(4, '0'),
     status: 'paid',
-    date: new Date().toISOString().slice(0, 10),
+    date: ($('posBillDate')?.value || new Date().toISOString().slice(0, 10)),   // รองรับลงขายย้อนหลัง
     cust: '',
     sender: settings.shopName,
     tableNo: ($('posTableNo')?.value || '').trim(),
@@ -7892,6 +7910,7 @@ async function posCheckout() {
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
   if ($('posPayMethod')) $('posPayMethod').value = 'cash';
+  if ($('posBillDate')) { $('posBillDate').value = new Date().toISOString().slice(0, 10); if (typeof posBillDateHint === 'function') posBillDateHint(); }   // รีเซ็ตวันที่กลับเป็นวันนี้
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
   if ($('posRedeemPts')) $('posRedeemPts').value = 0;
   if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
