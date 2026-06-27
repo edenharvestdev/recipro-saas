@@ -10358,10 +10358,19 @@ function openExpSlip(id) {
   const e = (expenses || []).find(x => x.id === id);
   if (!e || !e.slipData) { ui.toast('ไม่มีสลิปแนบ'); return; }
   const ov = document.createElement('div');
-  ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
-  ov.onclick = () => ov.remove();
-  ov.innerHTML = `<img src="${esc(e.slipData)}" style="max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);">`;
+  ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10003;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;';
+  // ชื่อไฟล์อ่านง่ายสำหรับบัญชี: วันที่_หมวด_รายการ
+  const safe = s => String(s || '').replace(/[\\/:*?"<>|]+/g, '').slice(0, 40);
+  const ext = (e.slipData.slice(0, 20).match(/image\/(\w+)/) || [, 'jpg'])[1].replace('jpeg', 'jpg');
+  const fname = 'ใบเสร็จ_' + (e.date || '') + '_' + safe(e.category) + '_' + safe(e.description) + '.' + ext;
+  ov.innerHTML = `<img src="${esc(e.slipData)}" style="max-width:92vw;max-height:78vh;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.5);">
+    <div style="display:flex;gap:10px;">
+      <a href="${esc(e.slipData)}" download="${esc(fname)}" class="btn btn-primary btn-sm" onclick="event.stopPropagation()"><span class="ico" data-icon="download"></span> ดาวน์โหลดเก็บ</a>
+      <button class="btn btn-ghost btn-sm" style="color:#fff;border-color:#fff;" onclick="this.closest('.modal-overlay').remove()">ปิด</button>
+    </div>`;
+  ov.onclick = ev => { if (ev.target === ov) ov.remove(); };
   document.body.appendChild(ov);
+  renderIcons(ov);
 }
 function clearExpSlip() { setExpSlipPreview(''); }
 
@@ -10897,14 +10906,15 @@ function renderOnlineMenu() {
           const cats = [...new Set([...recipes.map(r => r.category), ...materials.map(m => m.category)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
           const stOpt = (sel) => ['<option value="">ทุกเครื่อง</option>'].concat(PRINT_STATIONS.map(s => `<option value="${esc(s)}"${sel === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
           const dev = deviceStation();
-          const routeRows = window._showRoute ? `<div style="margin-top:6px;padding:8px 10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
+          const routeRows = (window._showRoute !== false) ? `<div style="margin-top:6px;padding:8px 10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">หมวดเมนู → สถานี (หมวดที่ไม่กำหนด = พิมพ์ทุกเครื่อง)</div>
             ${cats.length ? cats.map(c => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;"><span style="flex:1;min-width:0;">${esc(c)}</span>
               <select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;padding:3px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
           </div>` : '';
           const apPaid = autoPrintOnPaidCfg();
           return `<div style="margin-top:10px;padding:11px 13px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);">
-            <div style="font-size:13px;font-weight:800;margin-bottom:8px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ <span style="font-size:10px;color:var(--color-text-muted);font-weight:400;">(ตั้งแยกแต่ละเครื่อง)</span></div>
+            <div style="font-size:13px;font-weight:800;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ <span style="font-size:10px;color:var(--color-text-muted);font-weight:400;">(ตั้งแยกแต่ละเครื่อง)</span></div>
+            <div style="font-size:11px;color:var(--color-text-muted);background:var(--surface-1);border-radius:8px;padding:6px 9px;margin-bottom:8px;line-height:1.5;">📌 วิธีต่อเครื่องพิมพ์ Bluetooth/WiFi: จับคู่/ต่อเครื่องพิมพ์กับ <b>มือถือ/แท็บเล็ตเครื่องนั้น</b> ในตั้งค่าอุปกรณ์ก่อน แล้วตั้งเป็น "เครื่องพิมพ์เริ่มต้น" — เวลากดพิมพ์ในแอป ระบบจะส่งไปเครื่องนั้นให้เอง · ตั้งค่าด้านล่างนี้แยกตามเครื่อง (สถานี + หมวด→เครื่อง)</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
               <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวอัตโนมัติ:</span>
               <select onchange="setAutoPrintOnline(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
@@ -10925,7 +10935,7 @@ function renderOnlineMenu() {
               <select onchange="setPosKitchenCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
                 ${[1, 2, 3].map(n => `<option value="${n}"${posKitchenCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
               </select>
-              <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=!window._showRoute;renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${window._showRoute ? 'ซ่อนเส้นทาง' : 'เส้นทางเมนู→เครื่อง'}</button>
+              <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=(window._showRoute===false);renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${(window._showRoute !== false) ? 'ซ่อนเส้นทาง' : 'เส้นทางเมนู→เครื่อง'}</button>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
               <span style="color:var(--color-text-muted);">พิมพ์บิลหน้าร้านอัตโนมัติ:</span>
