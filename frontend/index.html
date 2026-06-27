@@ -3609,7 +3609,7 @@ function applyBootstrapData(data) {
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
       posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
-      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault }; })(),
+      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '' }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -10823,18 +10823,40 @@ function renderOnlineMenu() {
   const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=' + encodeURIComponent(url);
   el.innerHTML = `${(() => {
     const mc = settings.menuConfig || (settings.menuConfig = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false });
-    const themes = [['recipro','Recipro · ม่วง'],['matcha','Matcha · เขียว'],['sakura','Sakura · ชมพู'],['ocean','Ocean · ฟ้า'],['earth','Earth · น้ำตาล'],['night','Night · มืด'],['mono','Mono · ขาวดำ']];
+    const themes = [['white','ขาวสะอาด'],['recipro','ลาเวนเดอร์ · ม่วงอ่อน'],['matcha','มัทฉะ · เขียวอ่อน'],['sakura','ซากุระ · ชมพูอ่อน'],['ocean','โอเชียน · ฟ้าอ่อน'],['butter','บัตเตอร์ · ครีม'],['earth','เอิร์ธ · น้ำตาลอ่อน'],['mono','มินิมอล · เทา']];
     const frames = [['soft','นุ่ม (มน)'],['sharp','คม'],['bold','ขอบหนา'],['ticket','ตั๋ว (ประ)'],['polaroid','โพลารอยด์']];
     const promos = Array.isArray(mc.promos) ? mc.promos : [];
     const selStyle = 'font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:3px;';
+    // โทนสีสว่างสำเร็จรูป (กดเลือกเร็ว) — คาเฟ่อาร์ต อ่านง่าย
+    const bgSw = ['#ffffff','#fbf3df','#f3f8f0','#eef6fb','#fff5f7','#f4efe6','#f6f6f3'];
+    const acSw = ['#6f8f7d','#7c3aed','#3f7d4f','#2b7fae','#d94f86','#c79a3e','#a4582f'];
     return `<div class="glass-card" style="margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:700;margin-bottom:8px;"><span class="ico" data-icon="palette"></span> การแสดงผลเมนูออนไลน์ <span style="font-size:11px;color:var(--color-text-muted);font-weight:400;">(ลูกค้าเห็น — เปลี่ยนได้ทุกเมื่อ)</span></div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:8px;"><span class="ico" data-icon="palette"></span> การแสดงผลเมนูออนไลน์ <span style="font-size:11px;color:var(--color-text-muted);font-weight:400;">(ลูกค้าเห็น · โทนสว่าง อ่านง่าย)</span></div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
-        <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">ธีมสี<select onchange="setMenuTheme(this.value)" style="${selStyle}">${themes.map(([v,l]) => `<option value="${v}"${(mc.theme||'recipro')===v?' selected':''}>${l}</option>`).join('')}</select></label>
+        <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">ธีมสำเร็จรูป<select onchange="setMenuTheme(this.value)" style="${selStyle}">${themes.map(([v,l]) => `<option value="${v}"${(mc.theme||'recipro')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">กรอบการ์ด<select onchange="setMenuFrame(this.value)" style="${selStyle}">${frames.map(([v,l]) => `<option value="${v}"${(mc.frame||'soft')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <a href="${esc(url)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('eye')} ดูตัวอย่าง</a>
         <a href="${esc(url)}?kiosk=1" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('monitor')} โหมดจอร้าน (kiosk)</a>
       </div>
+      <div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;">
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px;">🎨 สีพื้นเมนู</div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+            ${bgSw.map(c => `<button title="${c}" onclick="setMenuBg('${c}')" style="width:24px;height:24px;border-radius:50%;border:2px solid ${(mc.bg||'').toLowerCase()===c?'var(--color-primary)':'#ddd'};background:${c};cursor:pointer;"></button>`).join('')}
+            <input type="color" value="${esc(mc.bg||'#ffffff')}" onchange="setMenuBg(this.value)" title="เลือกสีเอง" style="width:28px;height:28px;border:none;background:none;cursor:pointer;padding:0;">
+            ${mc.bg ? `<button onclick="setMenuBg('')" class="btn btn-ghost btn-sm" style="font-size:11px;">ล้าง</button>` : ''}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px;">🎨 สีหลัก/หัวการ์ด</div>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+            ${acSw.map(c => `<button title="${c}" onclick="setMenuAccent('${c}')" style="width:24px;height:24px;border-radius:50%;border:2px solid ${(mc.accent||'').toLowerCase()===c?'var(--color-primary)':'#ddd'};background:${c};cursor:pointer;"></button>`).join('')}
+            <input type="color" value="${esc(mc.accent||'#6f8f7d')}" onchange="setMenuAccent(this.value)" title="เลือกสีเอง" style="width:28px;height:28px;border:none;background:none;cursor:pointer;padding:0;">
+            ${mc.accent ? `<button onclick="setMenuAccent('')" class="btn btn-ghost btn-sm" style="font-size:11px;">ล้าง</button>` : ''}
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-top:5px;">เลือกธีมสำเร็จรูป หรือปรับสีเอง 2 จุด (พื้น + สีหลัก) · ลูกค้าต้องรีเฟรชหน้าเมนูเพื่อเห็นสีใหม่</div>
       <div style="margin-top:10px;border-top:1px dashed var(--border-soft);padding-top:8px;">
         <label style="font-size:12.5px;display:flex;align-items:center;gap:7px;cursor:pointer;"><input type="checkbox" ${mc.showcaseOn?'checked':''} onchange="setShowcaseOn(this.checked)" style="width:16px;height:16px;"> โชว์หน้าโปรโมชั่น/สื่อ ก่อนเข้าเลือกเมนู</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
@@ -11025,6 +11047,8 @@ function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll()
 function _menuCfg() { if (!settings.menuConfig || typeof settings.menuConfig !== 'object') settings.menuConfig = { theme: 'recipro', frame: 'soft', promos: [], showcaseOn: false }; if (!Array.isArray(settings.menuConfig.promos)) settings.menuConfig.promos = []; return settings.menuConfig; }
 function setMenuTheme(v) { _menuCfg().theme = v || 'recipro'; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เปลี่ยนธีมเมนูแล้ว'); renderOnlineMenu(); }
 function setMenuFrame(v) { _menuCfg().frame = v || 'soft'; saveAll(); renderOnlineMenu(); }
+function setMenuBg(v) { _menuCfg().bg = v || ''; saveAll(); renderOnlineMenu(); }
+function setMenuAccent(v) { _menuCfg().accent = v || ''; saveAll(); renderOnlineMenu(); }
 function setShowcaseOn(on) { _menuCfg().showcaseOn = !!on; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(on ? 'เปิดหน้าโปรโมชั่นก่อนเข้าเมนู' : 'ปิดหน้าโปรโมชั่น'); renderOnlineMenu(); }
 async function addPromo(file) {
   if (!file) return;

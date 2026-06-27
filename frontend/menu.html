@@ -13,7 +13,8 @@
     --m-price:#16a34a; --m-text:#1a1a1a; --m-muted:#9a8aa8;
   }
   html[data-theme="matcha"]{--m-bg1:#f3f8f0;--m-bg2:#e9f2e4;--m-head1:#fff;--m-head2:#eef6ea;--m-accent:#3f7d4f;--m-accent2:#5a9a68;--m-accent3:#86b049;--m-price:#2f7d32;--m-muted:#7c9a82}
-  html[data-theme="night"]{--m-bg1:#1c1b22;--m-bg2:#141318;--m-head1:#26242e;--m-head2:#1d1b24;--m-accent:#c9a14a;--m-accent2:#d8b766;--m-accent3:#e0c07a;--m-card:#26242e;--m-price:#7fd18a;--m-text:#f2efe9;--m-muted:#a59db3;--m-cardsh:0 6px 20px rgba(0,0,0,.4)}
+  html[data-theme="white"]{--m-bg1:#ffffff;--m-bg2:#f6f6f3;--m-head1:#fff;--m-head2:#fbfbf8;--m-accent:#6f8f7d;--m-accent2:#86a594;--m-accent3:#a9c4b4;--m-price:#2f7d32;--m-muted:#9a9a93}
+  html[data-theme="butter"]{--m-bg1:#fffdf5;--m-bg2:#fbf3df;--m-head1:#fff;--m-head2:#fdf6e6;--m-accent:#c79a3e;--m-accent2:#d8b25e;--m-accent3:#e6c97f;--m-price:#5d7a3a;--m-muted:#ad9e76}
   html[data-theme="sakura"]{--m-bg1:#fff5f7;--m-bg2:#fdeef4;--m-head1:#fff;--m-head2:#ffeef4;--m-accent:#d94f86;--m-accent2:#ec6fa0;--m-accent3:#f5a3c0;--m-price:#e0457a;--m-muted:#c08aa0}
   html[data-theme="ocean"]{--m-bg1:#eef6fb;--m-bg2:#e3f0f7;--m-head1:#fff;--m-head2:#e9f3f9;--m-accent:#2b7fae;--m-accent2:#3f9cc9;--m-accent3:#5bb3d4;--m-price:#1f8a8a;--m-muted:#7d9bab}
   html[data-theme="mono"]{--m-bg1:#f5f5f4;--m-bg2:#eeeeec;--m-head1:#fff;--m-head2:#f4f4f2;--m-accent:#2b2b2b;--m-accent2:#444;--m-accent3:#777;--m-price:#111;--m-muted:#999}
@@ -137,7 +138,7 @@ const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 const QS = new URLSearchParams(location.search);
 const KIOSK = QS.get('kiosk') === '1';
 let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
-let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false };
+let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false, bg:'', accent:'' };
 let catFilter = '';   // '' = ทุกหมวด (แท็บโฟลเดอร์)
 let pendingItem = null, pendingSel = {}, LAST_ORDER = null;
 
@@ -147,6 +148,10 @@ function applyConfig(cfg){
   const root = document.documentElement;
   if (CONFIG.theme && CONFIG.theme !== 'recipro') root.setAttribute('data-theme', CONFIG.theme); else root.removeAttribute('data-theme');
   if (CONFIG.frame && CONFIG.frame !== 'soft') root.setAttribute('data-frame', CONFIG.frame); else root.removeAttribute('data-frame');
+  // สีปรับเอง (ทับธีม) — พื้นเมนู + สีหลัก/หัวการ์ด (โทนสว่าง)
+  const sv = (k, v) => { if (v) root.style.setProperty(k, v); else root.style.removeProperty(k); };
+  sv('--m-bg1', CONFIG.bg); sv('--m-bg2', CONFIG.bg);
+  sv('--m-accent', CONFIG.accent); sv('--m-accent2', CONFIG.accent); sv('--m-accent3', CONFIG.accent);
   if (KIOSK) document.body.classList.add('kiosk');
 }
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
