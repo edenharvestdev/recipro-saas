@@ -679,12 +679,15 @@
 
       <!-- ส่งออกข้อมูลบัญชีให้นักบัญชี / ยื่นภาษี (Excel/CSV) -->
       <div class="glass-card" style="margin-bottom:20px;">
-        <h2 style="margin:0 0 6px;"><span class="ico" data-icon="file-spreadsheet"></span> ส่งออกบัญชี (Excel/CSV)</h2>
-        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">ดาวน์โหลดรายการขาย + รายจ่ายของเดือนเป็นไฟล์ เปิดด้วย Excel/Google Sheets ส่งนักบัญชีได้เลย (รองรับภาษาไทย)</p>
+        <h2 style="margin:0 0 6px;"><span class="ico" data-icon="file-spreadsheet"></span> นำส่งบัญชี (Excel / PDF / CSV)</h2>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">ดาวน์โหลด ledger รายบิล + รายรับ-รายจ่ายของเดือน ส่งนักบัญชี/ยื่นภาษีได้เลย (รองรับภาษาไทย) — Excel = 2 ชีตในไฟล์เดียว, PDF = เอกสารสรุปพร้อมยอดรวม</p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="month" id="acctMonth" style="padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
-          <button class="btn btn-primary btn-sm" onclick="exportSalesCSV()"><span class="ico" data-icon="download"></span> ยอดขาย CSV</button>
-          <button class="btn btn-secondary btn-sm" onclick="exportExpensesCSV()"><span class="ico" data-icon="download"></span> รายจ่าย CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="exportAcctXLSX()"><span class="ico" data-icon="file-spreadsheet"></span> Excel (ledger 2 ชีต)</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportAcctPDF()"><span class="ico" data-icon="file-text"></span> PDF นำส่ง</button>
+          <span style="width:1px;height:22px;background:var(--border-soft);"></span>
+          <button class="btn btn-ghost btn-sm" onclick="exportSalesCSV()"><span class="ico" data-icon="download"></span> ยอดขาย CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportExpensesCSV()"><span class="ico" data-icon="download"></span> รายจ่าย CSV</button>
         </div>
       </div>
 
@@ -6370,18 +6373,16 @@ function downloadCSV(filename, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function acctMonthVal() { return ($('acctMonth') && $('acctMonth').value) || new Date().toISOString().slice(0, 7); }
-function exportSalesCSV() {
-  const mo = acctMonthVal();
+// ===== ตัวสร้างแถว ledger (ใช้ร่วม CSV / Excel / PDF) =====
+function buildSalesLedgerRows(mo) {
   const vatOn = !!settings.vatEnabled; const vatRate = settings.vatRate != null ? Number(settings.vatRate) : 7;
   const list = bills.filter(b => (b.date || '').startsWith(mo) && (b.status === 'paid' || b.status === 'void'))
     .sort((a, b) => (a.billNo || '').localeCompare(b.billNo || ''));
-  if (!list.length) { ui.alert('เดือน ' + mo + ' ยังไม่มีบิล', { icon: 'info' }); return; }
   const rows = [['วันที่', 'เลขบิล', 'รายการ', 'ยอดก่อนลด', 'ส่วนลด', 'มูลค่าก่อนภาษี', 'VAT', 'ยอดสุทธิ', 'วิธีจ่าย', 'สถานะ', 'สมาชิก']];
   let tGross = 0, tDisc = 0, tVat = 0, tNet = 0;
   list.forEach(b => {
     const sub = (b.items || []).reduce((s, it) => s + (it.qty || 1) * (it.price || 0), 0);
     const total = billTotal(b);
-    const disc = sub - (b.taxT === '%' ? total / (1 + (b.taxV || 0) / 100) : total - (b.taxV || 0));
     const voided = b.status === 'void';
     const net = voided ? 0 : total;
     const base = (vatOn && !voided) ? total / (1 + vatRate / 100) : (voided ? 0 : total);
@@ -6392,22 +6393,51 @@ function exportSalesCSV() {
       PAY_METHOD_LABELS[b.payMethod] || 'เงินสด', voided ? 'ยกเลิก' : 'ชำระแล้ว', b.memberPhone || '']);
   });
   rows.push([]); rows.push(['รวม (ไม่นับบิลยกเลิก)', '', '', tGross.toFixed(2), tDisc.toFixed(2), (tNet - tVat).toFixed(2), tVat.toFixed(2), tNet.toFixed(2), '', '', '']);
-  downloadCSV('recipro-ยอดขาย-' + mo + '.csv', rows);
+  return { rows, count: list.length, totals: { tGross, tDisc, tVat, tNet }, vatOn, vatRate };
 }
-function exportExpensesCSV() {
-  const mo = acctMonthVal();
+function buildExpensesLedgerRows(mo) {
   const list = (expenses || []).filter(e => (e.date || '').startsWith(mo)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  if (!list.length) { ui.alert('เดือน ' + mo + ' ยังไม่มีรายรับ-จ่าย', { icon: 'info' }); return; }
   const rows = [['วันที่', 'ประเภท', 'หมวด', 'รายละเอียด', 'จำนวนเงิน', 'วิธีจ่าย', 'หมายเหตุ']];
-  let tIn = 0, tOut = 0;
-  const PAYT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร' };
+  let tIn = 0, tOut = 0; const PAYT = { cash: 'เงินสด', transfer: 'โอน', card: 'บัตร' };
   list.forEach(e => {
     const amt = Number(e.amount) || 0; const isIn = e.kind === 'income';
     if (isIn) tIn += amt; else tOut += amt;
     rows.push([e.date || '', isIn ? 'รายรับ' : 'รายจ่าย', e.category || '', e.description || '', amt.toFixed(2), PAYT[e.payType] || e.payType || '', e.note || '']);
   });
   rows.push([]); rows.push(['รวมรายรับ', '', '', '', tIn.toFixed(2), '', '']); rows.push(['รวมรายจ่าย', '', '', '', tOut.toFixed(2), '', '']);
-  downloadCSV('recipro-รายจ่าย-' + mo + '.csv', rows);
+  return { rows, count: list.length, totals: { tIn, tOut } };
+}
+function exportSalesCSV() { const mo = acctMonthVal(); const L = buildSalesLedgerRows(mo); if (!L.count) { ui.alert('เดือน ' + mo + ' ยังไม่มีบิล', { icon: 'info' }); return; } downloadCSV('recipro-ยอดขาย-' + mo + '.csv', L.rows); }
+function exportExpensesCSV() { const mo = acctMonthVal(); const E = buildExpensesLedgerRows(mo); if (!E.count) { ui.alert('เดือน ' + mo + ' ยังไม่มีรายรับ-จ่าย', { icon: 'info' }); return; } downloadCSV('recipro-รายจ่าย-' + mo + '.csv', E.rows); }
+// Excel นำส่งบัญชี — 2 ชีต (ยอดขาย ledger + รายรับ-รายจ่าย)
+async function exportAcctXLSX() {
+  const mo = acctMonthVal(); const L = buildSalesLedgerRows(mo); const E = buildExpensesLedgerRows(mo);
+  if (!L.count && !E.count) { ui.alert('เดือน ' + mo + ' ยังไม่มีข้อมูล', { icon: 'info' }); return; }
+  try {
+    await ensureXLSX();
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.aoa_to_sheet(L.rows); ws1['!cols'] = L.rows[0].map((_, i) => ({ wch: i === 2 ? 34 : 15 }));
+    XLSX.utils.book_append_sheet(wb, ws1, 'ยอดขาย');
+    const ws2 = XLSX.utils.aoa_to_sheet(E.rows); ws2['!cols'] = E.rows[0].map((_, i) => ({ wch: i === 3 ? 28 : 15 }));
+    XLSX.utils.book_append_sheet(wb, ws2, 'รายรับ-รายจ่าย');
+    XLSX.writeFile(wb, 'recipro-บัญชี-' + mo + '.xlsx');
+    if (typeof ui !== 'undefined' && ui.toast) ui.toast('ดาวน์โหลดบัญชี Excel แล้ว (2 ชีต)');
+  } catch (e) { ui.alert('สร้าง Excel ไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+// PDF นำส่งบัญชี — เอกสารสรุป (พิมพ์ → Save as PDF ได้)
+function exportAcctPDF() {
+  const mo = acctMonthVal(); const L = buildSalesLedgerRows(mo); const E = buildExpensesLedgerRows(mo);
+  if (!L.count && !E.count) { ui.alert('เดือน ' + mo + ' ยังไม่มีข้อมูล', { icon: 'info' }); return; }
+  const e2 = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const tbl = rows => `<table><thead><tr>${rows[0].map(h => `<th>${e2(h)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map(r => r.length ? `<tr>${r.map((c, i) => `<td class="${i >= 3 && i <= 7 ? 'r' : ''}">${e2(c)}</td>`).join('')}</tr>` : '<tr class="sp"><td colspan="20"></td></tr>').join('')}</tbody></table>`;
+  const netProfit = L.totals.tNet + E.totals.tIn - E.totals.tOut;
+  const summary = `<div class="sum"><div><span>ยอดขายสุทธิ</span><b>${money(L.totals.tNet)}</b></div><div><span>VAT ขาย</span><b>${money(L.totals.tVat)}</b></div><div><span>รายรับอื่น</span><b>${money(E.totals.tIn)}</b></div><div><span>รายจ่าย</span><b>${money(E.totals.tOut)}</b></div><div class="np"><span>คงเหลือสุทธิ</span><b>${money(netProfit)}</b></div></div>`;
+  const css = `*{font-family:Tahoma,'TH Sarabun New',sans-serif}body{margin:18px;color:#111;font-size:12px}h1{font-size:18px;margin:0 0 2px}h2{font-size:14px;margin:16px 0 6px;border-left:4px solid #ea580c;padding-left:8px}.muted{color:#666;font-size:12px;margin-bottom:8px}table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #ccc;padding:4px 6px;font-size:11px;text-align:left}th{background:#fff3e9}td.r{text-align:right}tr.sp td{border:none;height:6px}.sum{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 4px}.sum div{background:#faf7f2;border:1px solid #eee;border-radius:8px;padding:6px 12px;font-size:12px}.sum b{display:block;font-size:15px}.sum .np b{color:#16a34a}@page{size:A4;margin:12mm}`;
+  const html = `<h1>${e2(settings.shopName || 'ร้าน')} — รายงานบัญชี</h1><div class="muted">เดือน ${e2(mo)}${settings.tax ? ' · เลขภาษี ' + e2(settings.tax) : ''} · พิมพ์ ${new Date().toISOString().slice(0, 10)}</div>${summary}<h2>รายการขาย (ledger รายบิล)</h2>${L.count ? tbl(L.rows) : '<div class="muted">ไม่มีบิล</div>'}<h2>รายรับ–รายจ่าย</h2>${E.count ? tbl(E.rows) : '<div class="muted">ไม่มีรายการ</div>'}`;
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { if (typeof ui !== 'undefined' && ui.toast) ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>บัญชี ' + e2(mo) + '</title><style>' + css + '</style></head><body>' + html + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},350)}<\/scr' + 'ipt></body></html>');
+  w.document.close();
 }
 // Export รายการวัตถุดิบเป็น Excel/CSV (เปิดด้วย Excel/Sheets, ภาษาไทยไม่เพี้ยน)
 // แปลงวัตถุดิบ 1 ตัว → record ตามคอลัมน์ import (ใช้ทั้ง export และ template)

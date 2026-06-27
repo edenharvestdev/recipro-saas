@@ -36,6 +36,10 @@
   .card .img::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.45))}
   .card .swatch{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.92);color:var(--m-accent);font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;z-index:1;letter-spacing:.3px}
   .card .nm-img{position:absolute;left:12px;right:12px;bottom:9px;color:#fff;font-size:15px;font-weight:800;line-height:1.2;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .card .tapcue{position:absolute;right:8px;top:8px;z-index:1;background:rgba(0,0,0,.45);color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:20px;backdrop-filter:blur(2px)}
+  .sheet .sd-img{width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:10px;background:var(--m-bg2)}
+  .sheet .sd-desc{font-size:14px;color:#555;line-height:1.55;margin:8px 0;white-space:pre-line}
+  .sheet .sd-rev{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--m-accent);font-weight:700;text-decoration:none;margin-bottom:4px}
   .card .b{padding:11px 13px 13px;flex:1;display:flex;flex-direction:column;gap:6px}
   .card .desc{font-size:11.5px;color:var(--m-muted);line-height:1.4;max-height:32px;overflow:hidden}
   .card .pr{font-size:19px;font-weight:900;color:var(--m-price)}
@@ -178,13 +182,15 @@ function itemCard(it, i){
   const h = hueOf(it.name || 'x');
   const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 70% 64%),hsl(${(h + 45) % 360} 72% 52%))`;
   const link = it.link ? `<a class="rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียด →</a>` : '';
+  const canDetail = !!(it.detail || it.link || (it.options && it.options.length));
   return `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms">
-      <div class="img" style="${bg}">
+      <div class="img" style="${bg};cursor:pointer" onclick="openDetail('${it.id}')">
         <span class="swatch">${esc(it.category || 'เมนู')}</span>
+        ${canDetail ? '<span class="tapcue">👆 แตะดูรายละเอียด</span>' : ''}
         <div class="nm-img">${esc(it.name)}</div>
       </div>
       <div class="b">
-        ${it.detail ? `<div class="desc">${esc(it.detail)}</div>` : ''}
+        ${it.detail ? `<div class="desc" style="cursor:pointer" onclick="openDetail('${it.id}')">${esc(it.detail)}</div>` : ''}
         <div class="pr">${fmt(it.price)}</div>
         ${link}
         <button class="add" onclick="addItem('${it.id}')">+ เพิ่มลงตะกร้า</button>
@@ -309,6 +315,8 @@ function renderMenu(){ if(KIOSK) VIEW='grid'; renderGrid(); buildPages(); curPag
 // เพิ่มเมนู — ถ้ามีตัวเลือก เปิดให้เลือกก่อน
 function addItem(id){ const it=MENU.find(x=>x.id===id); if(!it) return; if(it.options&&it.options.length){ openOptionSheet(it); } else addLine(it,[]); }
 function openOptionSheet(it){ pendingItem=it; pendingSel={}; renderOptionSheet(); document.getElementById('cartModal').classList.add('open'); }
+// แตะการ์ดเข้าดูรายละเอียด/คำแนะนำ + เลือก option (ใช้ชีตเดียวกับ option)
+function openDetail(id){ const it=MENU.find(x=>x.id===id); if(!it) return; openOptionSheet(it); }
 function toggleSel(gid,cid,single){ const cur=pendingSel[gid]||[]; pendingSel[gid]= single?[cid]:(cur.includes(cid)?cur.filter(x=>x!==cid):cur.concat(cid)); renderOptionSheet(); }
 function optExtra(){ let s=0; (pendingItem.options||[]).forEach(g=>(pendingSel[g.id]||[]).forEach(cid=>{const c=g.choices.find(x=>x.id===cid); if(c)s+=c.price_add;})); return s; }
 function renderOptionSheet(){
@@ -318,7 +326,10 @@ function renderOptionSheet(){
       ${g.choices.map(c=>{ const on=(pendingSel[g.id]||[]).includes(c.id);
         return `<label class="row" style="cursor:pointer"><span style="flex:1">${esc(c.label)}${c.price_add?` <span class="muted">(+${fmt(c.price_add)})</span>`:''}</span>
           <input type="${single?'radio':'checkbox'}" name="g${g.id}" ${on?'checked':''} onclick="toggleSel('${g.id}','${c.id}',${single})" style="width:auto;margin:0"></label>`; }).join('')}</div>`; }).join('');
-  document.getElementById('sheet').innerHTML=`<h2 style="font-size:18px">${esc(it.name)}</h2><div class="muted">${fmt(it.price)}</div>${groupsHtml}
+  const imgHtml = it.img ? `<img class="sd-img" src="${esc(it.img)}" alt="${esc(it.name)}">` : '';
+  const descHtml = it.detail ? `<div class="sd-desc">${esc(it.detail)}</div>` : '';
+  const revHtml = it.link ? `<a class="sd-rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียดเพิ่มเติม →</a>` : '';
+  document.getElementById('sheet').innerHTML=`${imgHtml}<h2 style="font-size:19px">${esc(it.name)}</h2><div class="muted" style="font-size:16px;font-weight:700;color:var(--m-price)">${fmt(it.price)}</div>${revHtml}${descHtml}${groupsHtml}
     <button class="paybtn" onclick="confirmOption()">เพิ่มลงตะกร้า · ${fmt(it.price+optExtra())}</button>`;
 }
 function confirmOption(){
