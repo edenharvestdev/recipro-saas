@@ -7087,7 +7087,10 @@ function renderPosGrid() {
   const pushItem = (cat, html) => { if (!groups.has(cat)) groups.set(cat, []); groups.get(cat).push(html); };
   sellable.forEach(r => pushItem(catOf(r), recCardHtml(r)));
   mats.forEach(m => pushItem(catOf(m), matCardHtml(m)));
-  const cats = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'th'));
+  // เรียงหัวข้อหมวดให้ตรงลำดับชิปด้านบน (หมวดที่ร้านจัดไว้ posCategories) — หมวดนอกรายการเรียง ก-ฮ, ไม่ระบุหมวดท้ายสุด
+  const _managed = Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : [];
+  const _catIdx = c => { if (c === POS_NOCAT) return 1e6; const i = _managed.indexOf(c); return i >= 0 ? i : 1e5; };
+  const cats = [...groups.keys()].sort((a, b) => { const d = _catIdx(a) - _catIdx(b); return d !== 0 ? d : a.localeCompare(b, 'th'); });
   const showHeaders = !posCategoryFilter && !posSearch && cats.length > 1;
   let html = '';
   cats.forEach(cat => {
@@ -10807,7 +10810,10 @@ function renderOnlineMenu() {
       ${itemsLine ? `<div style="font-size:12px;color:var(--color-text-main);margin:3px 0 0 50px;">${itemsLine}</div>` : ''}
       ${dj.note ? `<div style="font-size:11px;color:#d97706;margin:2px 0 0 50px;"><span class="ico" data-icon="message-circle"></span> ${esc(dj.note)}</div>` : ''}
       <div style="display:flex;gap:6px;margin:6px 0 0 50px;flex-wrap:wrap;">
-        ${isPrepay && !done ? `<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:${o.paid ? '#dcfce7' : '#fee2e2'};color:${o.paid ? '#166534' : '#991b1b'};border:none;" onclick="setOrderPaid('${o.id}',${!o.paid})">${o.paid ? 'จ่ายแล้ว ✓' : 'ยังไม่จ่าย'}</button>` : ''}
+        ${!done ? (isPrepay
+          ? `<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:${o.paid ? '#dcfce7' : '#fee2e2'};color:${o.paid ? '#166534' : '#991b1b'};border:none;" onclick="setOrderPaid('${o.id}',${!o.paid})">${o.paid ? 'จ่ายแล้ว ✓ (โอน)' : 'ยังไม่จ่าย (รอโอน)'}</button>`
+          : `<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:${o.paid ? '#dcfce7' : '#fef3c7'};color:${o.paid ? '#166534' : '#92400e'};border:none;" onclick="setOrderPaid('${o.id}',${!o.paid})">${o.paid ? 'ชำระแล้ว ✓' : '💵 รอชำระที่เคาน์เตอร์ — กดเมื่อรับเงิน'}</button>`
+        ) : ''}
         <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 8px;" onclick="printKitchenOrder('${o.id}')"><span class="ico" data-icon="clipboard-list"></span> ส่งหลังร้าน</button>
         ${nx ? btn(o.id, nx, NEXTLBL[nx], true) : ''}
         ${!done ? btn(o.id, 'cancelled', 'ยกเลิก', false) : ''}
@@ -10874,8 +10880,9 @@ function renderOnlineMenu() {
             ${cats.length ? cats.map(c => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;"><span style="flex:1;min-width:0;">${esc(c)}</span>
               <select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;padding:3px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
           </div>` : '';
-          return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
-            <div style="font-size:12px;font-weight:700;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ (เครื่องนี้)</div>
+          const apPaid = autoPrintOnPaidCfg();
+          return `<div style="margin-top:10px;padding:11px 13px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);">
+            <div style="font-size:13px;font-weight:800;margin-bottom:8px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ <span style="font-size:10px;color:var(--color-text-muted);font-weight:400;">(ตั้งแยกแต่ละเครื่อง)</span></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
               <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวอัตโนมัติ:</span>
               <select onchange="setAutoPrintOnline(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
@@ -10908,6 +10915,13 @@ function renderOnlineMenu() {
               <select onchange="setPosBillCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
                 ${[1, 2, 3].map(n => `<option value="${n}"${posBillCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
               </select>
+            </div>
+            <div style="margin:7px 0 2px;padding-top:7px;border-top:1px dashed var(--border-soft);">
+              <div style="font-size:12px;font-weight:700;margin-bottom:5px;">🧾 ออเดอร์ออนไลน์ "ชำระแล้ว" → พิมพ์อัตโนมัติ:</div>
+              <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;">
+                ${[['central', 'ใบส่งครัวกลาง'], ['kitchen', 'ตั๋วครัว/สติกเกอร์'], ['receipt', 'ใบเสร็จลูกค้า']].map(([k, lbl]) => `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" ${apPaid[k] ? 'checked' : ''} onchange="setAutoPrintOnPaid('${k}',this.checked)" style="width:15px;height:15px;"> ${lbl}</label>`).join('')}
+              </div>
+              <div style="font-size:10px;color:var(--color-text-muted);margin-top:4px;">เมื่อกดปุ่ม "ชำระแล้ว" ที่ออเดอร์ ระบบจะพิมพ์รายการที่ติ๊กไว้ให้อัตโนมัติ</div>
             </div>
             ${routeRows}
           </div>`;
@@ -10995,7 +11009,15 @@ async function fulfillOrderSale(o) {
   }
 }
 async function setOrderPaid(id, paid) {
-  try { await API.patch('/api/orders/' + id, { paid }); const o = orders.find(x => x.id === id); if (o) o.paid = paid; renderOnlineMenu(); }
+  try {
+    await API.patch('/api/orders/' + id, { paid });
+    const o = orders.find(x => x.id === id);
+    const wasPaid = o ? o.paid : false;
+    if (o) o.paid = paid;
+    // เพิ่งเปลี่ยนเป็น "ชำระแล้ว" → พิมพ์เอกสารตามที่เครื่องนี้ตั้งไว้
+    if (o && paid && !wasPaid && autoPrintOnPaidAny()) autoPrintOnPaid(o);
+    renderOnlineMenu();
+  }
   catch (e) { ui.alert('อัปเดตการจ่ายเงินไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
@@ -11055,6 +11077,34 @@ function autoPrintOrder(o) {
   const meta = 'ออนไลน์ · คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + (o.name || 'ลูกค้า') + (d.note ? ' · หมายเหตุ: ' + d.note : '');
   try { printBackOfHouse(meta, items, posKitchenCopies()); } catch (e) {}
 }
+// ===== พิมพ์เอกสารต่อ "ออเดอร์เดียว" (ใบส่งครัวกลาง / ใบเสร็จลูกค้า) =====
+function _orderItems(o) { let d = o.itemsJson; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = {}; } } return d || {}; }
+// ใบส่งครัวกลางต่อออเดอร์ (รายการทั้งหมดของออเดอร์นั้น ไม่กรองสถานี)
+function printOrderCentral(o) {
+  const d = _orderItems(o);
+  const items = (d.items || []).map(it => ({ qty: it.qty || 1, name: it.name || '', opts: Array.isArray(it.options) ? it.options.map(x => (x && x.label) || x).join(' · ') : '' }));
+  if (!items.length) return;
+  const meta = 'ใบส่งครัวกลาง · คิว ' + (o.queue != null ? o.queue : '-') + ' · ' + (o.name || 'ลูกค้า') + (d.note ? ' · หมายเหตุ: ' + d.note : '');
+  try { printBackOfHouse(meta, items, 1); } catch (e) {}
+}
+// ใบเสร็จลูกค้าต่อออเดอร์ (แปลงออเดอร์ → bill แล้วใช้ตัวพิมพ์บิล 80mm เดิม)
+function printOrderReceipt(o) {
+  const d = _orderItems(o);
+  const items = (d.items || []).map((it, i) => ({
+    recipeId: it.type === 'material' ? null : it.id, matId: it.type === 'material' ? it.id : null,
+    qty: Number(it.qty) || 1, price: Number(it.price) || 0,
+    options: (it.options || []).reduce((m, op, j) => { const lb = (op && op.label) || op; if (lb) m['ตัวเลือก' + (j ? ' ' + (j + 1) : '')] = lb; return m; }, {})
+  }));
+  if (!items.length) return;
+  const total = Number(o.total) || items.reduce((s, it) => s + it.qty * it.price, 0);
+  const b = { billNo: 'QR-' + (o.orderNo || o.queue || ''), date: o.date || new Date().toISOString().slice(0, 10), cust: o.name || '', items, payMethod: o.paid ? 'transfer' : 'cash', tableNo: (o.queue != null ? String(o.queue) : '') };
+  printPosBillWindow(b, total, 1);
+}
+// ตั้งค่า "พิมพ์อัตโนมัติเมื่อออเดอร์ชำระแล้ว" — ต่อเครื่อง (localStorage) เข้าชุดกับตั้งค่าพิมพ์อื่น
+function autoPrintOnPaidCfg() { try { return JSON.parse(localStorage.getItem('recipro_autoprint_paid') || '{}') || {}; } catch (e) { return {}; } }
+function setAutoPrintOnPaid(key, on) { const c = autoPrintOnPaidCfg(); c[key] = !!on; localStorage.setItem('recipro_autoprint_paid', JSON.stringify(c)); if (typeof ui !== 'undefined' && ui.toast) ui.toast('อัปเดตการพิมพ์เมื่อชำระแล้ว'); renderOnlineMenu(); }
+function autoPrintOnPaidAny() { const c = autoPrintOnPaidCfg(); return !!(c.central || c.kitchen || c.receipt); }
+function autoPrintOnPaid(o) { const c = autoPrintOnPaidCfg(); if (c.central) printOrderCentral(o); if (c.kitchen) autoPrintOrder(o); if (c.receipt) printOrderReceipt(o); }
 function setBusinessType(v) { settings.businessType = v; saveAll(); applyTerminology(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('ปรับเป็น: ' + ((BIZ_TEMPLATES[v] || {}).label || v)); }
 
 // #1: แจ้งเตือนออเดอร์ออนไลน์ใหม่ — โพลทุก 30 วิ เมื่อเปิดเมนูออนไลน์ + เสียง/เด้งเตือน

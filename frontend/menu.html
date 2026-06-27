@@ -358,7 +358,7 @@ async function submitOrder(){
     const qrBlock = prepay
       ? `<div style="margin:10px 0;"><img src="https://promptpay.io/${encodeURIComponent(pay.promptpay)}/${Number(d.total).toFixed(2)}.png" alt="PromptPay QR" style="width:200px;height:200px;border:1px solid #ddd;border-radius:10px;background:#fff;padding:6px;"></div>
          <p class="muted">สแกนพร้อมเพย์เพื่อโอน ${fmt(d.total)} แล้วแจ้งสลิปกับร้าน · ร้านจะเริ่มทำเมื่อยืนยันยอด</p>`
-      : `<p class="muted">กรุณารอรับที่ร้าน · จ่ายเงินตอนรับของ · แจ้งหมายเลขคิวกับพนักงาน</p>`;
+      : `<div style="margin:10px 0;padding:12px 14px;border-radius:14px;background:#fef3c7;border:1.5px solid #f6c453;color:#92400e;font-weight:700;font-size:14px;">💵 กรุณาติดต่อชำระเงินที่เคาน์เตอร์<div style="font-weight:400;font-size:12px;margin-top:3px;">แจ้งหมายเลขคิวกับพนักงาน · ร้านจะเริ่มทำหลังรับชำระ</div></div>`;
     LAST_ORDER = { order_no: d.order_no, queue: d.queue_number, total: d.total, name: body.customer_name || '', note: body.note || '',
       shop: document.getElementById('shopName').textContent || 'ร้าน', items: items.map(it => ({ name: it.name, qty: it.qty, price: it.price, options: it.options })) };
     document.getElementById('sheet').innerHTML = `<div class="done"><div>สั่งสำเร็จ! 🎉</div>
