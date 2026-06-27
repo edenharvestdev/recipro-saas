@@ -10505,11 +10505,12 @@ function renderRecurringSection() {
       })()}
     </div>
     ${rows}
-    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
-      <input id="rcrName" placeholder="ชื่อ เช่น ค่าเช่า" style="flex:2;min-width:120px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
-      <input id="rcrAmount" type="number" step="any" placeholder="ยอด" style="flex:1;min-width:70px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
-      <input id="rcrDay" type="number" min="1" max="31" value="1" title="วันที่ของเดือน" style="width:60px;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">
-      <button class="btn btn-ghost btn-sm" onclick="addRecurring()">${icon('plus')} เพิ่ม</button>
+    <div style="font-size:11px;color:var(--color-text-muted);margin-top:10px;margin-bottom:3px;">เพิ่มรายจ่ายประจำ — ตั้ง "วันครบกำหนด" เพื่อให้ระบบแจ้งเตือนทุกเดือน</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;">
+      <label style="display:flex;flex-direction:column;flex:2;min-width:120px;font-size:11px;color:var(--color-text-muted);">ชื่อรายการ<input id="rcrName" placeholder="ชื่อ เช่น ค่าเช่า" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);margin-top:2px;"></label>
+      <label style="display:flex;flex-direction:column;flex:1;min-width:70px;font-size:11px;color:var(--color-text-muted);">ยอด (บาท)<input id="rcrAmount" type="number" step="any" placeholder="ยอด" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);margin-top:2px;"></label>
+      <label style="display:flex;flex-direction:column;width:86px;font-size:11px;color:var(--color-text-muted);">🔔 วันครบกำหนด<input id="rcrDay" type="number" min="1" max="31" value="1" title="ครบกำหนดทุกวันที่นี้ของเดือน → แจ้งเตือน" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);margin-top:2px;"></label>
+      <button class="btn btn-ghost btn-sm" onclick="addRecurring()" style="align-self:flex-end;">${icon('plus')} เพิ่ม</button>
     </div>
     ${recurringExpenses.length ? `<button class="btn btn-primary btn-sm" onclick="postRecurringThisMonth()" style="margin-top:10px;width:100%;">${icon('check')} ลงรายจ่ายประจำเดือนนี้ (แก้ตัวเลขทีหลังได้)</button>` : ''}
   </div>`;
