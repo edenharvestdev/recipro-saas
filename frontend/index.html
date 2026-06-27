@@ -3612,7 +3612,7 @@ function applyBootstrapData(data) {
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
       posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
-      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '' }; })(),
+      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top' }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     applyTerminology();
@@ -10924,6 +10924,7 @@ function renderOnlineMenu() {
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">ธีมสำเร็จรูป<select onchange="setMenuTheme(this.value)" style="${selStyle}">${themes.map(([v,l]) => `<option value="${v}"${(mc.theme||'recipro')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">กรอบการ์ด<select onchange="setMenuFrame(this.value)" style="${selStyle}">${frames.map(([v,l]) => `<option value="${v}"${(mc.frame||'soft')===v?' selected':''}>${l}</option>`).join('')}</select></label>
+        <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">แถบหมวดอยู่<select onchange="setMenuTabPos(this.value)" style="${selStyle}">${[['top','ด้านบน'],['left','ด้านซ้าย'],['right','ด้านขวา']].map(([v,l]) => `<option value="${v}"${(mc.tabPos||'top')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <a href="${esc(url)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('eye')} ดูตัวอย่าง</a>
         <a href="${esc(url)}?kiosk=1" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('monitor')} โหมดจอร้าน (kiosk)</a>
       </div>
@@ -11078,6 +11079,7 @@ function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll()
 function _menuCfg() { if (!settings.menuConfig || typeof settings.menuConfig !== 'object') settings.menuConfig = { theme: 'recipro', frame: 'soft', promos: [], showcaseOn: false }; if (!Array.isArray(settings.menuConfig.promos)) settings.menuConfig.promos = []; return settings.menuConfig; }
 function setMenuTheme(v) { _menuCfg().theme = v || 'recipro'; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เปลี่ยนธีมเมนูแล้ว'); renderOnlineMenu(); }
 function setMenuFrame(v) { _menuCfg().frame = v || 'soft'; saveAll(); renderOnlineMenu(); }
+function setMenuTabPos(v) { _menuCfg().tabPos = (v === 'left' || v === 'right') ? v : 'top'; saveAll(); renderOnlineMenu(); }
 function setMenuBg(v) { _menuCfg().bg = v || ''; saveAll(); renderOnlineMenu(); }
 function setMenuAccent(v) { _menuCfg().accent = v || ''; saveAll(); renderOnlineMenu(); }
 function setShowcaseOn(on) { _menuCfg().showcaseOn = !!on; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(on ? 'เปิดหน้าโปรโมชั่นก่อนเข้าเมนู' : 'ปิดหน้าโปรโมชั่น'); renderOnlineMenu(); }

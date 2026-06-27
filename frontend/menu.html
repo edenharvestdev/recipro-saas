@@ -28,15 +28,16 @@
   body{background:linear-gradient(180deg,var(--m-bg1) 0%,var(--m-bg2) 100%);color:var(--m-text);padding-bottom:96px;min-height:100vh}
   header{background:linear-gradient(135deg,var(--m-head1),var(--m-head2));padding:18px 16px;position:sticky;top:0;z-index:5;box-shadow:0 2px 12px rgba(124,58,237,.08);border-bottom:1px solid rgba(124,58,237,.06)}
   header h1{font-size:21px;font-weight:800} header .sub{font-size:12px;color:var(--m-muted);margin-top:3px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;padding:16px}
-  .card{background:var(--m-card);border-radius:var(--m-cardr);border:var(--m-cardbd);overflow:hidden;box-shadow:var(--m-cardsh);display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;animation:pop .35s ease both}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:11px;padding:14px}
+  .card{background:var(--m-card);border-radius:var(--m-cardr);border:var(--m-cardbd);overflow:hidden;box-shadow:var(--m-cardsh);display:flex;flex-direction:column;transition:transform .15s,box-shadow .15s;animation:pop .35s ease both;cursor:pointer}
   @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
   .card:active{transform:scale(.97)}
-  .card .img{height:148px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;position:relative}
+  .card .img{height:112px;background:#eee center/cover no-repeat;display:flex;align-items:flex-end;position:relative}
   .card .img::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.45))}
   .card .swatch{position:absolute;left:10px;top:10px;background:rgba(255,255,255,.92);color:var(--m-accent);font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;z-index:1;letter-spacing:.3px}
-  .card .nm-img{position:absolute;left:12px;right:12px;bottom:9px;color:#fff;font-size:15px;font-weight:800;line-height:1.2;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.4)}
-  .card .tapcue{position:absolute;right:8px;top:8px;z-index:1;background:rgba(0,0,0,.45);color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:20px;backdrop-filter:blur(2px)}
+  .card .nm-img{position:absolute;left:10px;right:10px;bottom:8px;color:#fff;font-size:13.5px;font-weight:800;line-height:1.2;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .card .optbadge{position:absolute;right:8px;top:8px;z-index:1;background:var(--m-accent);color:#fff;font-size:9px;font-weight:800;padding:2px 7px;border-radius:20px}
+  .card .more{font-size:11px;color:var(--m-accent);font-weight:700}
   .sheet .sd-img{display:block;width:100%;max-height:38vh;height:auto;object-fit:contain;border-radius:14px;margin:0 auto 10px;background:var(--m-bg2)}
   .sheet .sd-desc{font-size:14px;color:#555;line-height:1.55;margin:8px 0;white-space:pre-line}
   .sheet .sd-rev{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--m-accent);font-weight:700;text-decoration:none;margin-bottom:4px}
@@ -52,6 +53,14 @@
   .foldertabs::-webkit-scrollbar{display:none}
   .ftab{flex:0 0 auto;border:none;background:var(--m-head2);color:var(--m-accent);font-size:13px;font-weight:800;padding:9px 16px;border-radius:12px 12px 0 0;cursor:pointer;margin-right:4px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.05);opacity:.7;transition:opacity .15s,transform .15s;position:relative;top:2px}
   .ftab.on{opacity:1;background:var(--m-card);color:var(--m-accent);box-shadow:0 -2px 8px rgba(0,0,0,.08);top:0;border-bottom:3px solid var(--m-accent)}
+  /* ตำแหน่งแถบหมวด: ซ้าย/ขวา (ค่าเริ่มต้น = บน) */
+  body[data-tabpos="left"] #gridwrap, body[data-tabpos="right"] #gridwrap{display:flex;align-items:flex-start;gap:10px}
+  body[data-tabpos="right"] #gridwrap{flex-direction:row-reverse}
+  body[data-tabpos="left"] #gridwrap .grid, body[data-tabpos="right"] #gridwrap .grid{flex:1;min-width:0}
+  body[data-tabpos="left"] .foldertabs, body[data-tabpos="right"] .foldertabs{flex-direction:column;overflow-x:visible;overflow-y:auto;flex:0 0 132px;width:132px;padding:14px 0 14px 12px;position:sticky;top:8px;max-height:90vh}
+  body[data-tabpos="right"] .foldertabs{padding:14px 12px 14px 0}
+  body[data-tabpos="left"] .ftab, body[data-tabpos="right"] .ftab{width:100%;text-align:left;border-radius:10px;margin:0 0 5px 0;top:0;box-shadow:none;padding:10px 12px}
+  body[data-tabpos="left"] .ftab.on, body[data-tabpos="right"] .ftab.on{border-bottom:none;border-left:3px solid var(--m-accent);box-shadow:0 2px 8px rgba(0,0,0,.08)}
   /* 🎉 หน้าโปรโมชั่น/สื่อก่อนเข้าเมนู */
   #showcase{position:fixed;inset:0;background:linear-gradient(180deg,var(--m-bg1),var(--m-bg2));z-index:30;display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:24px 16px 30px}
   #showcase.hide{display:none}
@@ -122,7 +131,6 @@
 <header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div>
   <div class="viewtoggle"><button id="vbBook" class="on" onclick="setView('book')">📖 เล่ม</button><button id="vbGrid" onclick="setView('grid')">▦ ตาราง</button></div>
 </header>
-<div class="foldertabs" id="foldertabs" style="display:none"></div>
 <div id="bookView">
   <div class="bookwrap">
     <button class="nav nav-prev" id="navPrev" onclick="goPage(-1)">‹</button>
@@ -131,7 +139,7 @@
   </div>
   <div class="pageind" id="pageInd"></div>
 </div>
-<div class="grid" id="grid" style="display:none"></div>
+<div id="gridwrap"><div class="foldertabs" id="foldertabs" style="display:none"></div><div class="grid" id="grid" style="display:none"></div></div>
 <div id="showcase" class="hide"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
 
@@ -142,7 +150,7 @@ const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 const QS = new URLSearchParams(location.search);
 const KIOSK = QS.get('kiosk') === '1';
 let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
-let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false, bg:'', accent:'' };
+let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false, bg:'', accent:'', tabPos:'top' };
 let catFilter = '';   // '' = ทุกหมวด (แท็บโฟลเดอร์)
 let pendingItem = null, pendingSel = {}, LAST_ORDER = null;
 
@@ -156,6 +164,7 @@ function applyConfig(cfg){
   const sv = (k, v) => { if (v) root.style.setProperty(k, v); else root.style.removeProperty(k); };
   sv('--m-bg1', CONFIG.bg); sv('--m-bg2', CONFIG.bg);
   sv('--m-accent', CONFIG.accent); sv('--m-accent2', CONFIG.accent); sv('--m-accent3', CONFIG.accent);
+  document.body.setAttribute('data-tabpos', (CONFIG.tabPos === 'left' || CONFIG.tabPos === 'right') ? CONFIG.tabPos : 'top');
   if (KIOSK) document.body.classList.add('kiosk');
 }
 const fmt = n => '฿' + Number(n||0).toLocaleString('th-TH');
@@ -177,23 +186,20 @@ async function load(){
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; hideLoader(); }
 }
 function hideLoader(){ const l=document.getElementById('loader'); if(l){ l.classList.add('hide'); setTimeout(()=>l.remove(),450); } }
-// การ์ดเมนู (ใช้ร่วมกันทั้งโหมดตารางและโหมดเล่ม)
+// การ์ดเมนู — แตะทั้งใบเพื่อดูรายละเอียดแล้วค่อยสั่ง (ไม่มีปุ่มสั่งบนการ์ด, ไม่โชว์รายละเอียดบนการ์ด)
 function itemCard(it, i){
   const h = hueOf(it.name || 'x');
   const bg = it.img ? `background-image:url('${esc(it.img)}')` : `background:linear-gradient(135deg,hsl(${h} 70% 64%),hsl(${(h + 45) % 360} 72% 52%))`;
-  const link = it.link ? `<a class="rev" href="${esc(it.link)}" target="_blank" rel="noopener">★ ดูรีวิว/รายละเอียด →</a>` : '';
-  const canDetail = !!(it.detail || it.link || (it.options && it.options.length));
-  return `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms">
-      <div class="img" style="${bg};cursor:pointer" onclick="openDetail('${it.id}')">
+  const opt = (it.options && it.options.length) ? '<span class="optbadge">มีตัวเลือก</span>' : '';
+  return `<div class="card" style="animation-delay:${Math.min(i*40,400)}ms" onclick="openDetail('${it.id}')">
+      <div class="img" style="${bg}">
         <span class="swatch">${esc(it.category || 'เมนู')}</span>
-        ${canDetail ? '<span class="tapcue">👆 แตะดูรายละเอียด</span>' : ''}
+        ${opt}
         <div class="nm-img">${esc(it.name)}</div>
       </div>
       <div class="b">
-        ${it.detail ? `<div class="desc" style="cursor:pointer" onclick="openDetail('${it.id}')">${esc(it.detail)}</div>` : ''}
         <div class="pr">${fmt(it.price)}</div>
-        ${link}
-        <button class="add" onclick="addItem('${it.id}')">+ เพิ่มลงตะกร้า</button>
+        <div class="more">ดูรายละเอียด · สั่ง →</div>
       </div></div>`;
 }
 function menuCats(){
