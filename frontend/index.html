@@ -7118,8 +7118,9 @@ function renderPosGrid() {
   sellable.forEach(r => pushItem(catOf(r), recCardHtml(r)));
   mats.forEach(m => pushItem(catOf(m), matCardHtml(m)));
   // เรียงหัวข้อหมวดให้ตรงลำดับชิปด้านบน (หมวดที่ร้านจัดไว้ posCategories) — หมวดนอกรายการเรียง ก-ฮ, ไม่ระบุหมวดท้ายสุด
-  const _managed = Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : [];
-  const _catIdx = c => { if (c === POS_NOCAT) return 1e6; const i = _managed.indexOf(c); return i >= 0 ? i : 1e5; };
+  const _managed = (Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : []).map(s => String(s).trim());
+  const _idxMap = new Map(); _managed.forEach((c, i) => { if (!_idxMap.has(c)) _idxMap.set(c, i); const lc = c.toLowerCase(); if (!_idxMap.has(lc)) _idxMap.set(lc, i); });
+  const _catIdx = c => { if (c === POS_NOCAT) return 1e6; const t = String(c).trim(); const i = _idxMap.has(t) ? _idxMap.get(t) : (_idxMap.has(t.toLowerCase()) ? _idxMap.get(t.toLowerCase()) : -1); return i >= 0 ? i : 1e5; };
   const cats = [...groups.keys()].sort((a, b) => { const d = _catIdx(a) - _catIdx(b); return d !== 0 ? d : a.localeCompare(b, 'th'); });
   const showHeaders = !posCategoryFilter && !posSearch && cats.length > 1;
   let html = '';
