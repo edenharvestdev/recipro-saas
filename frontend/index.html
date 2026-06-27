@@ -10807,6 +10807,41 @@ async function saveDeliveryPayout() {
 // ============================================================
 // M3: เมนูออนไลน์ (QR) ฝั่งร้าน — เปิด/ปิด + แสดง QR/ลิงก์ + คิวออเดอร์ลูกค้า
 // ============================================================
+// การ์ดตั้งค่าเครื่องพิมพ์ & พิมพ์อัตโนมัติ — แยกเป็นการ์ดเดี่ยวเต็มความกว้าง (เลิกยัดในคอลัมน์แคบของ QR)
+function printerSettingsCard() {
+  const cats = [...new Set([...recipes.map(r => r.category), ...materials.map(m => m.category)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
+  const stOpt = (sel) => ['<option value="">ทุกเครื่อง</option>'].concat(PRINT_STATIONS.map(s => `<option value="${esc(s)}"${sel === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
+  const dev = deviceStation(); const apPaid = autoPrintOnPaidCfg();
+  const SEL = 'font-size:12px;width:auto;min-width:130px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);';
+  const showRoute = window._showRoute !== false;
+  const routeRows = showRoute ? `<div style="margin-top:8px;padding:10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
+      <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">หมวดเมนู → สถานี/เครื่องพิมพ์ (หมวดที่ไม่กำหนด = พิมพ์ทุกเครื่อง)</div>
+      ${cats.length ? cats.map(c => `<div style="display:grid;grid-template-columns:1fr 160px;gap:12px;align-items:center;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border-soft);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c)}">${esc(c)}</span><select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;width:100%;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
+    </div>` : '';
+  return `<div class="glass-card" style="margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:800;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ <span style="font-size:10px;color:var(--color-text-muted);font-weight:400;">(ตั้งแยกแต่ละเครื่อง)</span></div>
+    <div style="font-size:11px;color:var(--color-text-muted);background:var(--surface-2);border-radius:8px;padding:6px 9px;margin-bottom:10px;line-height:1.5;">📌 ต่อเครื่องพิมพ์ Bluetooth/WiFi กับมือถือ/แท็บเล็ตเครื่องนั้นในตั้งค่าอุปกรณ์ก่อน แล้วตั้งเป็นเครื่องพิมพ์เริ่มต้น — ค่าด้านล่างนี้ตั้งแยกตามเครื่อง</div>
+    <div style="display:flex;gap:10px 18px;flex-wrap:wrap;font-size:12px;align-items:center;">
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวอัตโนมัติ:</span><select onchange="setAutoPrintOnline(this.value==='on')" style="${SEL}"><option value="off"${!autoPrintOnlineOn() ? ' selected' : ''}>ปิด</option><option value="on"${autoPrintOnlineOn() ? ' selected' : ''}>เปิด (ออเดอร์เข้า→พิมพ์)</option></select></label>
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">เครื่องนี้คือสถานี:</span><select onchange="setDeviceStation(this.value)" style="${SEL}"><option value="all"${dev === 'all' ? ' selected' : ''}>ทุกสถานี</option>${PRINT_STATIONS.map(s => `<option value="${esc(s)}"${dev === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">ตั๋วครัวกี่ใบ:</span><select onchange="setPosKitchenCopies(this.value)" style="${SEL}">${[1, 2, 3].map(n => `<option value="${n}"${posKitchenCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}</select></label>
+    </div>
+    <div style="display:flex;gap:10px 18px;flex-wrap:wrap;font-size:12px;align-items:center;margin-top:8px;">
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">พิมพ์บิลหน้าร้านอัตโนมัติ:</span><select onchange="setAutoPrintBill(this.value==='on')" style="${SEL}"><option value="off"${!autoPrintBillOn() ? ' selected' : ''}>ปิด</option><option value="on"${autoPrintBillOn() ? ' selected' : ''}>เปิด (ขายเสร็จ→พิมพ์)</option></select></label>
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">บิลกี่ใบ:</span><select onchange="setPosBillCopies(this.value)" style="${SEL}">${[1, 2, 3].map(n => `<option value="${n}"${posBillCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}</select></label>
+      <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">ใบหลังร้าน:</span><select onchange="setKitchenTicketMode(this.value)" style="${SEL}"><option value="receipt"${(settings.kitchenTicketMode || 'receipt') !== 'sticker' ? ' selected' : ''}>ใบรวม 80mm</option><option value="sticker"${settings.kitchenTicketMode === 'sticker' ? ' selected' : ''}>สติกเกอร์ต่อแก้ว</option></select></label>
+    </div>
+    <div style="margin:10px 0 2px;padding-top:8px;border-top:1px dashed var(--border-soft);">
+      <div style="font-size:12px;font-weight:700;margin-bottom:5px;">🧾 ออเดอร์ออนไลน์ "ชำระแล้ว" → พิมพ์อัตโนมัติ:</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;">
+        ${[['central', 'ใบส่งครัวกลาง'], ['kitchen', 'ตั๋วครัว/สติกเกอร์'], ['receipt', 'ใบเสร็จลูกค้า']].map(([k, lbl]) => `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" ${apPaid[k] ? 'checked' : ''} onchange="setAutoPrintOnPaid('${k}',this.checked)" style="width:15px;height:15px;"> ${lbl}</label>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--color-text-muted);margin-top:4px;">กดปุ่ม "ชำระแล้ว" ที่ออเดอร์ → ระบบพิมพ์รายการที่ติ๊กไว้ให้อัตโนมัติ</div>
+    </div>
+    <div style="margin-top:8px;"><button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=(window._showRoute===false);renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${showRoute ? 'ซ่อนเส้นทางเมนู→เครื่อง' : 'ตั้งเส้นทาง เมนู→เครื่อง'}</button></div>
+    ${routeRows}
+  </div>`;
+}
 function renderOnlineMenu() {
   const el = $('onlineMenuSection');
   if (!el) return;
@@ -10905,7 +10940,7 @@ function renderOnlineMenu() {
         <div style="font-size:11px;color:var(--color-text-muted);margin-top:5px;">แบนเนอร์โปรโมชั่น/เมนูพิเศษ — ลูกค้าเห็นก่อนเลือกสินค้า แล้วกด "เลือกเมนู" เข้าต่อได้</div>
       </div>
     </div>`;
-  })()}<div class="glass-card" style="margin-bottom:14px;">
+  })()}${printerSettingsCard()}<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <h3 style="font-size:15px;margin:0;flex:1;"><span class="ico" data-icon="qr-code"></span> เมนูออนไลน์ (QR)</h3>
       ${pending.length ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:12px;">🔔 ${pending.length} ออเดอร์ใหม่</span>` : ''}
@@ -10925,69 +10960,6 @@ function renderOnlineMenu() {
           </select>
           ${isPrepay && !settings.pp ? '<span style="font-size:11px;color:#d97706;">⚠ ยังไม่ตั้งเบอร์พร้อมเพย์ในตั้งค่า</span>' : ''}
         </div>
-        <div style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span style="color:var(--color-text-muted);">ใบหลังร้าน:</span>
-          <select onchange="setKitchenTicketMode(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-            <option value="receipt"${(settings.kitchenTicketMode || 'receipt') !== 'sticker' ? ' selected' : ''}>ใบรวม 80mm</option>
-            <option value="sticker"${settings.kitchenTicketMode === 'sticker' ? ' selected' : ''}>สติกเกอร์ต่อแก้ว (50×40)</option>
-          </select>
-        </div>
-        ${(() => {
-          const cats = [...new Set([...recipes.map(r => r.category), ...materials.map(m => m.category)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
-          const stOpt = (sel) => ['<option value="">ทุกเครื่อง</option>'].concat(PRINT_STATIONS.map(s => `<option value="${esc(s)}"${sel === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
-          const dev = deviceStation();
-          const routeRows = (window._showRoute !== false) ? `<div style="margin-top:6px;padding:8px 10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
-            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">หมวดเมนู → สถานี (หมวดที่ไม่กำหนด = พิมพ์ทุกเครื่อง)</div>
-            ${cats.length ? cats.map(c => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;"><span style="flex:1;min-width:0;">${esc(c)}</span>
-              <select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;padding:3px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
-          </div>` : '';
-          const apPaid = autoPrintOnPaidCfg();
-          return `<div style="margin-top:10px;padding:11px 13px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);">
-            <div style="font-size:13px;font-weight:800;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ <span style="font-size:10px;color:var(--color-text-muted);font-weight:400;">(ตั้งแยกแต่ละเครื่อง)</span></div>
-            <div style="font-size:11px;color:var(--color-text-muted);background:var(--surface-1);border-radius:8px;padding:6px 9px;margin-bottom:8px;line-height:1.5;">📌 วิธีต่อเครื่องพิมพ์ Bluetooth/WiFi: จับคู่/ต่อเครื่องพิมพ์กับ <b>มือถือ/แท็บเล็ตเครื่องนั้น</b> ในตั้งค่าอุปกรณ์ก่อน แล้วตั้งเป็น "เครื่องพิมพ์เริ่มต้น" — เวลากดพิมพ์ในแอป ระบบจะส่งไปเครื่องนั้นให้เอง · ตั้งค่าด้านล่างนี้แยกตามเครื่อง (สถานี + หมวด→เครื่อง)</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
-              <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวอัตโนมัติ:</span>
-              <select onchange="setAutoPrintOnline(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-                <option value="off"${!autoPrintOnlineOn() ? ' selected' : ''}>ปิด</option>
-                <option value="on"${autoPrintOnlineOn() ? ' selected' : ''}>เปิด (ออเดอร์เข้า→พิมพ์เอง)</option>
-              </select>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
-              <span style="color:var(--color-text-muted);">เครื่องนี้คือสถานี:</span>
-              <select onchange="setDeviceStation(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-                <option value="all"${dev === 'all' ? ' selected' : ''}>ทุกสถานี (เครื่องเดียว)</option>
-                ${PRINT_STATIONS.map(s => `<option value="${esc(s)}"${dev === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}
-              </select>
-              <span style="font-size:10px;color:var(--color-text-muted);">(ตั้งแยกแต่ละเครื่อง)</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
-              <span style="color:var(--color-text-muted);">พิมพ์ตั๋วครัวกี่ใบ:</span>
-              <select onchange="setPosKitchenCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-                ${[1, 2, 3].map(n => `<option value="${n}"${posKitchenCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
-              </select>
-              <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=(window._showRoute===false);renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${(window._showRoute !== false) ? 'ซ่อนเส้นทาง' : 'เส้นทางเมนู→เครื่อง'}</button>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-bottom:5px;">
-              <span style="color:var(--color-text-muted);">พิมพ์บิลหน้าร้านอัตโนมัติ:</span>
-              <select onchange="setAutoPrintBill(this.value==='on')" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-                <option value="off"${!autoPrintBillOn() ? ' selected' : ''}>ปิด (กดพิมพ์เอง)</option>
-                <option value="on"${autoPrintBillOn() ? ' selected' : ''}>เปิด (ขายเสร็จ→พิมพ์เอง)</option>
-              </select>
-              <span style="color:var(--color-text-muted);">กี่ใบ:</span>
-              <select onchange="setPosBillCopies(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-                ${[1, 2, 3].map(n => `<option value="${n}"${posBillCopies() === n ? ' selected' : ''}>${n} ใบ</option>`).join('')}
-              </select>
-            </div>
-            <div style="margin:7px 0 2px;padding-top:7px;border-top:1px dashed var(--border-soft);">
-              <div style="font-size:12px;font-weight:700;margin-bottom:5px;">🧾 ออเดอร์ออนไลน์ "ชำระแล้ว" → พิมพ์อัตโนมัติ:</div>
-              <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;">
-                ${[['central', 'ใบส่งครัวกลาง'], ['kitchen', 'ตั๋วครัว/สติกเกอร์'], ['receipt', 'ใบเสร็จลูกค้า']].map(([k, lbl]) => `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" ${apPaid[k] ? 'checked' : ''} onchange="setAutoPrintOnPaid('${k}',this.checked)" style="width:15px;height:15px;"> ${lbl}</label>`).join('')}
-              </div>
-              <div style="font-size:10px;color:var(--color-text-muted);margin-top:4px;">เมื่อกดปุ่ม "ชำระแล้ว" ที่ออเดอร์ ระบบจะพิมพ์รายการที่ติ๊กไว้ให้อัตโนมัติ</div>
-            </div>
-            ${routeRows}
-          </div>`;
-        })()}
         <div style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="color:var(--color-text-muted);">เสียงเตือนออเดอร์ใหม่:</span>
           <select onchange="setOrderSound(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
