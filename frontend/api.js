@@ -40,11 +40,17 @@
     const t = getAccess();
     if (t) headers.Authorization = 'Bearer ' + t;
     if (window.RECIPRO_SHOP_OVERRIDE) headers['X-Shop-Id'] = window.RECIPRO_SHOP_OVERRIDE;
-    const res = await fetch(BASE + path, {
-      method,
-      headers,
-      body: body != null ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(BASE + path, {
+        method,
+        headers,
+        body: body != null ? JSON.stringify(body) : undefined,
+      });
+    } catch (netErr) {
+      netErr.isNetworkError = true;
+      throw netErr;
+    }
     if (res.status === 401 && !retried && getRefresh()) {
       if (await tryRefresh()) return raw(method, path, body, true);
     }

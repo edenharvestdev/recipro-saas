@@ -3778,7 +3778,17 @@ async function boot() {
     $('btnStripePortal').style.display = 'none';
   } else {
     // โหมดคลาวด์จริง — โหลดข้อมูลร้านทั้งก้อนจาก Node API
-    const data = await API.get('/api/bootstrap');
+    let data;
+    try {
+      data = await API.get('/api/bootstrap');
+      cacheBootstrap(data);
+    } catch(e) {
+      if (e.isNetworkError || !navigator.onLine) {
+        data = loadBootstrapCache();
+        if (data) { updateCloudStatus("โหลดจากแคช (ออฟไลน์)", "wifi-off"); }
+        else throw e;
+      } else { throw e; }
+    }
     applyBootstrapData(data);
     // โหลดรายชื่อร้านทั้งหมดสำหรับ superadmin (shop switcher)
     if (data.isSuperadmin) {
@@ -3806,6 +3816,7 @@ async function boot() {
   }
 
   updateCloudStatus(isMockMode ? "โหมดจำลองออฟไลน์ (อัปเดตบราวเซอร์แล้ว)" : "ซิงค์คลาวด์เรียบร้อย", isMockMode ? "wifi-off" : "circle-check");
+  if (!isMockMode) initOfflineMode();
 
   renderIcons();
   // QR Box: ถ้า bookmark ด้วย #qrbox ให้เปิดโหมดจอลูกค้าอัตโนมัติ (เครื่องที่ตั้งเป็นจอ)
@@ -3813,6 +3824,9 @@ async function boot() {
 }
 
 let syncTimeout = null;
+let _offlinePending = false;
+let _offlineOrderQueue = [];
+
 function saveAll() {
   updateCloudStatus(isMockMode ? "บันทึกในสตอเรจเครื่องแล้ว..." : "กำลังบันทึกข้อมูล...");
   refreshDashIfVisible();
@@ -3848,6 +3862,91 @@ function hideSyncError() {
   if (el) { el.style.display = 'none'; document.body.style.paddingTop = ''; }
 }
 function retrySync() { updateCloudStatus('กำลังลองบันทึกใหม่...', 'refresh-cw'); saveAll(); }
+
+// ===== Phase D: Offline Mode =====
+function cacheBootstrap(data) {
+  const key = 'rcp_bsc_' + (data.shop ? data.shop.id : 'anon');
+  try { localStorage.setItem(key, JSON.stringify(data)); localStorage.setItem('rcp_bsc_last', key); } catch(e) {}
+}
+function loadBootstrapCache() {
+  try {
+    const k = localStorage.getItem('rcp_bsc_last');
+    if (!k) return null;
+    const raw = localStorage.getItem(k);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+function _saveOfflineQueue() {
+  try { localStorage.setItem('rcp_oq', JSON.stringify(_offlineOrderQueue)); } catch(e) {}
+}
+function _loadOfflineQueue() {
+  try { const r = localStorage.getItem('rcp_oq'); _offlineOrderQueue = r ? JSON.parse(r) : []; } catch(e) { _offlineOrderQueue = []; }
+}
+function _updateOfflineBanner() {
+  let el = document.getElementById('offlineBanner');
+  if (!el) return;
+  const offline = !navigator.onLine;
+  const pending = _offlinePending || _offlineOrderQueue.length > 0;
+  if (!offline && !pending) { el.style.display = 'none'; document.body.style.paddingTop = ''; return; }
+  el.style.display = 'flex';
+  if (offline && pending) {
+    el.innerHTML = '📡 ออฟไลน์ — มีข้อมูลรอบันทึก จะซิงค์อัตโนมัติเมื่อเชื่อมต่อ';
+    el.style.background = '#d97706'; el.style.color = '#1c1917';
+  } else if (offline) {
+    el.innerHTML = '📡 ออฟไลน์ — กำลังใช้ข้อมูลที่แคชไว้';
+    el.style.background = '#f59e0b'; el.style.color = '#1c1917';
+  } else if (pending) {
+    el.innerHTML = '🔄 กลับออนไลน์แล้ว — กำลังซิงค์ข้อมูล...';
+    el.style.background = '#3b82f6'; el.style.color = '#fff';
+  }
+  document.body.style.paddingTop = el.offsetHeight + 'px';
+}
+async function replayOfflineQueue() {
+  if (!_offlineOrderQueue.length) return;
+  const queue = [..._offlineOrderQueue];
+  _offlineOrderQueue = [];
+  _saveOfflineQueue();
+  for (const op of queue) {
+    try {
+      if (op.method === 'PATCH') await API.patch(op.path, op.body);
+      else if (op.method === 'POST') await API.post(op.path, op.body);
+    } catch(e) { _offlineOrderQueue.push(op); }
+  }
+  _saveOfflineQueue();
+}
+async function _offlineAwarePatch(path, body) {
+  if (!navigator.onLine) {
+    _offlineOrderQueue.push({ method: 'PATCH', path, body });
+    _saveOfflineQueue(); _updateOfflineBanner();
+    return null;
+  }
+  try { return await API.patch(path, body); }
+  catch(e) {
+    if (e.isNetworkError) {
+      _offlineOrderQueue.push({ method: 'PATCH', path, body });
+      _saveOfflineQueue(); _offlinePending = true; _updateOfflineBanner();
+      return null;
+    }
+    throw e;
+  }
+}
+function initOfflineMode() {
+  _loadOfflineQueue();
+  if (!document.getElementById('offlineBanner')) {
+    const el = document.createElement('div');
+    el.id = 'offlineBanner';
+    el.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:100002;padding:9px 16px;font-size:13px;font-weight:700;text-align:center;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18);font-family:inherit;';
+    document.body.prepend(el);
+  }
+  window.addEventListener('offline', () => _updateOfflineBanner());
+  window.addEventListener('online', async () => {
+    _updateOfflineBanner();
+    if (_offlineOrderQueue.length) await replayOfflineQueue();
+    if (_offlinePending) { _offlinePending = false; saveAll(); }
+    _updateOfflineBanner();
+  });
+  _updateOfflineBanner();
+}
 
 function refreshDashIfVisible() {
   const p = $('dashPage');
@@ -3986,6 +4085,12 @@ async function syncToSupabase() {
     if (res && res.version != null) dataVersion = res.version;   // อัปเดต baseline
     updateCloudStatus("ซิงค์คลาวด์เรียบร้อย", "circle-check");
   } catch (e) {
+    if (e && e.isNetworkError) {
+      _offlinePending = true;
+      _updateOfflineBanner();
+      updateCloudStatus("ออฟไลน์ — จะบันทึกเมื่อเชื่อมต่อใหม่", "wifi-off");
+      return;
+    }
     if (e && e.status === 409) { handleSyncConflict(); return; }
     if (e && e.status === 423) {   // แพ็กเกจหมดอายุ → readonly: เด้งแถบเตือน + หน้าต่ออายุ
       BILLING = Object.assign({}, BILLING, { state: (e.data && e.data.billing_state) || 'readonly' });
@@ -11027,7 +11132,7 @@ async function setOrderStatus(id, status) {
   }
   try {
     const body = (status === 'collected') ? { status, stock_deducted: true } : { status };
-    await API.patch('/api/orders/' + id, body);
+    await _offlineAwarePatch('/api/orders/' + id, body);
     if (o) { o.status = status; if (status === 'collected') o.stockDeducted = true; }
     renderOnlineMenu();
   } catch (e) { ui.alert('อัปเดตสถานะไม่ได้: ' + e.message, { icon: 'alert-triangle' }); }
@@ -11064,7 +11169,7 @@ async function fulfillOrderSale(o) {
 }
 async function setOrderPaid(id, paid) {
   try {
-    await API.patch('/api/orders/' + id, { paid });
+    await _offlineAwarePatch('/api/orders/' + id, { paid });
     const o = orders.find(x => x.id === id);
     const wasPaid = o ? o.paid : false;
     if (o) o.paid = paid;
