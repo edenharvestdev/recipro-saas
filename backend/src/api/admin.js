@@ -241,4 +241,45 @@ router.post('/plans-admin', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// C3: ยอดรวมทุกสาขา (cross-branch summary)
+router.get('/cross-summary', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const fromDate = from || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    const toDate = to || new Date().toISOString().slice(0, 10);
+
+    const shops = (await query('select id, name, status from shops order by name')).rows;
+
+    const summary = await Promise.all(shops.map(async (s) => {
+      const [sales, expenses, orders, members] = await Promise.all([
+        query(`select coalesce(sum((items_json->>'total')::numeric), sum(
+          (select coalesce(sum((item->>'price')::numeric * (item->>'qty')::numeric), 0)
+           from jsonb_array_elements(items_json->'items') item)
+         )) as total, count(*) as cnt
+         from bills where shop_id=$1 and status='paid' and created_at::date between $2 and $3`,
+          [s.id, fromDate, toDate]),
+        query(`select coalesce(sum(amount),0) as total, count(*) as cnt
+               from expenses where shop_id=$1 and expense_date between $2 and $3`,
+          [s.id, fromDate, toDate]),
+        query(`select count(*) as cnt, coalesce(sum(total),0) as total
+               from orders where shop_id=$1 and created_at::date between $2 and $3`,
+          [s.id, fromDate, toDate]),
+        query(`select count(*) as cnt from customers where shop_id=$1`, [s.id]),
+      ]);
+      return {
+        shop_id: s.id, name: s.name, status: s.status,
+        sales_total: Number(sales.rows[0]?.total) || 0,
+        sales_count: Number(sales.rows[0]?.cnt) || 0,
+        expense_total: Number(expenses.rows[0]?.total) || 0,
+        expense_count: Number(expenses.rows[0]?.cnt) || 0,
+        order_total: Number(orders.rows[0]?.total) || 0,
+        order_count: Number(orders.rows[0]?.cnt) || 0,
+        member_count: Number(members.rows[0]?.cnt) || 0,
+      };
+    }));
+
+    res.json({ from: fromDate, to: toDate, shops: summary });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

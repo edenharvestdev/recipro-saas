@@ -867,6 +867,11 @@
                 <button class="btn btn-secondary" onclick="showQrReceive()" style="flex:1; font-size:12px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="qr-code"></span> QR พร้อมเพย์</button>
                 <button class="btn btn-secondary" onclick="sendToQrBox()" style="flex:1; font-size:12px; border-color:#2563eb; color:#2563eb;"><span class="ico" data-icon="monitor"></span> ส่งไปจอลูกค้า</button>
               </div>
+              <div id="posPromoBar" style="display:none;margin-bottom:8px;padding:8px 10px;background:#dcfce7;border-radius:8px;border:1px solid #86efac;align-items:center;justify-content:space-between;gap:6px;">
+                <span id="posPromoLabel" style="font-size:13px;color:#166534;font-weight:600;"></span>
+                <button class="btn btn-ghost btn-sm" style="color:#dc2626;padding:2px 8px;" onclick="clearPosPromo()">✕</button>
+              </div>
+              <button class="btn btn-secondary" onclick="openPromopicker()" style="width:100%;margin-bottom:8px;font-size:13px;border-color:#7c3aed;color:#7c3aed;"><span class="ico" data-icon="ticket"></span> ใช้โปรโมชั่น</button>
               <button class="btn btn-primary" onclick="posCheckout()" style="width:100%;"><span class="ico" data-icon="banknote"></span> ชำระเงิน</button>
               <button class="btn btn-ghost" onclick="openQrBox()" style="width:100%; margin-top:8px; font-size:12px;"><span class="ico" data-icon="tv"></span> เปิดจอ QR Box (เครื่องนี้เป็นจอลูกค้า)</button>
             </div>
@@ -1289,6 +1294,26 @@
           <thead><tr><th>ร้าน</th><th>แพ็กเกจ</th><th>สถานะ</th><th class="r">หมดอายุ</th><th class="r">จ่ายล่าสุด</th><th></th></tr></thead>
           <tbody id="billingList"></tbody>
         </table></div>
+      </div>
+
+      <!-- C3: Cross-Branch Summary -->
+      <div class="glass-card" style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <h2 style="margin:0;"><span class="ico" data-icon="git-compare-arrows"></span> ยอดรวมทุกสาขา</h2>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="crossFrom" onchange="adminLoadCrossBranch()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+            <span style="font-size:13px;color:var(--color-text-muted);">ถึง</span>
+            <input type="date" id="crossTo" onchange="adminLoadCrossBranch()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+            <button class="btn btn-ghost btn-sm" onclick="adminLoadCrossBranch()"><span class="ico" data-icon="refresh-cw"></span></button>
+          </div>
+        </div>
+        <div id="crossBranchStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;"></div>
+        <div class="table-scroll">
+          <table class="lst" id="crossBranchTable">
+            <thead><tr><th>สาขา</th><th class="r">ยอดขาย</th><th class="r">ค่าใช้จ่าย</th><th class="r">กำไร</th><th class="r">ออเดอร์</th><th class="r">สมาชิก</th><th>สถานะ</th></tr></thead>
+            <tbody id="crossBranchBody"><tr><td colspan="7" style="text-align:center;color:var(--color-text-muted);padding:20px;">กดรีเฟรชเพื่อโหลดข้อมูล</td></tr></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="grid-2">
@@ -1767,6 +1792,18 @@
         <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;">สะสมแต้มอัตโนมัติตอนขาย (ใส่เบอร์ลูกค้าในหน้าขาย) · 1 แต้ม / 20฿</p>
         <input id="memberSearch" placeholder="ค้นหาชื่อ/เบอร์…" oninput="renderMembersPage()" style="width:100%;margin-top:10px;padding:9px 12px;border-radius:10px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:14px;">
       </div>
+      <!-- A2: Promotions Management Card -->
+      <div class="glass-card admin-only" style="margin-bottom:16px;">
+        <details id="promoCard">
+          <summary style="font-weight:700;cursor:pointer;font-size:15px;"><span class="ico" data-icon="ticket"></span> โปรโมชั่น / ส่วนลด</summary>
+          <div style="padding-top:12px;">
+            <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 10px;">สร้างโปรโมชั่นสำหรับใช้หน้าขาย — % ลด, ลดคงที่, หรือกรอก promo code</p>
+            <div id="promoList" style="margin-bottom:10px;"></div>
+            <button class="btn btn-ghost btn-sm" onclick="openPromoDrawer(null)"><span class="ico" data-icon="plus"></span> เพิ่มโปรโมชั่น</button>
+          </div>
+        </details>
+      </div>
+
       <div class="glass-card admin-only" id="memberConfigCard" style="margin-bottom:16px;">
         <details>
           <summary style="font-weight:700;cursor:pointer;font-size:15px;"><span class="ico" data-icon="gift"></span> ตั้งค่าสิทธิประโยชน์สมาชิก</summary>
@@ -1783,18 +1820,91 @@
               <button class="btn btn-ghost btn-sm" onclick="addReward()"><span class="ico" data-icon="plus"></span> เพิ่ม</button>
             </div>
             <div id="mcRewardList"></div>
+            <!-- C2: Member Tiers -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border-soft);">
+              <div style="font-size:13px;font-weight:700;margin-bottom:4px;"><span class="ico" data-icon="layers"></span> ระดับสมาชิก (Tiers)</div>
+              <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 8px;">กำหนดระดับสมาชิกตามเงื่อนไข — ระบบแสดง badge + ส่วนลดตามระดับที่ลูกค้าถึง</p>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <span style="font-size:13px;">จัดระดับตาม:</span>
+                <select id="mcTierBy" onchange="saveMemberConfig()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+                  <option value="spent">ยอดซื้อสะสม (฿)</option>
+                  <option value="visits">จำนวนครั้ง</option>
+                  <option value="points">แต้มสะสม</option>
+                </select>
+              </div>
+              <div id="mcTierList" style="margin-bottom:8px;"></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <input id="mcTierName" placeholder="ชื่อระดับ เช่น Silver" style="flex:2;min-width:110px;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <input id="mcTierMin" type="number" min="0" placeholder="ขั้นต่ำ" style="width:90px;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <input id="mcTierDisc" type="number" min="0" max="100" placeholder="ลด %" style="width:80px;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+                <input id="mcTierColor" type="color" value="#7c3aed" style="width:38px;height:36px;border-radius:8px;border:1px solid var(--border-soft);cursor:pointer;padding:2px;">
+                <button class="btn btn-ghost btn-sm" onclick="addMemberTier()"><span class="ico" data-icon="plus"></span> เพิ่มระดับ</button>
+              </div>
+            </div>
           </div>
         </details>
       </div>
       <div class="glass-card">
         <div class="table-scroll"><table class="lst">
-          <thead><tr><th>ชื่อ</th><th>เบอร์</th><th class="r">แต้ม</th><th class="r">มาแล้ว</th><th class="r">ยอดสะสม</th><th></th></tr></thead>
+          <thead><tr><th>ชื่อ</th><th>เบอร์</th><th class="r">แต้ม</th><th class="r">มาแล้ว</th><th class="r">ยอดสะสม</th><th>ระดับ</th><th></th></tr></thead>
           <tbody id="membersList"></tbody>
         </table></div>
       </div>
     </section>
 
   </main>
+
+  <!-- A2: Promo Drawer -->
+  <aside class="drawer" id="promoDrawer" role="dialog" aria-label="ฟอร์มโปรโมชั่น">
+    <div class="drawer-header">
+      <h3 class="drawer-title"><span class="ico" data-icon="ticket"></span> <span id="promoDrawerTitle">เพิ่มโปรโมชั่น</span></h3>
+      <button class="drawer-close" onclick="closeDrawer()" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
+    </div>
+    <div class="drawer-body">
+      <input type="hidden" id="promoId">
+      <div class="field"><label>ชื่อโปรโมชั่น *</label><input id="promoName" placeholder="เช่น ลด 20% วันเกิด"></div>
+      <div class="grid-2">
+        <div class="field">
+          <label>ประเภท</label>
+          <select id="promoType" onchange="togglePromoFields()" style="padding:9px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+            <option value="pct">% ลด</option>
+            <option value="fixed">ลดคงที่ (฿)</option>
+          </select>
+        </div>
+        <div class="field"><label id="promoValueLabel">ค่า (%)</label><input id="promoValue" type="number" min="0" step="any" placeholder="0"></div>
+      </div>
+      <div class="field"><label>Promo Code (ไม่บังคับ)</label><input id="promoCode" placeholder="เช่น WELCOME10 (เว้นว่าง = ไม่ต้องกรอก code)"></div>
+      <div class="field"><label>ยอดซื้อขั้นต่ำ (฿)</label><input id="promoMinOrder" type="number" min="0" placeholder="0 = ไม่มีขั้นต่ำ"></div>
+      <div class="grid-2">
+        <div class="field"><label>เริ่มวันที่</label><input id="promoStart" type="date"></div>
+        <div class="field"><label>สิ้นสุดวันที่</label><input id="promoEnd" type="date"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="promoActive" checked style="width:16px;height:16px;cursor:pointer;"> เปิดใช้งาน
+      </label>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-ghost" onclick="closeDrawer()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="savePromotion()"><span class="ico" data-icon="save"></span> บันทึก</button>
+    </div>
+  </aside>
+
+  <!-- A2: Promo Picker modal -->
+  <div id="promoPickerModal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="modal-box" style="max-width:400px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;"><span class="ico" data-icon="ticket"></span> เลือกโปรโมชั่น</h3>
+        <button class="btn btn-ghost btn-sm" onclick="$('promoPickerModal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="field"><label>กรอก Promo Code (ถ้ามี)</label>
+        <div style="display:flex;gap:6px;">
+          <input id="promoCodeInput" placeholder="WELCOME10" style="flex:1;padding:9px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          <button class="btn btn-ghost btn-sm" onclick="applyPromoByCode()">ใช้</button>
+        </div>
+      </div>
+      <div id="promoPickerList" style="margin-top:10px;"></div>
+    </div>
+  </div>
 
   <aside class="drawer" id="memberDrawer" role="dialog" aria-label="ฟอร์มสมาชิก">
     <div class="drawer-header">
@@ -2471,6 +2581,7 @@ let expenses = [];
 let recurringExpenses = [];   // A1: รายจ่ายประจำ (เทมเพลต)
 let cashTopups = [];          // A2: เงินสดย่อย (การเติมเงินก้อน)
 let orders = [];              // M3: ออเดอร์ลูกค้าจาก QR
+let promotions = [];          // A2: โปรโมชั่น/ส่วนลด
 let optionGroups = []; // [{id, label, selectType, required, minSelect, maxSelect, sort, enabled, recipeIds:[], choices:[...]}]
 let allShops = [];
 let counter = 0;
@@ -3679,6 +3790,13 @@ function applyBootstrapData(data) {
         }))
       })).sort((a, b) => a.sort - b.sort)
     })).sort((a, b) => a.sort - b.sort);
+    promotions = (data.promotions || []).map(p => ({
+      id: p.id, name: p.name, type: p.type || 'pct', value: Number(p.value) || 0,
+      code: p.code || '', minOrder: Number(p.min_order) || 0,
+      appliesTo: p.applies_to || 'all', appliesCategory: p.applies_category || '',
+      active: p.active !== false,
+      startDate: (p.start_date || '').slice(0, 10), endDate: (p.end_date || '').slice(0, 10)
+    }));
     stockMovements = (data.stock_movements || []).map(s => ({
       id: s.id, at: s.created_at, kind: s.kind, type: s.ref_type === 'recipe' ? 'fg' : 'mat',
       refType: s.ref_type, refId: s.ref_id, name: s.ref_name || '', unit: s.unit || '',
@@ -4082,6 +4200,13 @@ async function syncToSupabase() {
       menu_config: settings.menuConfig || {}
     },
     shop: { name: settings.shopName },
+    promotions: promotions.map(p => ({
+      id: p.id, name: p.name, type: p.type, value: p.value,
+      code: p.code || null, min_order: p.minOrder || 0,
+      applies_to: p.appliesTo || 'all', applies_category: p.appliesCategory || null,
+      active: p.active !== false,
+      start_date: p.startDate || null, end_date: p.endDate || null
+    })),
     _base_version: dataVersion
   };
 
@@ -4290,6 +4415,7 @@ function switchTab(t) {
   if (t === 'admin' && USER_ROLE === 'superadmin') {
     adminLoadDashboard();
     renderBillingAdmin();
+    adminLoadCrossBranch();
   }
   // เปิดแท็บตั้งค่า → โหลดบันทึกกิจกรรม
   if (t === 'set') { loadLogs(); renderStaffSection(); renderSnapshots(); loadPayStatus(); if ($('setBizType')) $('setBizType').value = settings.businessType || 'fnb'; }
@@ -7565,10 +7691,12 @@ function posClearCart() {
   if ($('posTableNo')) $('posTableNo').value = '';
   if ($('posMemberPhone')) $('posMemberPhone').value = '';
   if ($('posPayMethod')) $('posPayMethod').value = 'cash';
-  if ($('posBillDate')) { $('posBillDate').value = new Date().toISOString().slice(0, 10); if (typeof posBillDateHint === 'function') posBillDateHint(); }   // รีเซ็ตวันที่กลับเป็นวันนี้
+  if ($('posBillDate')) { $('posBillDate').value = new Date().toISOString().slice(0, 10); if (typeof posBillDateHint === 'function') posBillDateHint(); }
   if ($('posMemberInfo')) $('posMemberInfo').textContent = '';
   if ($('posRedeemPts')) $('posRedeemPts').value = 0;
   if ($('posRedeemRow')) $('posRedeemRow').style.display = 'none';
+  _posAppliedPromo = null;
+  if ($('posPromoBar')) $('posPromoBar').style.display = 'none';
   renderPosCart();
 }
 // M6: สมาชิกลูกค้า — สะสมแต้ม (1 แต้ม / 20฿)
@@ -7609,7 +7737,9 @@ function posComputeTotals() {
     if (disc > cap) { disc = cap; discCapped = true; }
   }
   const member = findCustomerByPhone($('posMemberPhone')?.value || '');
-  const memberDiscPct = member ? (Number(mcfg().discountPct) || 0) : 0;
+  const _mTier = member ? getMemberTier(member) : null;
+  const _mTierDisc = _mTier ? (Number(_mTier.discountPct) || 0) : 0;
+  const memberDiscPct = member ? (_mTierDisc > 0 ? _mTierDisc : (Number(mcfg().discountPct) || 0)) : 0;
   const memberDisc = grand * memberDiscPct / 100;
   const afterDisc = Math.max(0, grand - disc - memberDisc);
   const rewardPtsUsed = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
@@ -7627,11 +7757,12 @@ function posMemberLookup() {
   const m = mcfg();
   let html = '';
   if (c) {
-    html = 'สมาชิก: ' + esc(c.name || c.phone) + ' · ' + c.points + ' แต้ม · มาแล้ว ' + c.visits + ' ครั้ง';
-    if (m.discountPct > 0) html += ' · ลด ' + m.discountPct + '%';
-    // แสตมป์ครบรอบ
+    const tier = getMemberTier(c);
+    const tierDisc = tier ? (Number(tier.discountPct) || 0) : 0;
+    const effectiveDisc = tierDisc > 0 ? tierDisc : (Number(m.discountPct) || 0);
+    html = 'สมาชิก: ' + esc(c.name || c.phone) + (tier ? ` <span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:11px;font-weight:700;background:${tier.color}22;color:${tier.color};">${esc(tier.name)}</span>` : '') + ' · ' + c.points + ' แต้ม · มาแล้ว ' + c.visits + ' ครั้ง';
+    if (effectiveDisc > 0) html += ' · ลด ' + effectiveDisc + '%';
     if (m.stampEvery > 0 && c.visits > 0 && (c.visits + 1) % m.stampEvery === 0) html += '<br><b style="color:#d97706;">🎁 บิลนี้ครบแสตมป์ ' + m.stampEvery + ' ครั้ง — แถม' + (m.stampItem ? ' ' + esc(m.stampItem) : 'ฟรี') + '!</b>';
-    // ปุ่มแลกของรางวัลที่แต้มพอ
     const used = posCart.reduce((s, it) => s + (Number(it.rewardPts) || 0), 0);
     const avail = (Number(c.points) || 0) - used;
     const aff = (m.rewards || []).filter(r => r.points <= avail);
@@ -7671,23 +7802,29 @@ function accrueMember(phone, spent) {
 let editMemberId = null;
 function mcfg() { if (!settings.memberConfig) settings.memberConfig = { discountPct: 0, stampEvery: 0, stampItem: '', rewards: [] }; return settings.memberConfig; }
 function renderMembersPage() {
-  // โหลดค่าตั้งสิทธิประโยชน์
   const m = mcfg();
   if ($('mcDiscPct')) $('mcDiscPct').value = m.discountPct || '';
   if ($('mcStampEvery')) $('mcStampEvery').value = m.stampEvery || '';
   if ($('mcStampItem')) $('mcStampItem').value = m.stampItem || '';
+  if ($('mcTierBy')) $('mcTierBy').value = m.tierBy || 'spent';
   renderRewardList();
+  renderTierList();
+  renderPromoList();
   const el = $('membersList'); if (!el) return;
   const q = ($('memberSearch') ? $('memberSearch').value : '').trim().toLowerCase();
   let list = customers.slice();
   if (q) list = list.filter(c => (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q));
   list.sort((a, b) => (b.points || 0) - (a.points || 0));
-  el.innerHTML = list.length ? list.map(c => `<tr>
+  el.innerHTML = list.length ? list.map(c => {
+    const t = getMemberTier(c); const tb = t ? `<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;background:${t.color}22;color:${t.color};">${esc(t.name)}</span>` : '-';
+    return `<tr>
       <td>${esc(c.name || '-')}</td><td>${esc(c.phone || '-')}</td>
       <td class="r" style="font-weight:700;color:var(--color-primary);">${c.points || 0}</td>
       <td class="r">${c.visits || 0}</td><td class="r">${money(c.totalSpent || 0)}</td>
+      <td>${tb}</td>
       <td class="r"><button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="openMemberForm('${c.id}')">${icon('pencil')}</button></td>
-    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px 0;">ยังไม่มีสมาชิก — ใส่เบอร์ลูกค้าตอนขายเพื่อเริ่มสะสมแต้ม</td></tr>';
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:#999;padding:24px 0;">ยังไม่มีสมาชิก — ใส่เบอร์ลูกค้าตอนขายเพื่อเริ่มสะสมแต้ม</td></tr>';
   renderIcons(el);
 }
 function openMemberForm(id) {
@@ -7722,6 +7859,8 @@ function saveMemberConfig() {
   m.discountPct = Math.max(0, Math.min(100, Number($('mcDiscPct').value) || 0));
   m.stampEvery = Math.max(0, Math.floor(Number($('mcStampEvery').value) || 0));
   m.stampItem = $('mcStampItem').value.trim();
+  if ($('mcTierBy')) m.tierBy = $('mcTierBy').value || 'spent';
+  if (!Array.isArray(m.tiers)) m.tiers = [];
   saveAll();
 }
 function renderRewardList() {
@@ -10966,6 +11105,10 @@ function printerSettingsCard() {
       </div>
       ${routeRows}
     </div>
+
+    <div style="${SECT}" id="printModeCard">
+      <div style="${TTL}">🖨 โหมดพิมพ์ (SUNMI / Bridge)</div>
+    </div>
   </div>`;
 }
 function renderOnlineMenu() {
@@ -11113,6 +11256,7 @@ function renderOnlineMenu() {
     <div>${orderRows}</div>
   </div>`;
   renderIcons(el);
+  renderPrintModeCard();
   updatePosOnlineBadge();
   startOrderPolling();
 }
@@ -11799,6 +11943,257 @@ if (isMockMode) {
 } else {
   // โหมดคลาวด์: ถ้ามี token เดิมก็เข้าแอปต่อ ไม่งั้นโชว์หน้าล็อกอิน
   initCloudSession();
+}
+
+// ============================================================
+// A2: โปรโมชั่น / ส่วนลด
+// ============================================================
+let _posAppliedPromo = null;
+
+function renderPromoList() {
+  const el = $('promoList'); if (!el) return;
+  if (!promotions.length) { el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);margin:0;">ยังไม่มีโปรโมชั่น</p>'; return; }
+  el.innerHTML = promotions.map(p => {
+    const typeLabel = p.type === 'fixed' ? `ลด ฿${p.value}` : `ลด ${p.value}%`;
+    const statusDot = p.active ? '<span style="color:#16a34a;">●</span>' : '<span style="color:#9ca3af;">●</span>';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
+      ${statusDot} <span style="flex:1;font-weight:600;">${esc(p.name)}</span>
+      <span style="color:var(--color-text-muted);">${typeLabel}${p.code ? ' · code: ' + esc(p.code) : ''}</span>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="openPromoDrawer('${p.id}')">${icon('pencil')}</button>
+      <button class="btn btn-danger btn-sm" style="font-size:11px;" onclick="deletePromotion('${p.id}')">${icon('trash-2')}</button>
+    </div>`;
+  }).join('');
+  renderIcons(el);
+}
+
+function openPromoDrawer(id) {
+  const p = id ? promotions.find(x => x.id === id) : null;
+  $('promoId').value = p ? p.id : '';
+  $('promoDrawerTitle').textContent = p ? 'แก้ไขโปรโมชั่น' : 'เพิ่มโปรโมชั่น';
+  $('promoName').value = p ? p.name : '';
+  $('promoType').value = p ? p.type : 'pct';
+  $('promoValue').value = p ? p.value : '';
+  $('promoCode').value = p ? (p.code || '') : '';
+  $('promoMinOrder').value = p ? (p.minOrder || 0) : 0;
+  $('promoStart').value = p ? (p.startDate || '') : '';
+  $('promoEnd').value = p ? (p.endDate || '') : '';
+  $('promoActive').checked = p ? p.active !== false : true;
+  togglePromoFields();
+  openDrawer('promoDrawer');
+}
+
+function togglePromoFields() {
+  const t = $('promoType') ? $('promoType').value : 'pct';
+  if ($('promoValueLabel')) $('promoValueLabel').textContent = t === 'fixed' ? 'ค่า (฿)' : 'ค่า (%)';
+}
+
+function savePromotion() {
+  const name = ($('promoName').value || '').trim();
+  if (!name) { ui.toast('ใส่ชื่อโปรโมชั่นก่อน', 'warning'); return; }
+  const id = $('promoId').value || uid();
+  let p = promotions.find(x => x.id === id);
+  if (!p) { p = { id }; promotions.push(p); }
+  p.name = name;
+  p.type = $('promoType').value || 'pct';
+  p.value = Math.max(0, parseFloat($('promoValue').value) || 0);
+  p.code = ($('promoCode').value || '').trim().toUpperCase() || '';
+  p.minOrder = Math.max(0, parseFloat($('promoMinOrder').value) || 0);
+  p.startDate = $('promoStart').value || '';
+  p.endDate = $('promoEnd').value || '';
+  p.active = !!$('promoActive').checked;
+  p.appliesTo = 'all'; p.appliesCategory = '';
+  saveAll(); closeDrawer(); renderPromoList();
+  ui.toast('บันทึกโปรโมชั่นแล้ว');
+}
+
+async function deletePromotion(id) {
+  if (!(await ui.confirm('ลบโปรโมชั่นนี้?', { okText: 'ลบ', danger: true }))) return;
+  promotions = promotions.filter(x => x.id !== id);
+  saveAll(); renderPromoList();
+}
+
+function openPromopicker() {
+  const today = new Date().toISOString().slice(0, 10);
+  const avail = promotions.filter(p => {
+    if (!p.active) return false;
+    if (p.startDate && p.startDate > today) return false;
+    if (p.endDate && p.endDate < today) return false;
+    const grand = posCart.reduce((s, it) => s + it.qty * (it.price != null ? it.price : (recById(it.recipeId)?.sell || 0)), 0);
+    if (p.minOrder > 0 && grand < p.minOrder) return false;
+    return true;
+  });
+  if ($('promoCodeInput')) $('promoCodeInput').value = '';
+  const list = $('promoPickerList'); if (!list) return;
+  list.innerHTML = avail.length ? avail.map(p => {
+    const label = p.type === 'fixed' ? `ลด ฿${p.value}` : `ลด ${p.value}%`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-soft);">
+      <div style="flex:1;"><b style="font-size:13px;">${esc(p.name)}</b><div style="font-size:12px;color:var(--color-text-muted);">${label}${p.code ? ' · ต้องกรอก code' : ''}</div></div>
+      <button class="btn btn-primary btn-sm" onclick="applyPromotion('${p.id}')">ใช้</button></div>`;
+  }).join('') : '<p style="font-size:13px;color:var(--color-text-muted);text-align:center;padding:16px 0;">ไม่มีโปรโมชั่นที่ใช้ได้ตอนนี้</p>';
+  $('promoPickerModal').classList.remove('hidden');
+}
+
+function applyPromoByCode() {
+  const code = (($('promoCodeInput') ? $('promoCodeInput').value : '') || '').trim().toUpperCase();
+  if (!code) return;
+  const p = promotions.find(x => x.active && x.code && x.code.toUpperCase() === code);
+  if (!p) { ui.toast('ไม่พบ promo code นี้', 'warning'); return; }
+  applyPromotion(p.id);
+}
+
+function applyPromotion(id) {
+  const p = promotions.find(x => x.id === id); if (!p) return;
+  _posAppliedPromo = p;
+  const bar = $('posPromoBar'); const lbl = $('posPromoLabel');
+  if (bar) { bar.style.display = 'flex'; }
+  if (lbl) lbl.textContent = p.name + (p.type === 'fixed' ? ` (ลด ฿${p.value})` : ` (ลด ${p.value}%)`);
+  if ($('posDiscVal')) $('posDiscVal').value = p.value;
+  if ($('posDiscType')) $('posDiscType').value = p.type === 'fixed' ? '฿' : '%';
+  $('promoPickerModal').classList.add('hidden');
+  renderPosCart();
+  ui.toast('ใช้โปรโมชั่น: ' + p.name);
+}
+
+function clearPosPromo() {
+  _posAppliedPromo = null;
+  const bar = $('posPromoBar'); if (bar) bar.style.display = 'none';
+  if ($('posDiscVal')) $('posDiscVal').value = '';
+  if ($('posDiscType')) $('posDiscType').value = '%';
+  renderPosCart();
+}
+
+// ============================================================
+// C2: Member Tiers
+// ============================================================
+function getMemberTier(customer) {
+  const m = mcfg();
+  const tiers = Array.isArray(m.tiers) ? m.tiers : [];
+  if (!tiers.length || !customer) return null;
+  const by = m.tierBy || 'spent';
+  const val = by === 'points' ? (Number(customer.points) || 0) : by === 'visits' ? (Number(customer.visits) || 0) : (Number(customer.totalSpent) || 0);
+  const sorted = tiers.slice().sort((a, b) => Number(b.minVal) - Number(a.minVal));
+  return sorted.find(t => val >= Number(t.minVal)) || null;
+}
+
+function renderTierList() {
+  const el = $('mcTierList'); if (!el) return;
+  const tiers = (mcfg().tiers || []).slice().sort((a, b) => Number(a.minVal) - Number(b.minVal));
+  if (!tiers.length) { el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);margin:4px 0;">ยังไม่มีระดับ — เพิ่มระดับด้านล่าง</p>'; return; }
+  el.innerHTML = tiers.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
+    <span style="width:12px;height:12px;border-radius:50%;background:${t.color};display:inline-block;flex-shrink:0;"></span>
+    <span style="flex:1;font-weight:600;">${esc(t.name)}</span>
+    <span style="color:var(--color-text-muted);">≥ ${t.minVal}</span>
+    <span style="color:#7c3aed;font-weight:600;">ลด ${t.discountPct}%</span>
+    <button class="btn btn-danger btn-sm" style="font-size:11px;padding:2px 7px;" onclick="removeMemberTier('${t.id}')">${icon('x')}</button>
+  </div>`).join('');
+  renderIcons(el);
+}
+
+function addMemberTier() {
+  const name = ($('mcTierName') ? $('mcTierName').value : '').trim();
+  const minVal = Math.max(0, Number($('mcTierMin') ? $('mcTierMin').value : 0) || 0);
+  const discountPct = Math.max(0, Math.min(100, Number($('mcTierDisc') ? $('mcTierDisc').value : 0) || 0));
+  const color = $('mcTierColor') ? $('mcTierColor').value : '#7c3aed';
+  if (!name) { ui.toast('ใส่ชื่อระดับก่อน', 'warning'); return; }
+  const m = mcfg(); if (!Array.isArray(m.tiers)) m.tiers = [];
+  m.tiers.push({ id: uid(), name, minVal, discountPct, color });
+  if ($('mcTierName')) $('mcTierName').value = '';
+  if ($('mcTierMin')) $('mcTierMin').value = '';
+  if ($('mcTierDisc')) $('mcTierDisc').value = '';
+  saveAll(); renderTierList();
+}
+
+function removeMemberTier(id) {
+  const m = mcfg(); m.tiers = (m.tiers || []).filter(t => t.id !== id); saveAll(); renderTierList();
+}
+
+// ============================================================
+// C3: HQ Admin — ยอดรวมทุกสาขา
+// ============================================================
+async function adminLoadCrossBranch() {
+  const fromEl = $('crossFrom'); const toEl = $('crossTo');
+  const today = new Date().toISOString().slice(0, 10);
+  const from30 = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  if (fromEl && !fromEl.value) fromEl.value = from30;
+  if (toEl && !toEl.value) toEl.value = today;
+  const from = fromEl ? fromEl.value : from30;
+  const to = toEl ? toEl.value : today;
+  const body = $('crossBranchBody'); if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--color-text-muted);">กำลังโหลด...</td></tr>';
+  try {
+    const d = await API.get('/api/admin/cross-summary?from=' + from + '&to=' + to);
+    renderAdminCrossBranch(d);
+  } catch (e) {
+    if (body) body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:#ef4444;">โหลดไม่ได้: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderAdminCrossBranch(d) {
+  const shops = d.shops || [];
+  const totalSales = shops.reduce((s, x) => s + x.sales_total, 0);
+  const totalExp = shops.reduce((s, x) => s + x.expense_total, 0);
+  const totalProfit = totalSales - totalExp;
+  const stats = $('crossBranchStats');
+  if (stats) {
+    const sc = (val, lab, color) => `<div style="padding:12px 14px;background:var(--surface-2);border-radius:10px;"><div style="font-size:20px;font-weight:800;color:${color};">${val}</div><div style="font-size:12px;color:var(--color-text-muted);">${lab}</div></div>`;
+    stats.innerHTML = sc(shops.length, 'สาขาทั้งหมด', 'var(--color-primary)') + sc(money(totalSales), 'ยอดขายรวม', '#16a34a') + sc(money(totalExp), 'ค่าใช้จ่ายรวม', '#dc2626') + sc(money(totalProfit), 'กำไรรวม', totalProfit >= 0 ? '#16a34a' : '#dc2626');
+  }
+  const body = $('crossBranchBody'); if (!body) return;
+  const statusBadge = s => ({ active: '<span style="color:#16a34a;font-weight:600;">Active</span>', trial: '<span style="color:#d97706;font-weight:600;">Trial</span>', suspended: '<span style="color:#ef4444;font-weight:600;">Suspended</span>' }[s] || esc(s));
+  body.innerHTML = shops.length ? shops.map(s => {
+    const profit = s.sales_total - s.expense_total;
+    return `<tr>
+      <td style="font-weight:600;">${esc(s.name)}</td>
+      <td class="r" style="color:#16a34a;">${money(s.sales_total)}</td>
+      <td class="r" style="color:#dc2626;">${money(s.expense_total)}</td>
+      <td class="r" style="font-weight:700;color:${profit>=0?'#16a34a':'#dc2626'};">${money(profit)}</td>
+      <td class="r">${s.order_count}</td>
+      <td class="r">${s.member_count}</td>
+      <td>${statusBadge(s.status)}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--color-text-muted);">ไม่มีข้อมูล</td></tr>';
+}
+
+// ============================================================
+// Silent Print: SUNMI / Bridge URL
+// ============================================================
+function getPrintMode() { return localStorage.getItem('recipro_print_mode') || 'dialog'; }
+function setPrintMode(v) { localStorage.setItem('recipro_print_mode', v); ui.toast('โหมดพิมพ์: ' + ({ dialog: 'ปกติ (dialog)', sunmi: 'SUNMI', bridge: 'Bridge URL' }[v] || v)); renderOnlineMenu(); }
+function getBridgeUrl() { return localStorage.getItem('recipro_bridge_url') || ''; }
+function setBridgeUrl(url) { localStorage.setItem('recipro_bridge_url', url); ui.toast('บันทึก Bridge URL แล้ว'); }
+function isSunmiDevice() { return !!(window.SunmiInnerPrinter || (navigator.userAgent && navigator.userAgent.includes('Sunmi'))); }
+
+async function smartPrint(htmlContent) {
+  const mode = getPrintMode();
+  if (mode === 'sunmi' && window.SunmiInnerPrinter) {
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = htmlContent;
+      const text = tmp.innerText || tmp.textContent || '';
+      window.SunmiInnerPrinter.printerText(text + '\n\n\n');
+      window.SunmiInnerPrinter.cutPaper();
+    } catch (e) { window.print(); }
+    return;
+  }
+  if (mode === 'bridge') {
+    const url = getBridgeUrl();
+    if (!url) { ui.toast('ยังไม่ได้ตั้ง Bridge URL', 'warning'); window.print(); return; }
+    try { await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/html' }, body: htmlContent }); } catch (e) { ui.toast('Bridge: ' + e.message, 'warning'); }
+    return;
+  }
+  window.print();
+}
+
+function renderPrintModeCard() {
+  const el = $('printModeCard'); if (!el) return;
+  const mode = getPrintMode();
+  const isSunmi = isSunmiDevice();
+  el.innerHTML = `<div style="font-size:13px;font-weight:700;margin-bottom:8px;"><span class="ico" data-icon="printer"></span> โหมดพิมพ์ (เครื่องนี้)</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      ${['dialog','sunmi','bridge'].map(m => `<button class="btn btn-sm ${mode===m?'btn-primary':'btn-ghost'}" onclick="setPrintMode('${m}');renderPrintModeCard();">${{dialog:'ปกติ (dialog)',sunmi:'SUNMI',bridge:'Bridge URL'}[m]}</button>`).join('')}
+    </div>
+    ${isSunmi ? '<p style="font-size:12px;color:#16a34a;margin:0 0 6px;">✓ ตรวจพบ SUNMI</p>' : '<p style="font-size:12px;color:var(--color-text-muted);margin:0 0 6px;">ไม่พบ SUNMI บนเครื่องนี้</p>'}
+    ${mode === 'bridge' ? `<div style="display:flex;gap:6px;"><input id="bridgeUrlInput" placeholder="http://localhost:9100/print" value="${esc(getBridgeUrl())}" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"><button class="btn btn-ghost btn-sm" onclick="setBridgeUrl($('bridgeUrlInput').value)">บันทึก</button></div>` : ''}`;
+  renderIcons(el);
 }
 </script>
 

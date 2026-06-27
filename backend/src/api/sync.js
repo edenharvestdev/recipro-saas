@@ -160,6 +160,11 @@ router.post('/sync', async (req, res) => {
         }
       }
 
+      // promotions (A2)
+      await upsertRows(client, 'promotions',
+        ['id', 'shop_id', 'name', 'type', 'value', 'code', 'min_order', 'applies_to', 'applies_category', 'active', 'start_date', 'end_date'],
+        withShop(b.promotions || []), 'id', true);
+
       if (b.shop && b.shop.name) {
         await client.query('update shops set name = $1 where id = $2', [b.shop.name, shopId]);
       }
