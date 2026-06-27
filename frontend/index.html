@@ -10814,7 +10814,7 @@ function printerSettingsCard() {
   const stOpt = (sel) => ['<option value="">ทุกเครื่อง</option>'].concat(PRINT_STATIONS.map(s => `<option value="${esc(s)}"${sel === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
   const dev = deviceStation(); const apPaid = autoPrintOnPaidCfg();
   const SEL = 'font-size:12px;width:auto;min-width:130px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);';
-  const showRoute = window._showRoute !== false;
+  const showRoute = !!window._showRoute;
   const routeRows = showRoute ? `<div style="margin-top:8px;padding:10px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:10px;">
       <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">หมวดเมนู → สถานี/เครื่องพิมพ์ (หมวดที่ไม่กำหนด = พิมพ์ทุกเครื่อง)</div>
       ${cats.length ? cats.map(c => `<div style="display:grid;grid-template-columns:1fr 160px;gap:12px;align-items:center;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border-soft);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c)}">${esc(c)}</span><select onchange="setPrintRoute('${esc(c).replace(/'/g, "\\'")}', this.value)" style="font-size:12px;width:100%;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">${stOpt((settings.printRouting || {})[c] || '')}</select></div>`).join('') : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีหมวดเมนู</div>'}
@@ -10850,7 +10850,7 @@ function printerSettingsCard() {
       </div>
       <div style="display:flex;gap:10px 18px;flex-wrap:wrap;font-size:12px;align-items:center;margin-top:8px;">
         <label style="display:flex;align-items:center;gap:6px;"><span style="color:var(--color-text-muted);">อุปกรณ์นี้คือสถานี:</span><select onchange="setDeviceStation(this.value)" style="${SEL}"><option value="all"${dev === 'all' ? ' selected' : ''}>ทุกสถานี (เครื่องเดียว)</option>${PRINT_STATIONS.map(s => `<option value="${esc(s)}"${dev === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
-        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=(window._showRoute===false);renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${showRoute ? 'ซ่อนเส้นทาง' : 'ตั้งเส้นทาง หมวด→เครื่อง'}</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="window._showRoute=!window._showRoute;renderOnlineMenu();"><span class="ico" data-icon="route"></span> ${showRoute ? 'ซ่อนเส้นทาง' : 'ตั้งเส้นทาง หมวด→เครื่อง (ขั้นสูง)'}</button>
       </div>
       ${routeRows}
     </div>
@@ -10979,6 +10979,10 @@ function renderOnlineMenu() {
           <select onchange="setOrderSound(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
             <option value="on"${orderSoundOn() ? ' selected' : ''}>เปิด</option>
             <option value="off"${!orderSoundOn() ? ' selected' : ''}>ปิด</option>
+          </select>
+          <span style="color:var(--color-text-muted);">โทนเสียง:</span>
+          <select onchange="setOrderTune(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+            ${Object.entries(ORDER_TUNES).map(([k, v]) => `<option value="${k}"${orderTune() === k ? ' selected' : ''}>${v.label}</option>`).join('')}
           </select>
           <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="playOrderBeep()"><span class="ico" data-icon="volume-2"></span> ทดสอบเสียง</button>
           <span style="font-size:10px;color:var(--color-text-muted);">(ตั้งแยกแต่ละเครื่อง)</span>
@@ -11189,22 +11193,30 @@ async function pollNewOrders() {
 // ตั้งค่าเสียงเตือน (ต่อเครื่อง — เก็บใน localStorage)
 function orderSoundOn() { return localStorage.getItem('recipro_order_sound') !== 'off'; }
 function setOrderSound(v) { localStorage.setItem('recipro_order_sound', v === 'off' ? 'off' : 'on'); if (typeof ui !== 'undefined' && ui.toast) ui.toast(v === 'off' ? 'ปิดเสียงเตือนแล้ว' : 'เปิดเสียงเตือนแล้ว'); if (v !== 'off') playOrderBeep(); }
+// เสียงเตือนออเดอร์ — 3 โทนเอกลักษณ์ ดังขึ้น (ตั้งแยกแต่ละเครื่อง)
+const ORDER_TUNES = {
+  '1': { label: 'สดใส (ขึ้นเสียง)', type: 'sine', notes: [{ f: 784, t: 0 }, { f: 988, t: 0.14 }, { f: 1319, t: 0.28 }] },
+  '2': { label: 'ระฆังประตู (ดิงดอง)', type: 'triangle', notes: [{ f: 1319, t: 0 }, { f: 880, t: 0.20 }, { f: 1319, t: 0.40 }, { f: 880, t: 0.56 }] },
+  '3': { label: 'สนุก (เด้งขึ้น)', type: 'square', notes: [{ f: 523, t: 0 }, { f: 659, t: 0.10 }, { f: 784, t: 0.20 }, { f: 1047, t: 0.32 }] },
+};
+function orderTune() { return ORDER_TUNES[localStorage.getItem('recipro_order_tune')] ? localStorage.getItem('recipro_order_tune') : '1'; }
+function setOrderTune(n) { localStorage.setItem('recipro_order_tune', String(n)); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เสียงเตือน: ' + (ORDER_TUNES[n] || ORDER_TUNES['1']).label); playOrderBeep(); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
 function playOrderBeep() {
   try {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const ac = new AC(); const now = ac.currentTime;
-    // 3 โทนสดใสนุ่ม ๆ (G5→B5→E6) แบบเสียงแจ้งเตือน Grab/LINE MAN — sine + envelope กันเสียงแตก
-    const notes = [{ f: 784, t: 0 }, { f: 988, t: 0.15 }, { f: 1319, t: 0.30 }];
-    notes.forEach(n => {
+    const tune = ORDER_TUNES[orderTune()] || ORDER_TUNES['1'];
+    const master = ac.createGain(); master.gain.value = 0.95; master.connect(ac.destination);
+    tune.notes.forEach(n => {
       const o = ac.createOscillator(), g = ac.createGain();
-      o.type = 'sine'; o.frequency.value = n.f; o.connect(g); g.connect(ac.destination);
+      o.type = tune.type; o.frequency.value = n.f; o.connect(g); g.connect(master);
       const s = now + n.t;
       g.gain.setValueAtTime(0.0001, s);
-      g.gain.exponentialRampToValueAtTime(0.2, s + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.28);
-      o.start(s); o.stop(s + 0.30);
+      g.gain.exponentialRampToValueAtTime(0.4, s + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + 0.27);
+      o.start(s); o.stop(s + 0.32);
     });
-    setTimeout(() => { try { ac.close(); } catch (e) {} }, 900);
+    setTimeout(() => { try { ac.close(); } catch (e) {} }, 1500);
   } catch (e) {}
 }
 function notifyNewOrder(n) {
