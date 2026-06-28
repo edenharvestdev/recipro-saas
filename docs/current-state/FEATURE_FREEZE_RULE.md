@@ -1,8 +1,16 @@
 # Recipro SaaS — Feature Freeze Rule
 
-**มีผลตั้งแต่:** 2026-06-28  
-**สถานะ:** 🔒 FEATURE FREEZE ACTIVE  
-**เหตุผล:** ระบบเริ่มมีผู้ใช้งานจริง — ให้ Stabilize ก่อนขยายต่อ
+**บังคับใช้:** 2026-06-28
+**สถานะ:** 🔴 ACTIVE — Maintenance Freeze ยังไม่ lift
+**อัปเดต:** 2026-06-28 — เพิ่มบทเรียนจาก Incident RC-001
+
+---
+
+## กฎหลัก
+
+> **ห้ามเพิ่ม feature ใหม่ทุกชนิดจนกว่า Maintenance Freeze จะถูก lift อย่างเป็นทางการโดย Founder**
+
+> **Any feature request must wait until Maintenance Freeze is officially lifted.**
 
 ---
 
@@ -29,6 +37,11 @@
 - ห้าม ADD column ที่ NOT NULL ไม่มี default (breaking migration)
 - ห้ามเพิ่ม migration ใหม่ถ้าไม่จำเป็นจริงๆ
 
+### Dependencies
+- ห้ามเพิ่ม npm package ใหม่โดยไม่มี Founder approval
+- ห้ามเพิ่ม package ใน `backend/package.json` เท่านั้น — ต้องเพิ่มใน ROOT `package.json` ด้วยเสมอ
+- ดู [DEPENDENCY_POLICY.md](DEPENDENCY_POLICY.md) สำหรับรายละเอียด
+
 ### Security / Auth / Payment
 - ห้ามแตะ `auth/middleware.js`, `auth/tokens.js`, `tenant.js` โดยไม่มี review
 - ห้ามแตะ `billing-state.js` โดยไม่มี review
@@ -37,40 +50,45 @@
 
 ---
 
-## ✅ ทำได้ (P0/P1 fixes เท่านั้น)
+## ✅ ทำได้ระหว่าง Freeze
 
-- แก้ bug ที่ทำให้ขายไม่ได้หรือข้อมูลผิด (P0)
-- แก้ bug ที่ทำให้ flow หลักเสีย (P1)
-- ใส่ `OMISE_SECRET_KEY` เพื่อเปิด payment จริง
-- เพิ่ม error monitoring (Sentry) — ถือว่า infra ไม่ใช่ feature
-- Fix security issue (rate limiting, staff discount server-side check)
-
----
-
-## กระบวนการ Deploy
-
-### ก่อน deploy ทุกครั้ง
-1. **Founder Approval** — แจ้ง Founder ว่าจะ deploy อะไร
-2. **ตรวจ git diff** — ดูว่าแก้อะไรและไม่ได้แตะสิ่งที่ห้าม
-3. **รัน integration test** (ถ้ามี DB local) — `npm run test:int`
-4. **Manual QA** — ทดสอบ flow ที่แก้ด้วยมือก่อน deploy
-5. **Deploy ในเวลาที่ร้านว่าง** — ไม่ deploy ตอน peak hours
-
-### หลัง deploy ทุกครั้ง
-6. **ตรวจ Railway logs** — ดูว่ามี error ใหม่ไหม (อย่างน้อย 15 นาที)
-7. **ทดสอบ happy path** ใน production — login, POS ขาย 1 บิล, bootstrap
-8. **บันทึก deploy log** — commit id, เวลา, ผู้ deploy, สิ่งที่เปลี่ยน
+| อนุญาต | เงื่อนไข |
+|--------|---------|
+| แก้ P0 bug | ต้องมี Founder approve ก่อน deploy |
+| แก้ P1 bug | ต้องมี Founder approve ก่อน deploy |
+| อัปเดต documentation | ไม่กระทบ code |
+| ตั้ง env var ใน Railway (SENTRY_DSN, OMISE_SECRET_KEY) | Founder ทำเอง |
+| ดู logs / monitor | read-only |
+| เพิ่ม migration แบบ additive เท่านั้น | ถ้าจำเป็นสำหรับ P0/P1 fix |
 
 ---
 
-## เงื่อนไขเปิด Freeze
+## กระบวนการ Bug Fix ระหว่าง Freeze
 
-Feature Freeze จะเปิดเมื่อ:
-1. ✅ P0 ทุกรายการปิดแล้ว
-2. ✅ P1 ที่สำคัญ (P1-01 ถึง P1-03) ปิดแล้ว
-3. ✅ มี error monitoring (Sentry หรือเทียบเท่า) ทำงานอยู่
-4. ✅ มี staging environment สำหรับทดสอบ
-5. ✅ Founder Approval อย่างเป็นทางการ
+```
+1. ระบุ bug พร้อม Priority (P0 หรือ P1)
+2. ส่ง RCA และ proposed fix ให้ Founder review
+3. รอ Founder approve อย่างชัดเจน ("Approved — fix เลย")
+4. แก้ code (minimal change เท่านั้น)
+5. ส่ง git diff ให้ Founder review ก่อน deploy
+6. รอ Founder approve deploy
+7. Deploy + Production QA
+8. ส่งผล QA กลับ
+```
+
+**ห้าม deploy โดยที่ Founder ยังไม่ได้พูดว่า "deploy เลย" หรือ "Approved"**
+
+---
+
+## กระบวนการขอ Feature ระหว่าง Freeze
+
+Feature request ทุกชิ้นต้องรอ — ไม่มีข้อยกเว้น
+
+```
+1. บันทึก feature request ใน OPEN_ISSUES.md ส่วน "Future Improvements"
+2. ระบุเหตุผลว่าทำไมต้องรอ
+3. Feature จะถูก prioritize เมื่อ Maintenance Freeze lift
+```
 
 ---
 
@@ -82,10 +100,37 @@ Feature Freeze จะเปิดเมื่อ:
 2. ส่งให้ Founder / Product Architect อนุมัติ
 3. ถ้าอนุมัติ → บันทึกเป็น exception ใน log นี้ + ระบุ scope ชัดเจน
 
----
-
-## Exception Log
+### Exception Log
 
 | วันที่ | Feature | เหตุผล | อนุมัติโดย |
 |--------|---------|--------|------------|
 | — | — | — | — |
+
+---
+
+## เงื่อนไขการ Lift Freeze
+
+Freeze จะ lift ได้เมื่อ Founder ประกาศอย่างชัดเจน หลังจากเงื่อนไขต่อไปนี้ผ่านครบ:
+
+- [ ] P0-01: Omise payment ทำงานได้จริง (มี `OMISE_SECRET_KEY`)
+- [ ] P0-02: Sentry active ใน production (มี `SENTRY_DSN`)
+- [ ] P1-01: Password reset ทำงานได้ (มี `RESEND_API_KEY`)
+- [ ] P1-02: Billing checkout ทำงานได้
+- [ ] Production stable ≥ 7 วัน ไม่มี P0/P1 incident ใหม่
+- [ ] มี staging environment (Railway project แยก)
+- [ ] Founder ประกาศ lift อย่างชัดเจน
+
+---
+
+## Incident RC-001 — เหตุผลที่ Freeze ยังคงอยู่
+
+วันที่ 2026-06-28 Sprint 001 ทำให้ production DOWN นาน ~2 ชั่วโมง เนื่องจาก:
+- เพิ่ม dependency ผิด `package.json` (backend แทน root)
+- ไม่มี staging ให้ทดสอบก่อน
+- ไม่มี automated test ที่ catch ปัญหานี้ได้
+
+จนกว่าโครงสร้าง deploy จะปลอดภัยกว่านี้ Feature Freeze ยังคงบังคับใช้
+
+---
+
+*ไฟล์นี้อัปเดตโดย Founder/Product Architect เท่านั้น*
