@@ -1,6 +1,6 @@
 # Recipro SaaS — Current State Report
 
-**อัปเดต:** 2026-06-28 (หลัง Incident RC-001 resolved)
+**อัปเดต:** 2026-06-28 (หลัง Brand Asset Update + Login Polish deploy)
 **โหมด:** Maintenance Freeze — แก้เฉพาะ P0/P1 bug เท่านั้น
 
 ---
@@ -11,9 +11,11 @@
 |--------|-----|
 | Repository | https://github.com/edenharvestdev/recipro-saas |
 | Branch | `main` |
-| Commit ล่าสุด | `9609458` — Fix Railway root dependencies for Sprint 001 |
-| Commit ก่อนหน้า | `9cf314b` — fix: remove Windows-generated lock file |
-| Commit ก่อนหน้า | `36f3a77` — Stabilize Recipro P0 P1 security and monitoring |
+| Commit ล่าสุด | `f38cf9b` — Login header polish round 2 — breathing room + refined typography |
+| Commit ก่อนหน้า | `042130a` — Polish login card welcome header — premium brand presentation |
+| Commit ก่อนหน้า | `718c05c` — Update Recipro official brand assets |
+| Commit ก่อนหน้า | `73052b2` — docs: update project status report and add RC-001 post-mortem docs |
+| Commit ก่อนหน้า | `9609458` — Fix Railway root dependencies for Sprint 001 |
 
 ---
 
@@ -23,7 +25,7 @@
 |--------|-----|
 | Project | recipro (`59c79c80-e16c-4456-bb56-a1126696703b`) |
 | Service | recipro-app (`3add2803-2dd7-40c7-bdf8-8a64fc0c2bfb`) |
-| Deployment ID | `c36f4bbe-aa42-4c69-b797-e31d50a13091` |
+| Deployment ID | `e18ebc86-e15e-436b-a2bf-da1371e8a604` |
 | Status | ● Online |
 | Region | sfo (San Francisco) |
 | URL | https://www.recipro.love |
@@ -134,7 +136,7 @@ recipro-saas/               ← NIXPACKS installs from HERE
 | Migration ล่าสุด | `schema-s10.sql` |
 | Auto-run on deploy | ✅ ใช่ — startCommand รัน migrate ก่อนเสมอ |
 | Rollback | Manual SQL เท่านั้น — ไม่มี down-migration |
-| Shops ใน production | 13 ร้าน (ยืนยันจาก bootstrap log) |
+| Shops ใน production | 14 ร้าน (ยืนยันจาก bootstrap log หลัง Brand deploy) |
 
 ---
 
@@ -218,3 +220,4 @@ recipro-saas/               ← NIXPACKS installs from HERE
 | วันที่ | Incident | ต้นเหตุ | Resolution |
 |--------|----------|---------|------------|
 | 2026-06-28 | RC-001: Production DOWN 502 หลัง Sprint 001 | `@sentry/node` อยู่ใน `backend/package.json` แต่ Railway ติดตั้งจาก ROOT `package.json` | เพิ่ม 2 packages ใน ROOT `package.json`, อัปเดต ROOT lock file, redeploy commit `9609458` |
+| 2026-06-28 | Brand Asset Update — deploy สำเร็จ | (ไม่มี incident) | ✅ `718c05c` + `042130a` + `f38cf9b` deployed, QA ผ่าน, 14 shops online |
