@@ -893,10 +893,16 @@ table.lst td .btn + .btn { margin-left: 6px; }
 .auth-card h2 { color: var(--color-text-main); }
 #mockModeTag { box-shadow: var(--shadow); }
 
-.auth-welcome { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+@keyframes authWelcomeFade {
+  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+.auth-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 28px; animation: authWelcomeFade 280ms ease-out; }
+.auth-welcome-lockup { width: 148px; height: auto; margin-bottom: 16px; }
+.auth-welcome h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; color: var(--color-text-main); }
+.auth-welcome-sub { margin: 0; font-size: 14px; font-weight: 500; color: var(--color-text-muted); line-height: 1.5; }
 .auth-avatar { flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--brand-soft); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
 .auth-avatar img { width: 30px; height: 30px; }
-.auth-welcome-sub { margin: 3px 0 0; font-size: 13.5px; color: var(--color-text-muted); }
 
 /* input with leading icon (+ optional eye toggle) */
 .auth-input { position: relative; }
