@@ -894,12 +894,12 @@ table.lst td .btn + .btn { margin-left: 6px; }
 #mockModeTag { box-shadow: var(--shadow); }
 
 @keyframes authWelcomeFade {
-  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
   to   { opacity: 1; transform: scale(1)    translateY(0);   }
 }
-.auth-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 28px; animation: authWelcomeFade 280ms ease-out; }
-.auth-welcome-lockup { width: 148px; height: auto; margin-bottom: 16px; }
-.auth-welcome h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; color: var(--color-text-main); }
+.auth-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 12px; margin-bottom: 28px; animation: authWelcomeFade 260ms ease-out; }
+.auth-welcome-lockup { width: 172px; height: auto; margin-bottom: 24px; }
+.auth-welcome h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; color: var(--color-text-main); }
 .auth-welcome-sub { margin: 0; font-size: 14px; font-weight: 500; color: var(--color-text-muted); line-height: 1.5; }
 .auth-avatar { flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--brand-soft); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
 .auth-avatar img { width: 30px; height: 30px; }
