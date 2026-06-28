@@ -5,6 +5,7 @@ const { query, tx } = require('../db');
 const { signAccess, signRefresh, verifyRefresh } = require('./tokens');
 const { requireAuth } = require('./middleware');
 const { logEvent } = require('../logs');
+const { loginLimiter, registerLimiter } = require('../rate-limit');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -19,7 +20,7 @@ async function membershipsOf(userId) {
 
 // สมัครสมาชิกแบบ self-serve: สร้างผู้ใช้ + ร้านทดลอง (trial) + membership 'owner' ให้เลย
 // → สมัครเสร็จล็อกอินเข้าใช้ร้านของตัวเองได้ทันที
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
@@ -57,7 +58,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');

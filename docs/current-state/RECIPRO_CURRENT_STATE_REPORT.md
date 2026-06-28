@@ -129,6 +129,8 @@ shops, memberships, users, shop_settings, materials, suppliers, recipes, recipe_
 | `JWT_REFRESH_EXPIRES_IN` | Optional | Default 30d | |
 | `GRACE_DAYS` | Optional | Default 5 | วัน grace หลังหมดรอบ |
 | `MAIL_FROM` | Optional | ❌ ไม่ได้ตั้ง | ชื่อ/email ผู้ส่ง |
+| `SENTRY_DSN` | ⚠️ Monitoring | ❌ ยังไม่ได้ตั้ง | Sentry DSN — ใส่แล้วเปิด error monitoring ทันที |
+| `OMISE_WEBHOOK_SECRET` | ⚠️ Security | ❌ ยังไม่ได้ตั้ง | HMAC secret สำหรับตรวจ Omise webhook (optional แต่แนะนำ) |
 
 ---
 

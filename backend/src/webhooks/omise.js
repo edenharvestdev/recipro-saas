@@ -1,5 +1,6 @@
 // POST /webhooks/omise — รับ event จาก Omise (ไม่มี auth)
-// ยืนยันความถูกต้องโดย "ดึง event/charge กลับจาก Omise API" ก่อนเชื่อ payload เสมอ
+// ยืนยันความถูกต้อง: (1) HMAC signature ถ้าตั้ง OMISE_WEBHOOK_SECRET, (2) re-fetch event จาก Omise API
+const crypto = require('crypto');
 const express = require('express');
 const { query } = require('../db');
 const omise = require('../omise');
@@ -7,9 +8,26 @@ const billing = require('../api/billing');
 const { sendReceipt } = require('../email');
 const router = express.Router();
 
+// ตรวจ HMAC signature (ถ้าตั้ง OMISE_WEBHOOK_SECRET) — เหมือนใน api/pay.js
+function verifyHmac(rawBody, req) {
+  const secret = process.env.OMISE_WEBHOOK_SECRET;
+  if (!secret) return;
+  const sig = req.headers['opn-signature'] || req.headers['x-opn-signature'] || '';
+  if (!sig) { console.warn('[omise-webhook] missing Opn-Signature'); return; }
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const sigBuf = Buffer.from(sig.length === expected.length ? sig : '', 'hex');
+  const expBuf = Buffer.from(expected, 'hex');
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw new Error('Invalid webhook signature');
+  }
+}
+
 router.post('/omise', async (req, res) => {
   try {
-    const evt = req.body || {};
+    // parse raw body (express.raw middleware ใน app.js)
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+    verifyHmac(rawBody, req);
+    const evt = JSON.parse(rawBody.toString('utf8'));
     if (!evt || !evt.key) return res.status(400).send('bad event');
 
     // ยืนยัน: ดึง event จริงจาก Omise (กัน payload ปลอม)

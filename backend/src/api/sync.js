@@ -69,6 +69,53 @@ router.post('/sync', async (req, res) => {
         }
       }
 
+      // P1-03: Staff discount ceiling enforcement — server-side (กันพนักงานแก้ request ตรง)
+      if (req.role === 'staff' && (b.bills || []).length > 0) {
+        const sp = await client.query(
+          'select staff_discount_max, staff_discount_max_baht, staff_permissions from shop_settings where shop_id = $1',
+          [shopId]
+        );
+        const ss = sp.rows[0] || {};
+        let perms = ss.staff_permissions || {};
+        if (typeof perms === 'string') { try { perms = JSON.parse(perms); } catch (_) { perms = {}; } }
+        const canDiscount = Object.prototype.hasOwnProperty.call(perms, 'discount') ? !!perms.discount : true;
+        const maxPct = Number(ss.staff_discount_max) || 0;
+        const maxBaht = Number(ss.staff_discount_max_baht) || 0;
+
+        for (const bill of (b.bills || [])) {
+          const raw = bill.items_json;
+          if (!raw) continue;
+          const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          const discV = Number(data.discV) || 0;
+          if (!discV) continue;
+
+          if (!canDiscount) {
+            const e = new Error('พนักงานไม่มีสิทธิ์ให้ส่วนลด (ให้เจ้าของเปิดสิทธิ์ก่อน)');
+            e.code = 'DISCOUNT_FORBIDDEN'; throw e;
+          }
+
+          // คำนวณยอดส่วนลดจริง
+          const items = Array.isArray(data.items) ? data.items : [];
+          const grand = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 1), 0);
+          const discT = data.discT || '%';
+          const discAmt = discT === '%' ? grand * discV / 100 : discV;
+
+          // ตรวจเพดาน (ถ้าตั้งไว้)
+          if (maxPct > 0 || maxBaht > 0) {
+            let ceiling = Infinity;
+            if (maxPct > 0) ceiling = Math.min(ceiling, grand * maxPct / 100);
+            if (maxBaht > 0) ceiling = Math.min(ceiling, maxBaht);
+            if (discAmt > ceiling + 0.01) {
+              const e = new Error(`ส่วนลดเกินเพดานพนักงาน (${discAmt.toFixed(2)}฿ > ${ceiling.toFixed(2)}฿)`);
+              e.code = 'DISCOUNT_EXCEEDED'; throw e;
+            }
+          }
+
+          // audit log ทุกครั้งที่พนักงานให้ส่วนลด
+          logEvent(shopId, req.userId, 'staff.discount', { bill: bill.id, discV, discT, discAmt });
+        }
+      }
+
       await upsertRows(client, 'bills',
         ['id', 'shop_id', 'number', 'status', 'items_json'], withShop(b.bills), 'id');
 
@@ -181,6 +228,12 @@ router.post('/sync', async (req, res) => {
   } catch (e) {
     if (e && e.code === 'CONFLICT') {
       return res.status(409).json({ error: 'version_conflict', conflict: true, currentVersion: e.currentVersion });
+    }
+    if (e && e.code === 'DISCOUNT_FORBIDDEN') {
+      return res.status(403).json({ error: e.message, code: 'DISCOUNT_FORBIDDEN' });
+    }
+    if (e && e.code === 'DISCOUNT_EXCEEDED') {
+      return res.status(403).json({ error: e.message, code: 'DISCOUNT_EXCEEDED' });
     }
     res.status(500).json({ error: e.message });
   }

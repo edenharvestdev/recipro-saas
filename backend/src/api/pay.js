@@ -1,5 +1,6 @@
 // S8: Payment Gateway (Omise/Opn) — โครงพร้อมเสียบคีย์ (โหมด test) + mock ให้เทสได้ไม่ต้องมีคีย์
 // ปลอดภัย: secret key อ่าน/ใช้ฝั่ง server เท่านั้น (ไม่ส่งไป frontend); แต่ละร้านใช้คีย์ของตัวเอง
+const crypto = require('crypto');
 const express = require('express');
 const { query } = require('../db');
 const slipverify = require('../slipverify');
@@ -143,10 +144,31 @@ async function markDisplayPaid(shopId) {
   } catch (e) {}
 }
 
+// ตรวจ HMAC-SHA256 signature จาก Omise webhook (ถ้าตั้ง OMISE_WEBHOOK_SECRET)
+// Omise ใช้ header "Opn-Signature" กับ HMAC-SHA256(raw_body, webhook_secret)
+function verifyOmiseHmac(rawBody, req) {
+  const secret = process.env.OMISE_WEBHOOK_SECRET;
+  if (!secret) return; // ไม่ได้ตั้ง — ข้าม (fail open)
+  const sig = req.headers['opn-signature'] || req.headers['x-opn-signature'] || '';
+  if (!sig) {
+    console.warn('[omise-webhook] OMISE_WEBHOOK_SECRET ตั้งแล้วแต่ไม่มี Opn-Signature header');
+    return; // log warning แต่ไม่บล็อก (กัน Omise เวอร์ชั่นเก่า)
+  }
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const sigBuf = Buffer.from(sig.length === expected.length ? sig : '', 'hex');
+  const expBuf = Buffer.from(expected, 'hex');
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw Object.assign(new Error('Invalid Omise webhook signature'), { code: 'WEBHOOK_SIG_INVALID' });
+  }
+}
+
 // Webhook (public, ไม่ต้อง auth) — Omise เรียกเมื่อ charge สำเร็จ → mark paid + เด้งจอ
 async function omiseWebhook(req, res) {
   try {
-    const ev = req.body || {};
+    // parse raw body (express.raw middleware ใน app.js ส่งมาเป็น Buffer)
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+    verifyOmiseHmac(rawBody, req);
+    const ev = JSON.parse(rawBody.toString('utf8'));
     const ch = ev.data || {};
     const chargeId = ch.id;
     const ok = ev.key === 'charge.complete' || ch.status === 'successful' || ch.paid === true;

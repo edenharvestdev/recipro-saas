@@ -17,7 +17,7 @@ P3 = UI / wording / improvement / nice-to-have
 | ID | Bug | ผลกระทบ | หมายเหตุ | สถานะ |
 |----|-----|---------|----------|-------|
 | P0-01 | **Omise payment ใช้ mock mode** | ลูกค้าชำระเงินผ่าน QR PromptPay ใน POS ไม่ได้จริง | ต้องการ `OMISE_SECRET_KEY` จาก Omise dashboard | ⏳ รอ key |
-| P0-02 | **ไม่มี error monitoring ใน production** | ถ้าระบบมี 500 error หรือ crash — ไม่มีใครรู้ทันที | ต้องการ Sentry หรือ uptime monitor | ⏳ ยังไม่ได้ทำ |
+| P0-02 | **ไม่มี error monitoring ใน production** | ถ้าระบบมี 500 error หรือ crash — ไม่มีใครรู้ทันที | ต้องการ Sentry หรือ uptime monitor | ✅ Sentry integrated (ใส่ `SENTRY_DSN` ใน Railway แล้วเปิดทันที) |
 
 ---
 
@@ -27,9 +27,9 @@ P3 = UI / wording / improvement / nice-to-have
 |----|-----|---------|----------|-------|
 | P1-01 | **ไม่มี password reset** | Owner ลืมรหัสผ่านต้องให้ superadmin แก้ใน DB | ต้องการ RESEND email | ⏳ รอ RESEND key |
 | P1-02 | **Integration test ไม่ผ่านใน local** | ไม่สามารถทดสอบ regression ก่อน deploy | ต้องมี `DATABASE_URL` ในเครื่อง dev | ⏳ config issue |
-| P1-03 | **Staff discount ceiling ไม่ enforce server-side** | Staff สามารถแก้ request ให้ discount เกิน ceiling ได้ | Frontend บล็อกแต่ server ไม่ตรวจ | ⏳ ต้องการ fix |
+| P1-03 | **Staff discount ceiling ไม่ enforce server-side** | Staff สามารถแก้ request ให้ discount เกิน ceiling ได้ | Frontend บล็อกแต่ server ไม่ตรวจ | ✅ Fixed — sync.js ตรวจ perm + ceiling + audit log |
 | P1-04 | **Billing checkout ไม่ทำงาน (503)** | Owner ต่ออายุ / upgrade แพ็กเกจเองไม่ได้ | ผูกกับ P0-01 (Omise mock) | ⏳ รอ key |
-| P1-05 | **ไม่มี rate limiting บน /auth/login** | Brute force password ได้ไม่จำกัด | ความเสี่ยงด้าน security | ⏳ ยังไม่ได้ทำ |
+| P1-05 | **ไม่มี rate limiting บน /auth/login** | Brute force password ได้ไม่จำกัด | ความเสี่ยงด้าน security | ✅ Fixed — express-rate-limit บน login/register/checkout/charge |
 
 ---
 
@@ -64,6 +64,9 @@ P3 = UI / wording / improvement / nice-to-have
 | วันที่ | ID | Action | ผู้ทำ |
 |--------|-----|--------|-------|
 | 2026-06-28 | — | เปิด triage board, Stabilization mode เริ่มต้น | — |
+| 2026-06-28 | P0-02 | Sentry integrated (`@sentry/node`) — ใส่ `SENTRY_DSN` ใน Railway | Sprint 001 |
+| 2026-06-28 | P1-03 | Staff discount server-side enforcement + audit log ใน sync.js | Sprint 001 |
+| 2026-06-28 | P1-05 | Rate limiting: login(20/15m), register(10/h), checkout(5/h), charge(10/5m) | Sprint 001 |
 
 ---
 
