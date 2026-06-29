@@ -253,12 +253,106 @@ router.post('/pos/sell', async (req, res) => {
         return { bom, subs };
       };
 
+      const validateOptionsForLine = async (itemType, itemId, chosenOptions) => {
+        const opts = Array.isArray(chosenOptions) ? chosenOptions.filter(o => o && o.choice_id) : [];
+        
+        // 1. Fetch groups
+        const groups = (await c.query(
+          itemType === 'recipe'
+            ? `select id, label, required, min_select, max_select from option_groups where id in (select group_id from recipe_option_groups where recipe_id = $1) and enabled = true`
+            : `select id, label, required, min_select, max_select from option_groups where id in (select group_id from material_option_groups where material_id = $1) and enabled = true`,
+          [itemId]
+        )).rows;
+
+        if (groups.length === 0) {
+          if (opts.length > 0) {
+            const err = new Error('OPTIONS_NOT_ALLOWED');
+            err.statusCode = 400;
+            throw err;
+          }
+          return;
+        }
+
+        // 2. Fetch choices
+        const groupIds = groups.map(g => g.id);
+        const dbChoices = (await c.query(
+          `select id, group_id, enabled, max_qty from option_choices where group_id = any($1::uuid[]) and enabled = true`,
+          [groupIds]
+        )).rows;
+
+        for (const o of opts) {
+          const ch = dbChoices.find(c => c.id === o.choice_id);
+          if (!ch) {
+            const err = new Error('INVALID_OPTION_CHOICE');
+            err.statusCode = 400;
+            throw err;
+          }
+          const choiceQty = Number(o.qty) || 1;
+          if (ch.max_qty && choiceQty > ch.max_qty) {
+            const err = new Error('OPTION_QTY_EXCEEDED_MAX');
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+
+        // 3. Rule checks
+        for (const g of groups) {
+          const gChoiceIds = dbChoices.filter(ch => ch.group_id === g.id).map(ch => ch.id);
+          const chosenForGroup = opts.filter(o => gChoiceIds.includes(o.choice_id));
+          const count = chosenForGroup.length;
+
+          if (g.required && count === 0) {
+            const err = new Error(`REQUIRED_OPTION_MISSING: ${g.label}`);
+            err.statusCode = 400;
+            throw err;
+          }
+          if (g.min_select && count < g.min_select) {
+            const err = new Error(`OPTION_MIN_SELECT_UNMET: ${g.label}`);
+            err.statusCode = 400;
+            throw err;
+          }
+          if (g.max_select && count > g.max_select) {
+            const err = new Error(`OPTION_MAX_SELECT_EXCEEDED: ${g.label}`);
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+      };
+
       for (const ln of (lines || [])) {
         const qty = Number(ln.qty) || 0;
         if (qty <= 0) continue;
 
+        // Perform option rules validation
+        await validateOptionsForLine(ln.ref_type, ln.ref_id, ln.chosen_options);
+
         if (ln.ref_type === 'material') {
           await deductMaterial(ln.ref_id, qty, 'on_sale');
+          
+          // Deduct direct sale option choice links (if any)
+          const opts = Array.isArray(ln.chosen_options) ? ln.chosen_options.filter(o => o && o.choice_id) : [];
+          if (opts.length) {
+            const ids = opts.map(o => o.choice_id);
+            const choices = (await c.query(
+              `select id, effect_type, target_material_id, amount from option_choices where id = any($1::uuid[])`,
+              [ids]
+            )).rows;
+
+            for (const ch of choices) {
+              const choiceQty = Number(opts.find(o => o.choice_id === ch.id)?.qty || 1);
+              if (ch.effect_type === 'ADD') {
+                const links = (await c.query(
+                  `select material_id, amount from option_choice_links where choice_id = $1`,
+                  [ch.id]
+                )).rows;
+                for (const l of links) {
+                  if (l.material_id && Number(l.amount) > 0) {
+                    await deductMaterial(l.material_id, Number(l.amount) * choiceQty * qty, 'recipe_use');
+                  }
+                }
+              }
+            }
+          }
         } else if (ln.ref_type === 'recipe') {
           const rec = (await c.query(
             'select id,name,fg_stock,yield_unit,inventory_mode from recipes where id=$1 and shop_id=$2 for update',
@@ -398,6 +492,193 @@ router.get('/alerts/reorder', async (req, res) => {
       [req.shopId]);
     res.json({ count: rows.length, reorder: rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// Phase 3: Daily Stock Movement Report and Summary Statistics
+// ============================================================
+router.get('/report', async (req, res) => {
+  try {
+    const shopId = req.shopId;
+    const {
+      start_date,
+      end_date,
+      bill_no,
+      sku,
+      material_id,
+      recipe_id,
+      kind,
+      user_id,
+      ref_type,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const pgNum = Math.max(1, parseInt(page));
+    const limNum = Math.max(1, parseInt(limit));
+    const offset = (pgNum - 1) * limNum;
+
+    // Date filters (defaults to today)
+    const start = start_date ? new Date(start_date) : new Date(new Date().setHours(0,0,0,0));
+    const end = end_date ? new Date(end_date) : new Date(new Date().setHours(23,59,59,999));
+
+    // 1. Build Query
+    let where = 'where sm.shop_id = $1 and sm.created_at >= $2 and sm.created_at <= $3';
+    const params = [shopId, start, end];
+    let paramIdx = 4;
+
+    if (bill_no) {
+      where += ` and (sm.note ILIKE $${paramIdx} or sm.note ILIKE $${paramIdx + 1})`;
+      params.push(`ขาย ${bill_no}`, `ยกเลิก ${bill_no}`);
+      paramIdx += 2;
+    }
+    if (sku) {
+      where += ` and (m.sku ILIKE $${paramIdx} or r.code ILIKE $${paramIdx})`;
+      params.push(`%${sku}%`);
+      paramIdx++;
+    }
+    if (material_id) {
+      where += ` and sm.ref_type = 'material' and sm.ref_id = $${paramIdx}`;
+      params.push(material_id);
+      paramIdx++;
+    }
+    if (recipe_id) {
+      where += ` and sm.ref_type = 'recipe' and sm.ref_id = $${paramIdx}`;
+      params.push(recipe_id);
+      paramIdx++;
+    }
+    if (kind) {
+      where += ` and sm.kind = $${paramIdx}`;
+      params.push(kind);
+      paramIdx++;
+    }
+    if (user_id) {
+      where += ` and sm.user_id = $${paramIdx}`;
+      params.push(user_id);
+      paramIdx++;
+    }
+    if (ref_type) {
+      where += ` and sm.ref_type = $${paramIdx}`;
+      params.push(ref_type);
+      paramIdx++;
+    }
+
+    // 2. Fetch Movements Rows
+    const queryStr = `
+      select sm.*,
+             m.sku as material_sku,
+             r.code as recipe_code,
+             u.email as actor_email,
+             sh.name as shop_name
+        from stock_movements sm
+        left join materials m on m.id = sm.ref_id and sm.ref_type = 'material'
+        left join recipes r on r.id = sm.ref_id and sm.ref_type = 'recipe'
+        left join users u on u.id = sm.user_id
+        left join shops sh on sh.id = sm.shop_id
+       ${where}
+       order by sm.created_at desc
+       limit $${paramIdx} offset $${paramIdx + 1}
+    `;
+    
+    const countQueryStr = `
+      select count(*)
+        from stock_movements sm
+        left join materials m on m.id = sm.ref_id and sm.ref_type = 'material'
+        left join recipes r on r.id = sm.ref_id and sm.ref_type = 'recipe'
+       ${where}
+    `;
+
+    const [rowsRes, countRes] = await Promise.all([
+      query(queryStr, [...params, limNum, offset]),
+      query(countQueryStr, params)
+    ]);
+
+    const totalRows = parseInt(countRes.rows[0].count);
+
+    // 3. Fetch Summary Metrics
+    const billsSummary = (await query(`
+      select count(*) as total,
+             count(*) filter (where status != 'voided') as active,
+             count(*) filter (where status = 'voided') as voided
+        from bills
+       where shop_id = $1 and created_at >= $2 and created_at <= $3
+    `, [shopId, start, end])).rows[0] || { total: 0, active: 0, voided: 0 };
+
+    const grossRes = await query(`
+      select coalesce(sum(delta), 0) as val
+        from stock_movements
+       where shop_id = $1 and kind = 'sale' and delta < 0 and created_at >= $2 and created_at <= $3
+    `, [shopId, start, end]);
+
+    const revsRes = await query(`
+      select coalesce(sum(delta), 0) as val
+        from stock_movements
+       where shop_id = $1 and kind = 'void' and delta > 0 and created_at >= $2 and created_at <= $3
+    `, [shopId, start, end]);
+
+    const adjustRes = await query(`
+      select coalesce(sum(delta), 0) as val
+        from stock_movements
+       where shop_id = $1 and kind = 'adjust' and created_at >= $2 and created_at <= $3
+    `, [shopId, start, end]);
+
+    const lowMatRes = await query(`select count(*) from materials where shop_id = $1 and stock < 0`, [shopId]);
+    const lowRecRes = await query(`select count(*) from recipes where shop_id = $1 and fg_stock < 0`, [shopId]);
+
+    const noMoveBills = await query(`
+      select count(*) as count
+        from bills b
+       where b.shop_id = $1
+         and b.created_at >= $2
+         and b.created_at <= $3
+         and not exists (
+           select 1 from stock_movements sm
+            where sm.shop_id = $1
+              and (sm.note = 'ขาย ' || b.number or sm.note = 'ยกเลิก ' || b.number)
+         )
+    `, [shopId, start, end]);
+
+    const noRefMoves = await query(`
+      select count(*) as count
+        from stock_movements
+       where shop_id = $1
+         and created_at >= $2
+         and created_at <= $3
+         and note not ilike 'ขาย %'
+         and note not ilike 'ยกเลิก %'
+         and note not ilike '%CONVERSION%'
+         and note not ilike '%CORRECTION%'
+    `, [shopId, start, end]);
+
+    const summary = {
+      total_bills: parseInt(billsSummary.total) || 0,
+      active_bills: parseInt(billsSummary.active) || 0,
+      voided_bills: parseInt(billsSummary.voided) || 0,
+      gross_deductions: Math.abs(Number(grossRes.rows[0].val)),
+      total_reversals: Number(revsRes.rows[0].val),
+      net_deductions: Math.abs(Number(grossRes.rows[0].val)) - Number(revsRes.rows[0].val),
+      manual_adjustments: Number(adjustRes.rows[0].val),
+      negative_stock_items: parseInt(lowMatRes.rows[0].count) + parseInt(lowRecRes.rows[0].count),
+      bills_without_movements: parseInt(noMoveBills.rows[0].count),
+      movements_without_reference: parseInt(noRefMoves.rows[0].count),
+      duplicate_reversals: 0, // Enforced at DB level, always 0
+      cross_branch_anomalies: 0 // Enforced at query scope level, always 0
+    };
+
+    res.json({
+      metadata: {
+        total_rows: totalRows,
+        page: pgNum,
+        limit: limNum,
+        total_pages: Math.ceil(totalRows / limNum)
+      },
+      summary,
+      movements: rowsRes.rows
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;
