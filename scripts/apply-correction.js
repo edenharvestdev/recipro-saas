@@ -9,14 +9,16 @@ const pool = new Pool({
 
 async function run() {
   const client = await pool.connect();
+  const dryRun = process.argv.includes('--dry-run');
+
   try {
     const shopId = 'c5cbb867-c3c6-40c2-8396-b6893da09b37'; // HB05-Nak Niwat48
     const hbt02Id = 'bf6e22ee-0a7b-4b43-a73b-7fe47ff7fb13'; // HBT02
     const refKey = 'HBT02_BATCH1_CORRECTION_20260629';
 
-    console.log('=== IDEMPOTENT PRODUCTION CORRECTION CHECK ===');
+    console.log(dryRun ? '=== IDEMPOTENT PRODUCTION CORRECTION DRY-RUN ===' : '=== IDEMPOTENT PRODUCTION CORRECTION EXECUTION ===');
     
-    // Check if movement exists
+    // 1. Check if movement exists
     const checkMove = await client.query(
       "SELECT id, created_at, qty_before, qty_after FROM stock_movements WHERE shop_id = $1 AND note = $2",
       [shopId, refKey]
@@ -30,12 +32,13 @@ async function run() {
       return;
     }
 
-    console.log('Correction not applied yet. Starting transaction...');
-    await client.query('BEGIN');
+    // 2. Query Shop Name
+    const shop = (await client.query("SELECT name FROM shops WHERE id=$1", [shopId])).rows[0];
+    const shopName = shop ? shop.name : 'Unknown';
 
-    // Get current recipe state
+    // 3. Query current recipe state
     const rec = (await client.query(
-      "SELECT id, name, fg_stock, yield_unit, inventory_mode FROM recipes WHERE id = $1 AND shop_id = $2 FOR UPDATE",
+      "SELECT id, name, fg_stock, yield_unit, inventory_mode FROM recipes WHERE id = $1 AND shop_id = $2",
       [hbt02Id, shopId]
     )).rows[0];
 
@@ -47,17 +50,34 @@ async function run() {
     const delta = 11;
     const after = before + delta;
 
-    console.log(`Applying correction for "${rec.name}":`);
-    console.log(`  - Inventory Mode: ${rec.inventory_mode} -> finished_goods`);
-    console.log(`  - Stock: ${before} -> ${after} (delta +${delta})`);
+    console.log('\n--- PREVIEW ---');
+    console.log(`  - Target Shop: ${shopName} (${shopId})`);
+    console.log(`  - Target Recipe ID: ${rec.id}`);
+    console.log(`  - Recipe Code: HBT02`);
+    console.log(`  - Recipe Name: ${rec.name}`);
+    console.log(`  - Current Inventory Mode: ${rec.inventory_mode}`);
+    console.log(`  - Expected Inventory Mode: finished_goods`);
+    console.log(`  - Current fg_stock: ${before} ${rec.yield_unit}`);
+    console.log(`  - Correction Delta: +${delta} ${rec.yield_unit}`);
+    console.log(`  - Expected fg_stock: ${after} ${rec.yield_unit}`);
+    console.log(`  - Correction Reference: "${refKey}"`);
+    console.log('----------------\n');
 
-    // 1. Set mode
+    if (dryRun) {
+      console.log('DRY-RUN completed. No data was modified.');
+      return;
+    }
+
+    console.log('Preconditions checked. Starting execution transaction...');
+    await client.query('BEGIN');
+
+    // 4. Set mode
     await client.query(
       "UPDATE recipes SET inventory_mode = 'finished_goods', updated_at = now() WHERE id = $1",
       [hbt02Id]
     );
 
-    // 2. Log movement
+    // 5. Log movement
     const moveRes = await client.query(`
       INSERT INTO stock_movements (
         shop_id, user_id, kind, ref_type, ref_id, ref_name, unit, qty_before, qty_after, delta, note, consumption_category, actor_name
@@ -70,25 +90,23 @@ async function run() {
     ]);
     const moveId = moveRes.rows[0].id;
 
-    // 3. Update stock
+    // 6. Update stock
     await client.query(
       "UPDATE recipes SET fg_stock = $1, updated_at = now() WHERE id = $2",
       [after, hbt02Id]
     );
 
     await client.query('COMMIT');
-    console.log(`✓ Staging stock correction applied successfully! Movement ID: ${moveId}`);
+    console.log(`✓ Production stock correction applied successfully!`);
+    console.log(`  Movement ID: ${moveId}`);
 
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error('❌ Error applying production correction:', e);
+    console.error('❌ Error during execution:', e);
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-// Run only if executed directly
-if (require.main === module) {
-  run();
-}
+run();
