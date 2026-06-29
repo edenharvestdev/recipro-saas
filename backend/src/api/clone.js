@@ -1,12 +1,9 @@
-// เฟส 2: โคลน/นำเข้า-ส่งออกข้อมูลร้าน (master data) ข้ามสาขา
-// แก้จุดบกพร่องเดิม: สร้าง id ใหม่ทุกตัว + remap การอ้างอิงทั้งหมด (recipe_items, สูตรย่อย, options)
-// → ไม่ชน primary key ข้ามร้าน · โคลน options ครบ · สต๊อกตั้งต้น 0
 const express = require('express');
 const { query, tx } = require('../db');
 const { logEvent } = require('../logs');
 const router = express.Router();
 
-// ---- รวบรวมข้อมูล master ของร้าน (ใช้ทั้ง export และ clone) ----
+// Gather all shop master data including material_option_groups
 async function gatherFullShopData(c, shopId) {
   const get = (sql) => c.query(sql, [shopId]).then(r => r.rows);
   const suppliers = await get('select * from suppliers where shop_id=$1');
@@ -17,129 +14,380 @@ async function gatherFullShopData(c, shopId) {
   const option_choices = await get('select oc.* from option_choices oc join option_groups og on og.id=oc.group_id where og.shop_id=$1');
   const option_choice_links = await get('select ocl.* from option_choice_links ocl join option_choices oc on oc.id=ocl.choice_id join option_groups og on og.id=oc.group_id where og.shop_id=$1');
   const recipe_option_groups = await get('select rog.* from recipe_option_groups rog join option_groups og on og.id=rog.group_id where og.shop_id=$1');
+  const material_option_groups = await get('select mog.* from material_option_groups mog join option_groups og on og.id=mog.group_id where og.shop_id=$1');
   const settings = (await get('select * from shop_settings where shop_id=$1'))[0] || null;
-  return { suppliers, materials, recipes, recipe_items, option_groups, option_choices, option_choice_links, recipe_option_groups, settings };
+
+  return {
+    suppliers,
+    materials,
+    recipes,
+    recipe_items,
+    option_groups,
+    option_choices,
+    option_choice_links,
+    recipe_option_groups,
+    material_option_groups,
+    settings
+  };
 }
 
 function genUUID(c) { return c.query('select gen_random_uuid() id').then(r => r.rows[0].id); }
 
-// ---- นำเข้าข้อมูลลงร้านปลายทาง: สร้าง id ใหม่ + remap ทั้งหมด (additive insert, ไม่ลบของเดิมถ้า replace=false) ----
-// opts: { replace=true ลบ master เดิมของปลายทางก่อน, resetStock=true สต๊อกตั้งต้น 0, includeSettings=true คัดลอกการตั้งค่า config }
-async function importIntoShop(c, dstShopId, data, opts = {}) {
-  const { replace = true, resetStock = true, includeSettings = true } = opts;
-  const out = { suppliers: 0, materials: 0, recipes: 0, recipe_items: 0, option_groups: 0, option_choices: 0, option_choice_links: 0, recipe_option_groups: 0 };
+// POST /api/admin/selective-clone
+// body: { srcShopId, dstShopId, sections: ['suppliers','materials','recipes','option_groups','settings'], conflictStrategy: 'skip'|'update'|'copy', dryRun: boolean }
+router.post('/selective-clone', async (req, res) => {
+  const { srcShopId, dstShopId, sections = [], conflictStrategy = 'skip', dryRun = false } = req.body || {};
 
-  if (replace) {
-    // ลบ master เดิมของปลายทาง (ตามลำดับ FK) — bills/orders/stock_movements ไม่แตะ
-    await c.query('delete from recipe_option_groups where group_id in (select id from option_groups where shop_id=$1)', [dstShopId]);
-    await c.query('delete from option_choice_links where choice_id in (select oc.id from option_choices oc join option_groups og on og.id=oc.group_id where og.shop_id=$1)', [dstShopId]);
-    await c.query('delete from option_choices where group_id in (select id from option_groups where shop_id=$1)', [dstShopId]);
-    await c.query('delete from option_groups where shop_id=$1', [dstShopId]);
-    await c.query('delete from recipe_items where recipe_id in (select id from recipes where shop_id=$1)', [dstShopId]);
-    await c.query('delete from recipes where shop_id=$1', [dstShopId]);
-    await c.query('delete from materials where shop_id=$1', [dstShopId]);
-    await c.query('delete from suppliers where shop_id=$1', [dstShopId]);
-  }
+  if (!srcShopId || !dstShopId) return res.status(400).json({ error: 'srcShopId and dstShopId are required' });
+  if (srcShopId === dstShopId) return res.status(400).json({ error: 'Source and destination shops must be different' });
 
-  const supMap = new Map(), matMap = new Map(), recMap = new Map(), grpMap = new Map(), choMap = new Map();
+  try {
+    const src = (await query('select id, name from shops where id=$1', [srcShopId])).rows[0];
+    const dst = (await query('select id, name from shops where id=$1', [dstShopId])).rows[0];
+    if (!src) return res.status(404).json({ error: 'Source shop not found' });
+    if (!dst) return res.status(404).json({ error: 'Destination shop not found' });
 
-  // suppliers
-  for (const s of data.suppliers || []) {
-    const id = await genUUID(c); supMap.set(s.id, id);
-    await c.query('insert into suppliers (id, shop_id, name, note) values ($1,$2,$3,$4)', [id, dstShopId, s.name, s.note || null]);
-    out.suppliers++;
+    const report = await tx(async (c) => {
+      // 1. Gather source and destination data
+      const srcData = await gatherFullShopData(c, srcShopId);
+      const dstData = await gatherFullShopData(c, dstShopId);
+
+      const conflicts = [];
+      const dependencies = [];
+      const logs = [];
+
+      const selectSec = (name) => sections.includes(name);
+
+      // Maps to track remapping from source ID to destination ID
+      const supMap = new Map();
+      const matMap = new Map();
+      const recMap = new Map();
+      const grpMap = new Map();
+      const choMap = new Map();
+
+      // Seed mapping for items that are NOT being cloned but already exist in destination by unique key
+      dstData.suppliers.forEach(s => {
+        const srcS = srcData.suppliers.find(x => x.name === s.name);
+        if (srcS) supMap.set(srcS.id, s.id);
+      });
+      dstData.materials.forEach(m => {
+        const srcM = srcData.materials.find(x => x.sku === m.sku && m.sku);
+        if (srcM) matMap.set(srcM.id, m.id);
+      });
+      dstData.recipes.forEach(r => {
+        const srcR = srcData.recipes.find(x => x.code === r.code && r.code);
+        if (srcR) recMap.set(srcR.id, r.id);
+      });
+      dstData.option_groups.forEach(g => {
+        const srcG = srcData.option_groups.find(x => x.label === g.label);
+        if (srcG) grpMap.set(srcG.id, g.id);
+      });
+
+      // 2. Dry Run & Conflict Detection
+      // Suppliers
+      for (const s of srcData.suppliers) {
+        const conflict = dstData.suppliers.find(x => x.name === s.name);
+        if (conflict) {
+          conflicts.push({ type: 'supplier', name: s.name, src_id: s.id, dst_id: conflict.id });
+        }
+      }
+
+      // Materials
+      for (const m of srcData.materials) {
+        const conflict = dstData.materials.find(x => x.sku === m.sku && m.sku);
+        if (conflict) {
+          conflicts.push({ type: 'material', name: m.name, sku: m.sku, src_id: m.id, dst_id: conflict.id });
+        }
+      }
+
+      // Recipes
+      for (const r of srcData.recipes) {
+        const conflict = dstData.recipes.find(x => x.code === r.code && r.code);
+        if (conflict) {
+          conflicts.push({ type: 'recipe', name: r.name, code: r.code, src_id: r.id, dst_id: conflict.id });
+        }
+      }
+
+      // Option Groups
+      for (const g of srcData.option_groups) {
+        const conflict = dstData.option_groups.find(x => x.label === g.label);
+        if (conflict) {
+          conflicts.push({ type: 'option_group', label: g.label, src_id: g.id, dst_id: conflict.id });
+        }
+      }
+
+      // Dependency Validation
+      // If recipes is selected but materials is not, check if referenced materials exist in destination
+      if (selectSec('recipes') && !selectSec('materials')) {
+        for (const it of srcData.recipe_items) {
+          if (it.material_id && !matMap.has(it.material_id)) {
+            const mat = srcData.materials.find(x => x.id === it.material_id);
+            dependencies.push({ type: 'missing_material', recipe_id: it.recipe_id, material_name: mat ? mat.name : 'Unknown' });
+          }
+        }
+      }
+
+      if (dryRun) {
+        return {
+          preview: {
+            source: src.name,
+            destination: dst.name,
+            selected_sections: sections,
+            counts: {
+              suppliers: selectSec('suppliers') ? srcData.suppliers.length : 0,
+              materials: selectSec('materials') ? srcData.materials.length : 0,
+              recipes: selectSec('recipes') ? srcData.recipes.length : 0,
+              option_groups: selectSec('option_groups') ? srcData.option_groups.length : 0,
+            },
+            conflicts,
+            dependencies
+          }
+        };
+      }
+
+      // 3. Execution Phase in transaction
+      const counts = { suppliers: 0, materials: 0, recipes: 0, recipe_items: 0, option_groups: 0, option_choices: 0, option_choice_links: 0, recipe_option_groups: 0, material_option_groups: 0 };
+
+      // Section: Suppliers
+      if (selectSec('suppliers')) {
+        for (const s of srcData.suppliers) {
+          const conf = conflicts.find(x => x.type === 'supplier' && x.src_id === s.id);
+          if (conf) {
+            if (conflictStrategy === 'skip') {
+              supMap.set(s.id, conf.dst_id);
+              logs.push(`Skipped supplier "${s.name}" (already exists)`);
+              continue;
+            } else if (conflictStrategy === 'update') {
+              await c.query('update suppliers set note=$1 where id=$2', [s.note, conf.dst_id]);
+              supMap.set(s.id, conf.dst_id);
+              logs.push(`Updated supplier "${s.name}"`);
+              counts.suppliers++;
+              continue;
+            }
+          }
+
+          // Insert new or copy
+          const id = await genUUID(c);
+          const name = conf && conflictStrategy === 'copy' ? `${s.name} - Copy` : s.name;
+          supMap.set(s.id, id);
+          await c.query('insert into suppliers (id, shop_id, name, note) values ($1,$2,$3,$4)', [id, dstShopId, name, s.note]);
+          logs.push(`Created supplier "${name}"`);
+          counts.suppliers++;
+        }
+      }
+
+      // Section: Materials
+      if (selectSec('materials')) {
+        for (const m of srcData.materials) {
+          const conf = conflicts.find(x => x.type === 'material' && x.src_id === m.id);
+          if (conf) {
+            if (conflictStrategy === 'skip') {
+              matMap.set(m.id, conf.dst_id);
+              logs.push(`Skipped material "${m.name}" (already exists)`);
+              continue;
+            } else if (conflictStrategy === 'update') {
+              const supId = m.supplier_id ? (supMap.get(m.supplier_id) || null) : null;
+              await c.query(
+                `update materials set name=$1, qty=$2, unit=$3, price=$4, sell_price=$5, supplier_id=$6, order_url=$7, low_stock=$8, category=$9, conv_qty=$10, stock_unit=$11, is_consumable=$12, sale_type=$13, show_in_pos=$14, sale_price_2=$15, item_type=$16, img_data=$17, updated_at=now() where id=$18`,
+                [m.name, m.qty, m.unit, m.price, m.sell_price, supId, m.order_url, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data, conf.dst_id]
+              );
+              matMap.set(m.id, conf.dst_id);
+              logs.push(`Updated material "${m.name}"`);
+              counts.materials++;
+              continue;
+            }
+          }
+
+          const id = await genUUID(c);
+          const sku = conf && conflictStrategy === 'copy' ? `${m.sku}_copy` : m.sku;
+          const name = conf && conflictStrategy === 'copy' ? `${m.name} - Copy` : m.name;
+          const supId = m.supplier_id ? (supMap.get(m.supplier_id) || null) : null;
+          matMap.set(m.id, id);
+
+          await c.query(
+            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+            [id, dstShopId, sku, name, m.qty, m.unit, m.price, m.sell_price, supId, m.order_url, 0, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data]
+          );
+          logs.push(`Created material "${name}"`);
+          counts.materials++;
+        }
+      }
+
+      // Section: Recipes & Recipe Items
+      if (selectSec('recipes')) {
+        for (const r of srcData.recipes) {
+          const conf = conflicts.find(x => x.type === 'recipe' && x.src_id === r.id);
+          if (conf) {
+            if (conflictStrategy === 'skip') {
+              recMap.set(r.id, conf.dst_id);
+              logs.push(`Skipped recipe "${r.name}" (already exists)`);
+              continue;
+            } else if (conflictStrategy === 'update') {
+              await c.query(
+                `update recipes set name=$1, sell_price=$2, batch_yield=$3, yield_unit=$4, is_raw=$5, steps=$6, detail=$7, fg_low=$8, category=$9, opt_groups=$10, img_data=$11, is_sop=$12, recipe_type=$13, output_item_type=$14, on_menu=$15, inventory_mode=$16, updated_at=now() where id=$17`,
+                [r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.detail, r.fg_low, r.category,
+                 r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
+                 r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit', conf.dst_id]
+              );
+              recMap.set(r.id, conf.dst_id);
+              logs.push(`Updated recipe "${r.name}"`);
+              counts.recipes++;
+              continue;
+            }
+          }
+
+          const id = await genUUID(c);
+          const code = conf && conflictStrategy === 'copy' ? `${r.code}_copy` : r.code;
+          const name = conf && conflictStrategy === 'copy' ? `${r.name} - Copy` : r.name;
+          recMap.set(r.id, id);
+
+          await c.query(
+            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            [id, dstShopId, code, name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.detail, 0, r.fg_low, r.category,
+             r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
+             r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit']
+          );
+          logs.push(`Created recipe "${name}"`);
+          counts.recipes++;
+        }
+
+        // Copy recipe items mapping to destination IDs
+        for (const it of srcData.recipe_items) {
+          const recipe_id = recMap.get(it.recipe_id);
+          if (!recipe_id) continue;
+          
+          const material_id = it.material_id ? (matMap.get(it.material_id) || null) : null;
+          const sub_recipe_id = it.sub_recipe_id ? (recMap.get(it.sub_recipe_id) || null) : null;
+
+          // Remove existing if conflict Strategy was update
+          await c.query('delete from recipe_items where recipe_id=$1 and (material_id=$2 or sub_recipe_id=$3)', [recipe_id, material_id, sub_recipe_id]);
+
+          await c.query('insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1,$2,$3,$4,$5)',
+            [recipe_id, material_id, it.amount, it.role, sub_recipe_id]);
+          counts.recipe_items++;
+        }
+      }
+
+      // Section: Option Groups
+      if (selectSec('option_groups')) {
+        for (const g of srcData.option_groups) {
+          const conf = conflicts.find(x => x.type === 'option_group' && x.src_id === g.id);
+          if (conf) {
+            if (conflictStrategy === 'skip') {
+              grpMap.set(g.id, conf.dst_id);
+              logs.push(`Skipped option group "${g.label}" (already exists)`);
+              continue;
+            } else if (conflictStrategy === 'update') {
+              await c.query(
+                `update option_groups set label=$1, select_type=$2, required=$3, min_select=$4, max_select=$5, sort=$6, enabled=$7, visible_on_pos=$8, visible_on_receipt=$9, visible_on_kitchen=$10, visible_on_online=$11 where id=$12`,
+                [g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online, conf.dst_id]
+              );
+              grpMap.set(g.id, conf.dst_id);
+              logs.push(`Updated option group "${g.label}"`);
+              counts.option_groups++;
+              continue;
+            }
+          }
+
+          const id = await genUUID(c);
+          grpMap.set(g.id, id);
+          await c.query(
+            `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled, visible_on_pos, visible_on_receipt, visible_on_kitchen, visible_on_online)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [id, dstShopId, g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online]
+          );
+          logs.push(`Created option group "${g.label}"`);
+          counts.option_groups++;
+        }
+
+        // Option Choices
+        for (const ch of srcData.option_choices) {
+          const group_id = grpMap.get(ch.group_id);
+          if (!group_id) continue;
+
+          const id = await genUUID(c);
+          choMap.set(ch.id, id);
+
+          const targetMatId = ch.target_material_id ? (matMap.get(ch.target_material_id) || null) : null;
+          const varRecId = ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null;
+
+          await c.query(
+            `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount]
+          );
+          counts.option_choices++;
+        }
+
+        // Option Choice Links
+        for (const l of srcData.option_choice_links) {
+          const choice_id = choMap.get(l.choice_id);
+          const material_id = matMap.get(l.material_id);
+          if (!choice_id || !material_id) continue;
+
+          await c.query('insert into option_choice_links (id, choice_id, material_id, amount) values (gen_random_uuid(),$1,$2,$3)',
+            [choice_id, material_id, l.amount]);
+          counts.option_choice_links++;
+        }
+
+        // Recipe Option Groups
+        for (const rg of srcData.recipe_option_groups) {
+          const recipe_id = recMap.get(rg.recipe_id);
+          const group_id = grpMap.get(rg.group_id);
+          if (!recipe_id || !group_id) continue;
+
+          await c.query('insert into recipe_option_groups (recipe_id, group_id, sort) values ($1,$2,$3) on conflict do nothing',
+            [recipe_id, group_id, rg.sort ?? 0]);
+          counts.recipe_option_groups++;
+        }
+
+        // Material Option Groups (Phase 2 link table)
+        for (const mog of srcData.material_option_groups) {
+          const material_id = matMap.get(mog.material_id);
+          const group_id = grpMap.get(mog.group_id);
+          if (!material_id || !group_id) continue;
+
+          await c.query('insert into material_option_groups (material_id, group_id, sort) values ($1,$2,$3) on conflict do nothing',
+            [material_id, group_id, mog.sort ?? 0]);
+          counts.material_option_groups++;
+        }
+      }
+
+      // Section: Settings
+      if (selectSec('settings') && srcData.settings) {
+        const s = srcData.settings;
+        await c.query(
+          `update shop_settings set categories=$2, make_to_order=$3, member_config=$4, business_type=$5,
+             vat_enabled=$6, vat_rate=$7, staff_discount_max=$8, staff_discount_max_baht=$9, discount_presets=$10,
+             kitchen_ticket_mode=$11, use_delivery=$12, use_petty_cash=$13
+           where shop_id=$1`,
+          [dstShopId,
+           s.categories == null ? null : (typeof s.categories === 'string' ? s.categories : JSON.stringify(s.categories)),
+           s.make_to_order ?? false,
+           s.member_config == null ? null : (typeof s.member_config === 'string' ? s.member_config : JSON.stringify(s.member_config)),
+           s.business_type || 'fnb', s.vat_enabled ?? false, s.vat_rate ?? 7, s.staff_discount_max ?? 100, s.staff_discount_max_baht ?? 0,
+           s.discount_presets == null ? null : (typeof s.discount_presets === 'string' ? s.discount_presets : JSON.stringify(s.discount_presets)),
+           s.kitchen_ticket_mode || 'receipt', s.use_delivery ?? false, s.use_petty_cash ?? false]
+        );
+        logs.push(`Copied settings configuration`);
+      }
+
+      return { counts, logs };
+    });
+
+    if (dryRun) {
+      return res.json({ ok: true, ...report });
+    }
+
+    logEvent(dstShopId, req.userId, 'admin.selective-clone', { srcShopId, sections, conflictStrategy, ...report.counts });
+    res.json({ ok: true, cloned: report.counts, logs: report.logs });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  // materials (สต๊อกตั้งต้น 0, remap supplier_id)
-  for (const m of data.materials || []) {
-    const id = await genUUID(c); matMap.set(m.id, id);
-    await c.query(
-      `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-      [id, dstShopId, m.sku || null, m.name, m.qty, m.unit, m.price, m.sell_price, m.supplier_id ? (supMap.get(m.supplier_id) || null) : null,
-       m.order_url || '', resetStock ? 0 : (m.stock || 0), m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null,
-       m.is_consumable ?? false, m.sale_type || 'INGREDIENT_ONLY', m.show_in_pos ?? false, m.sale_price_2 ?? null, m.item_type || null, m.img_data || null]);
-    out.materials++;
-  }
-  // recipes (สต๊อก fg 0, remap ทีหลังสำหรับ items)
-  for (const r of data.recipes || []) {
-    const id = await genUUID(c); recMap.set(r.id, id);
-    await c.query(
-      `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-      [id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps || '', r.detail || '',
-       resetStock ? 0 : (r.fg_stock || 0), r.fg_low || 0, r.category || null,
-       r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
-       r.img_data || null, r.is_sop || false, r.recipe_type || null, r.output_item_type || null, r.on_menu]);
-    out.recipes++;
-  }
-  // recipe_items (remap recipe_id, material_id, sub_recipe_id)
-  for (const it of data.recipe_items || []) {
-    const recipe_id = recMap.get(it.recipe_id);
-    if (!recipe_id) continue;
-    const material_id = it.material_id ? (matMap.get(it.material_id) || null) : null;
-    const sub_recipe_id = it.sub_recipe_id ? (recMap.get(it.sub_recipe_id) || null) : null;
-    await c.query('insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1,$2,$3,$4,$5)',
-      [recipe_id, material_id, it.amount, it.role || '', sub_recipe_id]);
-    out.recipe_items++;
-  }
-  // option_groups
-  for (const g of data.option_groups || []) {
-    const id = await genUUID(c); grpMap.set(g.id, id);
-    await c.query(
-      `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [id, dstShopId, g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled]);
-    out.option_groups++;
-  }
-  // option_choices (remap group_id, target_material_id, variant_recipe_id)
-  for (const ch of data.option_choices || []) {
-    const group_id = grpMap.get(ch.group_id);
-    if (!group_id) continue;
-    const id = await genUUID(c); choMap.set(ch.id, id);
-    await c.query(
-      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [id, group_id, ch.label, ch.price_add ?? 0, ch.effect_type || 'NONE', ch.enabled ?? true, ch.is_default ?? false, ch.sort ?? 0, ch.max_qty ?? 1,
-       ch.target_role || '', ch.target_material_id ? (matMap.get(ch.target_material_id) || null) : null,
-       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0]);
-    out.option_choices++;
-  }
-  // option_choice_links (remap choice_id, material_id)
-  for (const l of data.option_choice_links || []) {
-    const choice_id = choMap.get(l.choice_id);
-    const material_id = matMap.get(l.material_id);
-    if (!choice_id || !material_id) continue;
-    await c.query('insert into option_choice_links (id, choice_id, material_id, amount) values (gen_random_uuid(),$1,$2,$3)',
-      [choice_id, material_id, l.amount]);
-    out.option_choice_links++;
-  }
-  // recipe_option_groups (remap recipe_id, group_id)
-  for (const rg of data.recipe_option_groups || []) {
-    const recipe_id = recMap.get(rg.recipe_id);
-    const group_id = grpMap.get(rg.group_id);
-    if (!recipe_id || !group_id) continue;
-    await c.query('insert into recipe_option_groups (recipe_id, group_id, sort) values ($1,$2,$3) on conflict do nothing',
-      [recipe_id, group_id, rg.sort ?? 0]);
-    out.recipe_option_groups++;
-  }
-  // settings: คัดลอกเฉพาะ config (ไม่แตะ public_slug/token ที่ต้อง unique ต่อสาขา)
-  if (includeSettings && data.settings) {
-    const s = data.settings;
-    await c.query(
-      `update shop_settings set categories=$2, make_to_order=$3, member_config=$4, business_type=$5,
-         vat_enabled=$6, vat_rate=$7, staff_discount_max=$8, staff_discount_max_baht=$9, discount_presets=$10,
-         kitchen_ticket_mode=$11, use_delivery=$12, use_petty_cash=$13
-       where shop_id=$1`,
-      [dstShopId,
-       s.categories == null ? null : (typeof s.categories === 'string' ? s.categories : JSON.stringify(s.categories)),
-       s.make_to_order ?? false,
-       s.member_config == null ? null : (typeof s.member_config === 'string' ? s.member_config : JSON.stringify(s.member_config)),
-       s.business_type || 'fnb', s.vat_enabled ?? false, s.vat_rate ?? 7, s.staff_discount_max ?? 100, s.staff_discount_max_baht ?? 0,
-       s.discount_presets == null ? null : (typeof s.discount_presets === 'string' ? s.discount_presets : JSON.stringify(s.discount_presets)),
-       s.kitchen_ticket_mode || 'receipt', s.use_delivery ?? false, s.use_petty_cash ?? false]);
-  }
-  return out;
-}
+});
 
 // GET /api/admin/export-shop/:id — ดาวน์โหลด bundle ข้อมูลร้าน (master) เป็น JSON
 router.get('/export-shop/:id', async (req, res) => {
@@ -186,8 +434,122 @@ router.post('/clone-shop2', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Legacy helper for old import logic
+async function importIntoShop(c, dstShopId, data, opts = {}) {
+  const { replace = true, resetStock = true, includeSettings = true } = opts;
+  const out = { suppliers: 0, materials: 0, recipes: 0, recipe_items: 0, option_groups: 0, option_choices: 0, option_choice_links: 0, recipe_option_groups: 0, material_option_groups: 0 };
+
+  if (replace) {
+    await c.query('delete from material_option_groups where group_id in (select id from option_groups where shop_id=$1)', [dstShopId]);
+    await c.query('delete from recipe_option_groups where group_id in (select id from option_groups where shop_id=$1)', [dstShopId]);
+    await c.query('delete from option_choice_links where choice_id in (select oc.id from option_choices oc join option_groups og on og.id=oc.group_id where og.shop_id=$1)', [dstShopId]);
+    await c.query('delete from option_choices where group_id in (select id from option_groups where shop_id=$1)', [dstShopId]);
+    await c.query('delete from option_groups where shop_id=$1', [dstShopId]);
+    await c.query('delete from recipe_items where recipe_id in (select id from recipes where shop_id=$1)', [dstShopId]);
+    await c.query('delete from recipes where shop_id=$1', [dstShopId]);
+    await c.query('delete from materials where shop_id=$1', [dstShopId]);
+    await c.query('delete from suppliers where shop_id=$1', [dstShopId]);
+  }
+
+  const supMap = new Map(), matMap = new Map(), recMap = new Map(), grpMap = new Map(), choMap = new Map();
+
+  for (const s of data.suppliers || []) {
+    const id = await genUUID(c); supMap.set(s.id, id);
+    await c.query('insert into suppliers (id, shop_id, name, note) values ($1,$2,$3,$4)', [id, dstShopId, s.name, s.note || null]);
+    out.suppliers++;
+  }
+  for (const m of data.materials || []) {
+    const id = await genUUID(c); matMap.set(m.id, id);
+    await c.query(
+      `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      [id, dstShopId, m.sku || null, m.name, m.qty, m.unit, m.price, m.sell_price, m.supplier_id ? (supMap.get(m.supplier_id) || null) : null,
+       m.order_url || '', resetStock ? 0 : (m.stock || 0), m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null,
+       m.is_consumable ?? false, m.sale_type || 'INGREDIENT_ONLY', m.show_in_pos ?? false, m.sale_price_2 ?? null, m.item_type || null, m.img_data || null]);
+    out.materials++;
+  }
+  for (const r of data.recipes || []) {
+    const id = await genUUID(c); recMap.set(r.id, id);
+    await c.query(
+      `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps || '', r.detail || '',
+       resetStock ? 0 : (r.fg_stock || 0), r.fg_low || 0, r.category || null,
+       r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
+       r.img_data || null, r.is_sop || false, r.recipe_type || null, r.output_item_type || null, r.on_menu, r.inventory_mode || 'inherit']);
+    out.recipes++;
+  }
+  for (const it of data.recipe_items || []) {
+    const recipe_id = recMap.get(it.recipe_id);
+    if (!recipe_id) continue;
+    const material_id = it.material_id ? (matMap.get(it.material_id) || null) : null;
+    const sub_recipe_id = it.sub_recipe_id ? (recMap.get(it.sub_recipe_id) || null) : null;
+    await c.query('insert into recipe_items (recipe_id, material_id, amount, role, sub_recipe_id) values ($1,$2,$3,$4,$5)',
+      [recipe_id, material_id, it.amount, it.role || '', sub_recipe_id]);
+    out.recipe_items++;
+  }
+  for (const g of data.option_groups || []) {
+    const id = await genUUID(c); grpMap.set(g.id, id);
+    await c.query(
+      `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [id, dstShopId, g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled]);
+    out.option_groups++;
+  }
+  for (const ch of data.option_choices || []) {
+    const group_id = grpMap.get(ch.group_id);
+    if (!group_id) continue;
+    const id = await genUUID(c); choMap.set(ch.id, id);
+    await c.query(
+      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [id, group_id, ch.label, ch.price_add ?? 0, ch.effect_type || 'NONE', ch.enabled ?? true, ch.is_default ?? false, ch.sort ?? 0, ch.max_qty ?? 1,
+       ch.target_role || '', ch.target_material_id ? (matMap.get(ch.target_material_id) || null) : null,
+       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0]);
+    out.option_choices++;
+  }
+  for (const l of data.option_choice_links || []) {
+    const choice_id = choMap.get(l.choice_id);
+    const material_id = matMap.get(l.material_id);
+    if (!choice_id || !material_id) continue;
+    await c.query('insert into option_choice_links (id, choice_id, material_id, amount) values (gen_random_uuid(),$1,$2,$3)',
+      [choice_id, material_id, l.amount]);
+    out.option_choice_links++;
+  }
+  for (const rg of data.recipe_option_groups || []) {
+    const recipe_id = recMap.get(rg.recipe_id);
+    const group_id = grpMap.get(rg.group_id);
+    if (!recipe_id || !group_id) continue;
+    await c.query('insert into recipe_option_groups (recipe_id, group_id, sort) values ($1,$2,$3) on conflict do nothing',
+      [recipe_id, group_id, rg.sort ?? 0]);
+    out.recipe_option_groups++;
+  }
+  for (const mog of data.material_option_groups || []) {
+    const material_id = matMap.get(mog.material_id);
+    const group_id = grpMap.get(mog.group_id);
+    if (!material_id || !group_id) continue;
+    await c.query('insert into material_option_groups (material_id, group_id, sort) values ($1,$2,$3) on conflict do nothing',
+      [material_id, group_id, mog.sort ?? 0]);
+    out.material_option_groups++;
+  }
+  if (includeSettings && data.settings) {
+    const s = data.settings;
+    await c.query(
+      `update shop_settings set categories=$2, make_to_order=$3, member_config=$4, business_type=$5,
+         vat_enabled=$6, vat_rate=$7, staff_discount_max=$8, staff_discount_max_baht=$9, discount_presets=$10,
+         kitchen_ticket_mode=$11, use_delivery=$12, use_petty_cash=$13
+       where shop_id=$1`,
+      [dstShopId,
+       s.categories == null ? null : (typeof s.categories === 'string' ? s.categories : JSON.stringify(s.categories)),
+       s.make_to_order ?? false,
+       s.member_config == null ? null : (typeof s.member_config === 'string' ? s.member_config : JSON.stringify(s.member_config)),
+       s.business_type || 'fnb', s.vat_enabled ?? false, s.vat_rate ?? 7, s.staff_discount_max ?? 100, s.staff_discount_max_baht ?? 0,
+       s.discount_presets == null ? null : (typeof s.discount_presets === 'string' ? s.discount_presets : JSON.stringify(s.discount_presets)),
+       s.kitchen_ticket_mode || 'receipt', s.use_delivery ?? false, s.use_petty_cash ?? false]);
+  }
+  return out;
+}
+
 module.exports = router;
-module.exports.gatherFullShopData = gatherFullShopData;
-module.exports.importIntoShop = importIntoShop;
 module.exports.gatherFullShopData = gatherFullShopData;
 module.exports.importIntoShop = importIntoShop;
