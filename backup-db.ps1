@@ -16,19 +16,19 @@ $ErrorActionPreference = 'Stop'
 
 $url = if ($env:DATABASE_PUBLIC_URL) { $env:DATABASE_PUBLIC_URL } elseif ($env:DATABASE_URL) { $env:DATABASE_URL } else { $null }
 if (-not $url) {
-  Write-Error "ไม่พบ DATABASE_PUBLIC_URL/DATABASE_URL ใน env — รันผ่าน: railway run --service Postgres -- powershell -File backup-db.ps1"
+  Write-Error "No DATABASE_PUBLIC_URL/DATABASE_URL found in env - Run via: railway run --service Postgres -- powershell -File backup-db.ps1"
   exit 1
 }
 
-# หา pg_dump เวอร์ชันสูงสุดที่ติดตั้ง
+# Find pg_dump version
 $dump = $null; $ver = 0
 foreach ($v in 20,19,18,17,16) {
   $p = "C:\Program Files\PostgreSQL\$v\bin\pg_dump.exe"
   if (Test-Path $p) { $dump = $p; $ver = $v; break }
 }
-if (-not $dump) { Write-Error "ไม่พบ pg_dump — ติดตั้ง PostgreSQL client ก่อน"; exit 1 }
+if (-not $dump) { Write-Error "pg_dump not found - Please install PostgreSQL client first"; exit 1 }
 if ($ver -lt 18) {
-  Write-Warning "pg_dump เป็น PG$ver แต่ prod เป็น PG18 — อาจ dump ไม่ได้. แนะนำ: winget install PostgreSQL.PostgreSQL.18 หรือใช้ Railway dashboard Backups"
+  Write-Warning "pg_dump version is PG$ver but prod is PG18. Recommend installing PG18."
 }
 
 $dir = Join-Path $PSScriptRoot '..\backups'
@@ -36,7 +36,7 @@ New-Item -ItemType Directory -Force $dir | Out-Null
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
 $out = Join-Path $dir "recipro-prod-db-$stamp.sql"
 
-Write-Host "กำลังดัมพ์ด้วย pg_dump PG$ver -> $out ..." -ForegroundColor Cyan
+Write-Host "Dumping with pg_dump PG$ver -> $out ..." -ForegroundColor Cyan
 & $dump --no-owner --no-acl --clean --if-exists "$url" -f $out
 $kb = [math]::Round((Get-Item $out).Length / 1KB, 0)
-Write-Host "เสร็จ: $out ($kb KB)" -ForegroundColor Green
+Write-Host "Done: $out ($kb KB)" -ForegroundColor Green
