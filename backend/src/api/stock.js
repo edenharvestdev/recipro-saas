@@ -337,7 +337,7 @@ router.post('/pos/void', requirePerm('void'), async (req, res) => {
 
       // S11: อัปเดต bill status ใน transaction เดียวกัน (atomic กับ stock reversal)
       await c.query(
-        "update bills set status='voided', updated_at=now() where number=$1 and shop_id=$2",
+        "update bills set status='voided' where number=$1 and shop_id=$2",
         [bill_no, req.shopId]);
 
       return { results, restored: results.length };
