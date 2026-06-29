@@ -166,7 +166,7 @@ router.post('/sync', async (req, res) => {
 
       // option_groups
       await upsertRows(client, 'option_groups',
-        ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled'],
+        ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled', 'visible_on_pos', 'visible_on_receipt', 'visible_on_kitchen', 'visible_on_online'],
         withShop(b.option_groups || []), 'id');
 
       // option_choices
@@ -205,6 +205,16 @@ router.post('/sync', async (req, res) => {
                and exists (select 1 from option_groups where id=$2)
              on conflict do nothing`,
             [rg.recipe_id, rg.group_id, rg.sort ?? 0]);
+        }
+        await client.query('delete from material_option_groups where group_id = any($1::uuid[])', [groupIds]);
+        for (const mg of (b.material_option_groups || [])) {
+          await client.query(
+            `insert into material_option_groups (material_id,group_id,sort)
+             select $1,$2,$3
+             where exists (select 1 from materials where id=$1)
+               and exists (select 1 from option_groups where id=$2)
+             on conflict do nothing`,
+            [mg.material_id, mg.group_id, mg.sort ?? 0]);
         }
       }
 
