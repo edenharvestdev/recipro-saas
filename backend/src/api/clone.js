@@ -189,3 +189,5 @@ router.post('/clone-shop2', async (req, res) => {
 module.exports = router;
 module.exports.gatherFullShopData = gatherFullShopData;
 module.exports.importIntoShop = importIntoShop;
+module.exports.gatherFullShopData = gatherFullShopData;
+module.exports.importIntoShop = importIntoShop;

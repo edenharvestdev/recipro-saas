@@ -9,10 +9,10 @@ const TBL = { material: { table: 'materials', col: 'stock' }, recipe: { table: '
 
 async function logMove(c, shopId, userId, m) {
   const r = await c.query(
-    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note,consumption_category,actor_name)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
+    `insert into stock_movements (shop_id,user_id,kind,ref_type,ref_id,ref_name,unit,qty_before,qty_after,delta,note,consumption_category,actor_name,reversal_of)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
     [shopId, userId || null, m.kind, m.ref_type, m.ref_id, m.ref_name || null, m.unit || null,
-     m.before, m.after, (m.after - m.before), m.note || null, m.consumption_category || null, m.actor_name || null]
+     m.before, m.after, (m.after - m.before), m.note || null, m.consumption_category || null, m.actor_name || null, m.reversal_of || null]
   );
   return r.rows[0].id;
 }
@@ -149,11 +149,15 @@ router.get('/changes', async (req, res) => {
 //     recipe ปกติ → ตัด fg_stock ของเมนู (ขายของที่ผลิตเก็บไว้)
 // ============================================================
 router.post('/pos/sell', async (req, res) => {
-  const { lines, bill_no, make_to_order } = req.body || {};
+  const { lines, bill_no } = req.body || {};
   if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: 'no lines' });
   const note = bill_no ? ('ขาย ' + bill_no) : 'ขาย';
   try {
     const out = await tx(async (c) => {
+      // อ่าน make_to_order จาก DB เสมอ — ห้ามเชื่อ client body
+      const shopRow = (await c.query('select make_to_order from shop_settings where shop_id=$1', [req.shopId])).rows[0];
+      const globalMTO = shopRow ? !!shopRow.make_to_order : false;
+
       // หมวด: code -> { deducted, event }
       const cats = {};
       for (const r of (await c.query('select code, is_stock_deducted, deduct_event from item_categories')).rows) {
@@ -241,33 +245,57 @@ router.post('/pos/sell', async (req, res) => {
         if (ln.ref_type === 'material') {
           await deductMaterial(ln.ref_id, qty, 'on_sale');
         } else if (ln.ref_type === 'recipe') {
-          const rec = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [ln.ref_id, req.shopId])).rows[0];
+          const rec = (await c.query(
+            'select id,name,fg_stock,yield_unit,inventory_mode from recipes where id=$1 and shop_id=$2 for update',
+            [ln.ref_id, req.shopId])).rows[0];
           if (!rec) continue;
-          if (make_to_order) {
-            // M2: ขยาย BOM ตาม options (ถ้าไม่มี chosen_options = สูตรปกติ) แล้วตัดสต๊อก
-            const { bom, subs } = await buildEffectiveBom(ln.ref_id, ln.chosen_options);
-            for (const [matId, entry] of bom) {
-              if (entry.amount * qty <= 0) continue;
-              await deductMaterial(matId, entry.amount * qty, 'recipe_use');
+
+          // S11: per-recipe mode — อ่านจาก DB เสมอ ไม่เชื่อ client
+          const invMode = rec.inventory_mode || 'inherit';
+          const effectiveMode = invMode === 'inherit'
+            ? (globalMTO ? 'make_to_order' : 'finished_goods')
+            : invMode;
+
+          if (effectiveMode === 'non_stock') {
+            results.push({ type: 'non_stock', ref_id: rec.id });
+            continue;
+          }
+          if (effectiveMode === 'finished_goods') {
+            const fg = Number(rec.fg_stock) || 0;
+            if (fg < qty) {
+              const err = new Error('FG_STOCK_INSUFFICIENT');
+              err.statusCode = 409; err.recipeName = rec.name; err.have = fg; err.need = qty;
+              throw err;
             }
-            for (const s of subs) {
-              if (s.amount * qty <= 0) continue;
-              const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [s.sub_recipe_id, req.shopId])).rows[0];
-              if (sub) await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
-            }
-          } else {
             await deductRecipeFg(rec, qty, 'on_sale', 'recipe_fg');
+            continue;
+          }
+          // make_to_order: ขยาย BOM ตาม options แล้วตัดสต๊อก
+          const { bom, subs } = await buildEffectiveBom(ln.ref_id, ln.chosen_options);
+          for (const [matId, entry] of bom) {
+            if (entry.amount * qty <= 0) continue;
+            await deductMaterial(matId, entry.amount * qty, 'recipe_use');
+          }
+          for (const s of subs) {
+            if (s.amount * qty <= 0) continue;
+            const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [s.sub_recipe_id, req.shopId])).rows[0];
+            if (sub) await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
           }
         }
       }
       return { results };
     });
     res.json(out);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    if (e.statusCode === 409) {
+      return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
+    }
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ยกเลิก/คืนบิล — คืนสต๊อกโดย "ย้อน stock_movements ของบิลนั้น" (แม่นยำ: ครอบคลุม options/สูตรซ้อน
-// อัตโนมัติเพราะคืนตามที่ตัดจริง) + กันคืนซ้ำด้วยการเช็ค movement kind='void' ของบิลเดิม
+// ยกเลิก/คืนบิล — S11: strong idempotency ผ่าน reversal_of FK (ไม่ใช่แค่ text note)
+// + อัปเดต bill status ใน transaction เดียวกับ stock reversal
 router.post('/pos/void', requirePerm('void'), async (req, res) => {
   const { bill_no } = req.body || {};
   if (!bill_no) return res.status(400).json({ error: 'no bill_no' });
@@ -275,17 +303,22 @@ router.post('/pos/void', requirePerm('void'), async (req, res) => {
   const voidNote = 'ยกเลิก ' + bill_no;
   try {
     const out = await tx(async (c) => {
-      // กันคืนซ้ำ: ถ้าเคยมี movement void ของบิลนี้แล้ว ไม่ทำซ้ำ
-      const dup = await c.query(
-        "select 1 from stock_movements where shop_id=$1 and note=$2 and kind='void' limit 1", [req.shopId, voidNote]);
-      if (dup.rowCount) return { already: true, results: [] };
-      // หา movement การขายของบิลนี้ (ที่ตัดสต๊อกจริง)
+      // หา sale movements ของบิลนี้
       const moves = (await c.query(
         "select id, ref_type, ref_id, ref_name, unit, delta from stock_movements where shop_id=$1 and note=$2 and kind='sale'",
         [req.shopId, saleNote])).rows;
+      if (!moves.length) return { already: false, notFound: true, results: [] };
+
+      // S11: ตรวจ idempotency ด้วย reversal_of FK — แต่ละ sale movement ถูก reverse ได้ครั้งเดียว
+      const saleIds = moves.map(m => m.id);
+      const alreadyVoided = await c.query(
+        'select 1 from stock_movements where shop_id=$1 and reversal_of = any($2::uuid[]) limit 1',
+        [req.shopId, saleIds]);
+      if (alreadyVoided.rowCount) return { already: true, results: [] };
+
       const results = [];
       for (const mv of moves) {
-        const restore = -Number(mv.delta);            // delta ตอนขายติดลบ → คืน = บวกกลับเท่าที่ตัดจริง
+        const restore = -Number(mv.delta);
         if (!(restore > 0)) continue;
         const meta = TBL[mv.ref_type]; if (!meta) continue;
         const cur = (await c.query(
@@ -294,14 +327,23 @@ router.post('/pos/void', requirePerm('void'), async (req, res) => {
         const before = Number(cur.q) || 0;
         const after = before + restore;
         await c.query(`update ${meta.table} set ${meta.col}=$1, updated_at=now() where id=$2`, [after, mv.ref_id]);
+        // S11: referencing original sale movement ID — unique index ป้องกัน double-void ระดับ DB
         await logMove(c, req.shopId, req.userId, {
           kind: 'void', ref_type: mv.ref_type, ref_id: mv.ref_id, ref_name: mv.ref_name || cur.name,
-          unit: mv.unit, before, after, note: voidNote, consumption_category: 'void' });
+          unit: mv.unit, before, after, note: voidNote, consumption_category: 'void',
+          reversal_of: mv.id });
         results.push({ type: mv.ref_type, ref_id: mv.ref_id, before, after });
       }
+
+      // S11: อัปเดต bill status ใน transaction เดียวกัน (atomic กับ stock reversal)
+      await c.query(
+        "update bills set status='voided', updated_at=now() where number=$1 and shop_id=$2",
+        [bill_no, req.shopId]);
+
       return { results, restored: results.length };
     });
     if (out.already) return res.json({ ok: true, already: true, results: [] });
+    if (out.notFound) return res.json({ ok: true, notFound: true, results: [] });
     res.json({ ok: true, ...out });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

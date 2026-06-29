@@ -48,10 +48,11 @@ router.post('/sync', async (req, res) => {
         withShop(b.materials), 'id', true);
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link', 'inventory_mode'],
         withShop((b.recipes || []).map(r => ({
           ...r,
-          opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups))
+          opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
+          inventory_mode: r.inventory_mode || 'inherit'
         }))), 'id', true);
 
       // recipe_items: ลบของสูตรในร้านนี้ทั้งหมดแล้วใส่ใหม่ (ตรงกับ logic เดิม)

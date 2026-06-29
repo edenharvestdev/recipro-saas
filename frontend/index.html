@@ -2279,6 +2279,16 @@
           <input id="rYieldUnit" value="ชิ้น">
         </div>
       </div>
+      <div class="field" style="margin-bottom:15px;">
+        <label>วิธีจัดการสต๊อกตอนขาย</label>
+        <select id="rInventoryMode">
+          <option value="inherit">ตามการตั้งค่าของสาขา</option>
+          <option value="finished_goods">ขายจากสต๊อกสินค้าสำเร็จ (ตัด fg_stock)</option>
+          <option value="make_to_order">ทำสดและตัดวัตถุดิบตามสูตร</option>
+          <option value="non_stock">ไม่ติดตามสต๊อก (บริการ / ตัวเลือก)</option>
+        </select>
+        <p style="font-size:11px;color:var(--color-text-muted);margin:4px 0 0;">ใช้ "ขายจากสต๊อกสำเร็จ" สำหรับสินค้าที่ผลิตล่วงหน้าและนับสต๊อก เช่น Topping ที่เตรียมไว้</p>
+      </div>
 
       <div class="field" style="margin-bottom: 12px;">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
@@ -3686,6 +3696,7 @@ function applyBootstrapData(data) {
       batchYield: Number(r.batch_yield), yieldUnit: r.yield_unit, isRaw: r.is_raw,
       steps: r.steps, detail: r.detail || '', link: r.link || '', fgStock: Number(r.fg_stock), fgLow: Number(r.fg_low),
       category: r.category || '', isSop: !!r.is_sop,
+      inventoryMode: r.inventory_mode || 'inherit',
       recipeType: r.recipe_type || '', outputItemType: r.output_item_type || '',
       onMenu: (typeof r.on_menu === 'boolean' ? r.on_menu : null),
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
@@ -4109,7 +4120,7 @@ async function syncToSupabase() {
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
       batch_yield: r.batchYield, yield_unit: r.yieldUnit, is_raw: r.isRaw, steps: r.steps, detail: r.detail || '', link: r.link || '',
-      fg_stock: r.fgStock, fg_low: r.fgLow,
+      fg_stock: r.fgStock, fg_low: r.fgLow, inventory_mode: r.inventoryMode || 'inherit',
       category: r.category || null, opt_groups: r.optGroups || [],
       img_data: r.imgData || null, is_sop: r.isSop || false,
       recipe_type: r.recipeType || null, output_item_type: r.outputItemType || null,
@@ -5631,6 +5642,7 @@ function saveRecipe() {
   const detail = ($('rDetail')?.value || '').trim();
   const link = ($('rLink')?.value || '').trim();
   const category = ($('rCategory')?.value || '').trim();
+  const inventoryMode = $('rInventoryMode')?.value || 'inherit';
   const imgData = window._rImgData || '';
   const optGroups = recipeOptGroups.filter(g => g.label.trim()).map(g => ({
     label: g.label.trim(),
@@ -5644,12 +5656,12 @@ function saveRecipe() {
 
   if (editRecipeId) {
     const r = recById(editRecipeId);
-    Object.assign(r, { code, name, sell, batchYield, yieldUnit, steps, detail, link, items, category, optGroups, imgData, onMenu });
+    Object.assign(r, { code, name, sell, batchYield, yieldUnit, steps, detail, link, items, category, optGroups, imgData, onMenu, inventoryMode });
     editRecipeId = null;
     $('rSaveBtn').innerHTML = icon('save') + ' บันทึกสูตรนี้';
     $('recipeFormTitle').innerHTML = icon('plus') + ' สร้างสูตรใหม่';
   } else {
-    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw: false, steps, detail, link, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType: 'MENU', onMenu, outputItemType: 'SALE' });
+    recipes.push({ id: uid(), code, name, sell, batchYield, yieldUnit, isRaw: false, steps, detail, link, items, fgStock: 0, fgLow: 0, category, optGroups, imgData, recipeType: 'MENU', onMenu, outputItemType: 'SALE', inventoryMode });
   }
 
   saveAll();
@@ -5671,6 +5683,7 @@ function editRecipe(id) {
   if ($('rDetail')) $('rDetail').value = r.detail || '';
   if ($('rLink')) $('rLink').value = r.link || '';
   if ($('rCategory')) $('rCategory').value = r.category || '';
+  if ($('rInventoryMode')) $('rInventoryMode').value = r.inventoryMode || 'inherit';
   setRecipeImgPreview(r.imgData || '');
   recipeOptGroups = (r.optGroups || []).map(g => ({
     label: g.label,
@@ -7305,8 +7318,23 @@ function renderPosGrid() {
   };
   const recCardHtml = r => {
     const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
-    if (settings.makeToOrder) {
-      // ทำสดตอนสั่ง: ดูสถานะจาก "วัตถุดิบในสูตร" ไม่ใช่ fgStock — เตือนทั้งใกล้หมด (ต่ำกว่าลิมิต) และไม่พอ
+    // S11: per-recipe inventory mode — อ่านจาก r.inventoryMode ที่ได้จาก DB ผ่าน bootstrap
+    const invMode = r.inventoryMode || 'inherit';
+    const effectiveMode = invMode === 'inherit'
+      ? (settings.makeToOrder ? 'make_to_order' : 'finished_goods')
+      : invMode;
+
+    if (effectiveMode === 'non_stock') {
+      const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
+      return `<div class="pos-product-card${r.imgData ? ' has-img' : ''}" onclick="addToCart('${r.id}')">
+        ${imgHtml}${optsIcon}
+        <div class="ppc-name">${esc(r.name)}</div>
+        ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
+        <div class="ppc-price">${money(r.sell)}</div>
+      </div>`;
+    }
+    if (effectiveMode === 'make_to_order') {
+      // ทำสดตอนสั่ง: ดูสถานะจาก "วัตถุดิบในสูตร" ไม่ใช่ fgStock
       let canMake = true, lowIng = false;
       for (const ri of (r.items || [])) {
         if (ri.subId) {
@@ -7333,6 +7361,7 @@ function renderPosGrid() {
         <div class="ppc-stock">${stockLine}</div>
       </div>`;
     }
+    // finished_goods: แสดง fgStock
     const stock = Number(r.fgStock) || 0;
     const oos = stock <= 0;
     const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
@@ -8241,10 +8270,10 @@ async function posCheckout() {
           chosen_options: (it.choices || []).map(c => ({ choice_id: c.choice && c.choice.id, qty: c.qty || 1 })).filter(x => x.choice_id)
         });
     try {
-      const res = await API.post('/api/pos/sell', { lines, bill_no: newBill.billNo, make_to_order: !!settings.makeToOrder });
+      const res = await API.post('/api/pos/sell', { lines, bill_no: newBill.billNo });
       if (res && Array.isArray(res.results)) {
         res.results.forEach(rr => {
-          if (rr.after == null) return; // 'skip' (ASSET ไม่ตัด) ไม่มี after
+          if (rr.after == null) return; // 'skip' (ASSET ไม่ตัด) / 'non_stock' ไม่มี after
           if (rr.type === 'material') { const m = matById(rr.ref_id); if (m) m.stock = Number(rr.after); }
           else if (rr.type === 'recipe_fg' || rr.type === 'sub_recipe') { const s = recById(rr.ref_id); if (s) s.fgStock = Number(rr.after); }
         });
