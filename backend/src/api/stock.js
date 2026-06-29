@@ -497,7 +497,7 @@ router.get('/alerts/reorder', async (req, res) => {
 // ============================================================
 // Phase 3: Daily Stock Movement Report and Summary Statistics
 // ============================================================
-router.get('/report', async (req, res) => {
+router.get('/stock/report', async (req, res) => {
   try {
     const shopId = req.shopId;
     const {
