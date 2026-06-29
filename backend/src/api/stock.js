@@ -411,7 +411,7 @@ router.post('/pos/sell', async (req, res) => {
     if (e.statusCode === 409) {
       return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
     }
-    if (e.statusCode === 403 || e.statusCode === 404) {
+    if (e.statusCode) {
       return res.status(e.statusCode).json({ error: e.message });
     }
     res.status(500).json({ error: e.message });
