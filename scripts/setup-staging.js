@@ -429,12 +429,10 @@ async function run() {
     // HBT02 stock should remain 23 (since mixed test set it to 23 and spoof shouldn't deduct it)
     const hbtSpoofCheck = (await localClient.query('SELECT fg_stock FROM recipes WHERE id=$1', [hbt02Id])).rows[0];
     
-    if (spoofRes.status === 200 && spoofData.results && spoofData.results.length === 0) {
-      console.log('  ✓ PASS: Cross-branch isolation successfully prevented deduction (returned empty results)!');
-    } else if (spoofRes.status === 404 || spoofRes.status === 400 || (spoofData.results && spoofData.results.length === 0)) {
-      console.log('  ✓ PASS: Cross-branch isolation successfully prevented deduction!');
+    if (spoofRes.status === 403 || spoofRes.status === 404) {
+      console.log('  ✓ PASS: Cross-branch isolation successfully prevented deduction (returned ' + spoofRes.status + ')!');
     } else {
-      console.log('  ✗ FAIL: Cross-branch spoofing deducted stock!');
+      console.log('  ✗ FAIL: Cross-branch spoofing allowed or returned wrong status: ' + spoofRes.status);
     }
 
     // --- TEST 5: Atomic rollback on failure ---
@@ -465,10 +463,10 @@ async function run() {
     const finalHbtStock = (await localClient.query('SELECT fg_stock FROM recipes WHERE id=$1', [hbt02Id])).rows[0].fg_stock;
     console.log(`  Stock after failed transaction: ${finalHbtStock}`);
 
-    if (rollbackRes.status === 500 && Number(initialHbtStock) === Number(finalHbtStock)) {
-      console.log('  ✓ PASS: Transaction rolled back completely. No stock was deducted!');
+    if (rollbackRes.status === 400 && Number(initialHbtStock) === Number(finalHbtStock)) {
+      console.log('  ✓ PASS: Transaction rejected (400) and rolled back. No stock was deducted!');
     } else {
-      console.log('  ✗ FAIL: Transaction did not roll back correctly!');
+      console.log('  ✗ FAIL: Transaction did not roll back correctly! Status: ' + rollbackRes.status);
     }
 
     // Clean up test server

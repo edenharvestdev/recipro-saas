@@ -6170,8 +6170,10 @@ async function receiveMat(id) {
   const u = UNITS[m.unit] || { f: 1 };
   const v = await ui.prompt(`ป้อนจำนวนที่จะรับเข้าสำหรับ "${m.name}" (หน่วย: ${m.unit})\nระบบจะแปลงเป็นหน่วยย่อยสำหรับหักสูตรให้ทันที`, 1, { type: 'number', title: 'รับวัตถุดิบเข้าสต๊อก' });
   if (v === null || v === "") return;
-  const add = (+v || 0) * u.f;
-  m.stock = matStockBase(m) + add;
+  const oldVal = matStockBase(m);
+  const add = m.convQty ? (+v || 0) * m.convQty : (+v || 0) * u.f;
+  m.stock = oldVal + add;
+  pushMovement({ kind: 'receive', refType: 'material', refId: m.id, name: m.name, unit: baseU(m), old: oldVal, newVal: m.stock, note: `รับเข้า +${v} ${m.unit}` });
   saveAll();
   render();
 }

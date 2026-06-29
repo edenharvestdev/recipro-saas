@@ -151,6 +151,15 @@ router.get('/changes', async (req, res) => {
 router.post('/pos/sell', async (req, res) => {
   const { lines, bill_no } = req.body || {};
   if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: 'no lines' });
+
+  // Gate 3: Validate UUID format for all ref_ids before executing transaction
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  for (const ln of lines) {
+    if (ln.ref_id && !UUID_RE.test(ln.ref_id)) {
+      return res.status(400).json({ error: 'INVALID_UUID_FORMAT' });
+    }
+  }
+
   const note = bill_no ? ('ขาย ' + bill_no) : 'ขาย';
   try {
     const out = await tx(async (c) => {
@@ -169,7 +178,13 @@ router.post('/pos/sell', async (req, res) => {
         const m = (await c.query(
           'select id,name,unit,stock,item_type from materials where id=$1 and shop_id=$2 for update',
           [matId, req.shopId])).rows[0];
-        if (!m) return;
+        if (!m) {
+          // Gate 3: check if it exists in another branch
+          const globalCheck = (await c.query('select 1 from materials where id=$1', [matId])).rowCount > 0;
+          const err = new Error(globalCheck ? 'FORBIDDEN_MATERIAL' : 'MATERIAL_NOT_FOUND');
+          err.statusCode = globalCheck ? 403 : 404;
+          throw err;
+        }
         const cat = m.item_type ? cats[m.item_type] : null;
         // ASSET: ไม่หักตัวเองเสมอ · SALE: ข้ามเมื่อใช้เป็นส่วนผสมในสูตร (recipe_use) แต่ถ้า "ขายตรง" (on_sale) ให้หักสต๊อกตัวเอง
         const isDirectSale = defaultCcat === 'on_sale';
@@ -248,7 +263,13 @@ router.post('/pos/sell', async (req, res) => {
           const rec = (await c.query(
             'select id,name,fg_stock,yield_unit,inventory_mode from recipes where id=$1 and shop_id=$2 for update',
             [ln.ref_id, req.shopId])).rows[0];
-          if (!rec) continue;
+          if (!rec) {
+            // Gate 3: check if it exists in another branch
+            const globalCheck = (await c.query('select 1 from recipes where id=$1', [ln.ref_id])).rowCount > 0;
+            const err = new Error(globalCheck ? 'FORBIDDEN_RECIPE' : 'RECIPE_NOT_FOUND');
+            err.statusCode = globalCheck ? 403 : 404;
+            throw err;
+          }
 
           // S11: per-recipe mode — อ่านจาก DB เสมอ ไม่เชื่อ client
           const invMode = rec.inventory_mode || 'inherit';
@@ -279,7 +300,13 @@ router.post('/pos/sell', async (req, res) => {
           for (const s of subs) {
             if (s.amount * qty <= 0) continue;
             const sub = (await c.query('select id,name,fg_stock,yield_unit from recipes where id=$1 and shop_id=$2 for update', [s.sub_recipe_id, req.shopId])).rows[0];
-            if (sub) await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
+            if (!sub) {
+              const globalCheck = (await c.query('select 1 from recipes where id=$1', [s.sub_recipe_id])).rowCount > 0;
+              const err = new Error(globalCheck ? 'FORBIDDEN_SUB_RECIPE' : 'SUB_RECIPE_NOT_FOUND');
+              err.statusCode = globalCheck ? 403 : 404;
+              throw err;
+            }
+            await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
           }
         }
       }
@@ -289,6 +316,9 @@ router.post('/pos/sell', async (req, res) => {
   } catch (e) {
     if (e.statusCode === 409) {
       return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
+    }
+    if (e.statusCode === 403 || e.statusCode === 404) {
+      return res.status(e.statusCode).json({ error: e.message });
     }
     res.status(500).json({ error: e.message });
   }
