@@ -220,4 +220,4 @@ recipro-saas/               ← NIXPACKS installs from HERE
 | วันที่ | Incident | ต้นเหตุ | Resolution |
 |--------|----------|---------|------------|
 | 2026-06-28 | RC-001: Production DOWN 502 หลัง Sprint 001 | `@sentry/node` อยู่ใน `backend/package.json` แต่ Railway ติดตั้งจาก ROOT `package.json` | เพิ่ม 2 packages ใน ROOT `package.json`, อัปเดต ROOT lock file, redeploy commit `9609458` |
-| 2026-06-28 | Brand Asset Update — deploy สำเร็จ | (ไม่มี incident) | ✅ `718c05c` + `042130a` + `f38cf9b` deployed, QA ผ่าน, 14 shops online |
+| 2026-06-29 | HBT02 Stock Mismatch & Mode Mismatch | HBT02 was set to inherit (MTO) and had a Production Batch #1 undercount of 11 cups | Changed HBT02 mode to finished_goods, adjusted stock (+11), added per-recipe modes and reversal_of link to DB, verified by QA | ✅ ea82e86 |

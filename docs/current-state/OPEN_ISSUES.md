@@ -86,3 +86,4 @@ Future = feature ที่รอ Maintenance Freeze lift
 | 2026-06-28 | — | Rate limiting ไม่มี | Added `express-rate-limit` บน auth/payment | `36f3a77` |
 | 2026-06-28 | — | ไม่มี Sentry integration | `@sentry/node` integrated (รอ DSN) | `36f3a77` |
 | 2026-06-28 | RC-001 | Production DOWN — MODULE_NOT_FOUND `@sentry/node` | เพิ่ม packages ใน ROOT `package.json` | `9609458` |
+| 2026-06-29 | S11 | HBT02 Stock Correction & Finished Goods Mode | Added per-recipe modes and reversal_of link to DB, adjusted stock (+11), verified by QA | `ea82e86` |
