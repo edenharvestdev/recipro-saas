@@ -1,0 +1,187 @@
+[
+  {
+    "material_id": "12f7e553-a110-4ce4-b663-c0b8d518d612",
+    "shop_id": "116a5eda-3b6b-4c2c-97a8-3393fa8a1115",
+    "shop_name": "HB03-Nawamin111 สาขานวมินทร์ 111",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "0",
+    "stock_unit": "ชิ้น",
+    "purchase_unit": "แพ็ค",
+    "conversion_factor": "1",
+    "purchase_price": "99",
+    "shop_code": "HB03",
+    "recipe_references": [
+      {
+        "id": "31ced765-3302-4e1d-8071-fc206f563d6e",
+        "code": "HBT01",
+        "name": "Topping Matcha Cloud",
+        "amount": "10"
+      },
+      {
+        "id": "94ae3b9d-2aff-4713-9e87-c4b858a9dda7",
+        "code": "HBT04",
+        "name": "Topping Matcha Cheesecake Cloud",
+        "amount": "12"
+      },
+      {
+        "id": "f8d8a56e-3dc2-47c7-8077-4aa703c0a670",
+        "code": "HBT02",
+        "name": "Topping Cream Cheese",
+        "amount": "12"
+      }
+    ],
+    "cost_per_stock_unit": 99
+  },
+  {
+    "material_id": "92dfeceb-64a6-40ef-aa62-7c85d0208f5d",
+    "shop_id": "581c5f9b-bc79-4270-8ad8-98a288be7933",
+    "shop_name": "HB01-Ladprao107 สาขาลาดพร้าว107",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "0",
+    "stock_unit": "ชิ้น",
+    "purchase_unit": "แพ็ค",
+    "conversion_factor": "1",
+    "purchase_price": "99",
+    "shop_code": "HB01",
+    "recipe_references": [
+      {
+        "id": "3053169f-278c-45e5-ab21-7c86cdab286a",
+        "code": "HBT01",
+        "name": "Topping Matcha Cloud",
+        "amount": "10"
+      },
+      {
+        "id": "492bde7f-1f0c-441b-9844-cdf0fb4fbbd3",
+        "code": "HBT04",
+        "name": "Topping Matcha Cheesecake Cloud",
+        "amount": "12"
+      },
+      {
+        "id": "2326d5b0-c2c2-4bdb-9200-ef75c4bdaf59",
+        "code": "HBT02",
+        "name": "Topping Cream Cheese",
+        "amount": "12"
+      }
+    ],
+    "cost_per_stock_unit": 99
+  },
+  {
+    "material_id": "0a42aec1-583d-4fb8-acff-8409e5eadd07",
+    "shop_id": "c5cbb867-c3c6-40c2-8396-b6893da09b37",
+    "shop_name": "HB05-Nak Niwat48",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "78",
+    "stock_unit": "ชิ้น",
+    "purchase_unit": "แพ็ค",
+    "conversion_factor": "1",
+    "purchase_price": "99",
+    "shop_code": "HB05",
+    "recipe_references": [
+      {
+        "id": "c1f0e790-cee7-4f8e-8c97-d27cd9976196",
+        "code": "HBT01",
+        "name": "Topping Matcha Cloud",
+        "amount": "1"
+      },
+      {
+        "id": "433c002d-7a8e-4de6-b89f-b946bcc7d924",
+        "code": "HBT04",
+        "name": "Topping Matcha Cheesecake Cloud",
+        "amount": "12"
+      },
+      {
+        "id": "bf6e22ee-0a7b-4b43-a73b-7fe47ff7fb13",
+        "code": "HBT02",
+        "name": "Topping Cream Cheese",
+        "amount": "12"
+      }
+    ],
+    "cost_per_stock_unit": 99
+  },
+  {
+    "material_id": "63386e4b-89f3-4b42-839b-e0ebfeacf8ad",
+    "shop_id": "01b7f107-be5c-4acf-86f4-1ce4a3069205",
+    "shop_name": "Hibimatcha Cafe House",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "0",
+    "stock_unit": null,
+    "purchase_unit": "ชิ้น",
+    "conversion_factor": null,
+    "purchase_price": "1.98",
+    "shop_code": "Hibimatcha Cafe House",
+    "recipe_references": [],
+    "cost_per_stock_unit": 1.98
+  },
+  {
+    "material_id": "b49b13bd-f134-45bc-b9b1-dc28cd87dfaa",
+    "shop_id": "2a91e65b-cd05-4110-8878-883482ba9228",
+    "shop_name": "HB02-Samyan สาขาสามย่าน",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "0",
+    "stock_unit": "ชิ้น",
+    "purchase_unit": "แพ็ค",
+    "conversion_factor": "1",
+    "purchase_price": "99",
+    "shop_code": "HB02",
+    "recipe_references": [
+      {
+        "id": "c26d0fe4-0b90-40bb-a68e-e82cb3aaa00a",
+        "code": "HBT01",
+        "name": "Topping Matcha Cloud",
+        "amount": "10"
+      },
+      {
+        "id": "38336039-db07-415c-8700-394b78cf8af1",
+        "code": "HBT04",
+        "name": "Topping Matcha Cheesecake Cloud",
+        "amount": "12"
+      },
+      {
+        "id": "4973b1d2-7a90-44e6-8a6d-f6449e723884",
+        "code": "HBT02",
+        "name": "Topping Cream Cheese",
+        "amount": "12"
+      }
+    ],
+    "cost_per_stock_unit": 99
+  },
+  {
+    "material_id": "50233f51-3747-41f1-997d-1fa3c9f6d2d3",
+    "shop_id": "3ebea0b3-f3a9-40ae-b6b4-080e4b48efcc",
+    "shop_name": "HB04-Saphan Khwai",
+    "sku": "MA-044",
+    "material_name": "เอโร่ ถ้วยน้ำจิ้มฝาติด 4 ออนซ์ 50 ชิ้น",
+    "current_stock": "78",
+    "stock_unit": "ชิ้น",
+    "purchase_unit": "แพ็ค",
+    "conversion_factor": "1",
+    "purchase_price": "99",
+    "shop_code": "HB04",
+    "recipe_references": [
+      {
+        "id": "eb36b8af-2732-43ed-b015-10a9bdf45f1a",
+        "code": "HBT04",
+        "name": "Topping Matcha Cheesecake Cloud",
+        "amount": "12"
+      },
+      {
+        "id": "0c86918f-c95f-4651-888f-8fcd58e9ef80",
+        "code": "HBT02",
+        "name": "Topping Cream Cheese",
+        "amount": "12"
+      },
+      {
+        "id": "07a1d569-97f9-477b-af15-8c7be583ad1f",
+        "code": "HBT01",
+        "name": "Topping Matcha Cloud",
+        "amount": "10"
+      }
+    ],
+    "cost_per_stock_unit": 99
+  }
+]

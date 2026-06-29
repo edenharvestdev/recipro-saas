@@ -5,16 +5,19 @@ const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localh
 
 const pool = new Pool({
   connectionString: dbUrl,
+  ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 
 async function run() {
   const client = await pool.connect();
+  const dryRun = process.argv.includes('--dry-run');
+
   try {
-    console.log('=== RUNNING CUP 4OZ UNIT CONVERSION ===');
+    console.log(dryRun ? '=== IDEMPOTENT CUP 4OZ UNIT CONVERSION DRY-RUN ===' : '=== IDEMPOTENT CUP 4OZ UNIT CONVERSION EXECUTION ===');
     
     // Find all cup materials
     const mats = (await client.query(`
-      SELECT m.id, m.shop_id, s.name as shop_name, s.code as shop_code, m.name, m.stock, m.qty, m.unit, m.conv_qty, m.stock_unit
+      SELECT m.id, m.shop_id, s.name as shop_name, m.name, m.stock, m.qty, m.unit, m.conv_qty, m.stock_unit
         FROM materials m
         JOIN shops s ON s.id = m.shop_id
        WHERE m.name ILIKE '%ถ้วยน้ำจิ้มฝาติด 4%' OR m.name ILIKE '%เอโร่%4%ออนซ์%'
@@ -23,7 +26,7 @@ async function run() {
     console.log(`Found ${mats.length} cup materials to convert.`);
 
     for (const m of mats) {
-      const shopCode = m.shop_code || m.shop_name.split('-')[0] || 'SHOP';
+      const shopCode = m.shop_name.split('-')[0] || 'SHOP';
       const refKey = `CUP4OZ_UNIT_CONVERSION_${shopCode}_20260629`;
 
       // Check if already converted
@@ -37,16 +40,27 @@ async function run() {
         continue;
       }
 
-      await client.query('BEGIN');
-
       const beforeStock = Number(m.stock) || 0;
       const conversionFactor = 50;
       const afterStock = beforeStock * conversionFactor;
 
-      console.log(`Converting "${m.name}" for shop ${m.shop_name}:`);
-      console.log(`  - Stock: ${beforeStock} packs -> ${afterStock} pieces`);
-      console.log(`  - conv_qty: ${m.conv_qty} -> ${conversionFactor}`);
-      console.log(`  - stock_unit: ${m.stock_unit} -> ชิ้น`);
+      console.log(`\n--- PREVIEW: ${m.name} (${m.shop_name}) ---`);
+      console.log(`  - Branch: ${m.shop_name}`);
+      console.log(`  - Material ID: ${m.id}`);
+      console.log(`  - Before stock: ${beforeStock} ${m.unit || 'packs'}`);
+      console.log(`  - Conversion factor: ${conversionFactor}`);
+      console.log(`  - Expected stock: ${afterStock} ชิ้น`);
+      console.log(`  - Expected stock unit: ชิ้น`);
+      console.log(`  - Purchase unit: แพ็ค`);
+      console.log(`  - Cost per piece: 1.98`);
+      console.log(`  - Conversion Reference: "${refKey}"`);
+      console.log('--------------------------------------------------');
+
+      if (dryRun) {
+        continue;
+      }
+
+      await client.query('BEGIN');
 
       // 1. Update material
       await client.query(`
@@ -73,11 +87,15 @@ async function run() {
       ]);
 
       await client.query('COMMIT');
-      console.log(`✓ Converted successfully!`);
+      console.log(`✓ Converted "${m.name}" successfully!`);
+    }
+
+    if (dryRun) {
+      console.log('\nDRY-RUN completed. No data was modified.');
     }
 
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (!dryRun) await client.query('ROLLBACK');
     console.error('Error during conversion:', e);
   } finally {
     client.release();
