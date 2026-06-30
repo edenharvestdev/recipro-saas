@@ -7305,13 +7305,16 @@ function renderPosGrid() {
     return;
   }
   const hasOpts = r => (r.optGroups || []).length > 0 || optionGroups.some(g => g.enabled && (g.recipeIds || []).includes(r.id));
+  const ppcImg = (src, alt) => src
+    ? `<div class="ppc-img"><img src="${esc(src)}" alt="${esc(alt)}"></div>`
+    : `<div class="ppc-img"><span class="ppc-no-img">☕</span></div>`;
   const matCardHtml = m => {
     const stock = Number(m.stock) || 0;
     const oos = stock <= 0;
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
     const price = m.sellPrice || m.salePrice2 || 0;
-    const imgHtml = m.imgData ? `<div class="ppc-img"><img src="${esc(m.imgData)}" alt="${esc(m.name)}"></div>` : '';
-    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}${m.imgData ? ' has-img' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
+    const imgHtml = ppcImg(m.imgData, m.name);
+    return `<div class="pos-product-card has-img${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
       ${imgHtml}<span class="ppc-opts-badge" style="background:var(--color-secondary);">สินค้า</span>
       <div class="ppc-name">${esc(m.name)}</div>
       <div class="ppc-price">${money(price)}</div>
@@ -7319,7 +7322,7 @@ function renderPosGrid() {
     </div>`;
   };
   const recCardHtml = r => {
-    const imgHtml = r.imgData ? `<div class="ppc-img"><img src="${r.imgData}" alt="${esc(r.name)}"></div>` : '';
+    const imgHtml = ppcImg(r.imgData, r.name);
     // S11: per-recipe inventory mode — อ่านจาก r.inventoryMode ที่ได้จาก DB ผ่าน bootstrap
     const invMode = r.inventoryMode || 'inherit';
     const effectiveMode = invMode === 'inherit'
@@ -7328,7 +7331,7 @@ function renderPosGrid() {
 
     if (effectiveMode === 'non_stock') {
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
-      return `<div class="pos-product-card${r.imgData ? ' has-img' : ''}" onclick="addToCart('${r.id}')">
+      return `<div class="pos-product-card has-img" onclick="addToCart('${r.id}')">
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
@@ -7355,7 +7358,7 @@ function renderPosGrid() {
           ? '<span style="color:#d97706;font-weight:600;">⚠ วัตถุดิบใกล้หมด</span>'
           : '<span style="color:#16a34a;">พร้อมขาย</span>';
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
-      return `<div class="pos-product-card${!canMake ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
+      return `<div class="pos-product-card has-img${!canMake ? ' out-of-stock' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
@@ -7368,7 +7371,7 @@ function renderPosGrid() {
     const oos = stock <= 0;
     const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
-    return `<div class="pos-product-card${oos ? ' out-of-stock' : ''}${r.imgData ? ' has-img' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
+    return `<div class="pos-product-card has-img${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
       ${imgHtml}${optsIcon}
       <div class="ppc-name">${esc(r.name)}</div>
       <div class="ppc-price">${money(r.sell)}</div>

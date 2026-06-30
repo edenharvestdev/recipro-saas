@@ -1877,11 +1877,14 @@ table.bd tfoot td.r { text-align: right; }
 #posProductGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-auto-rows: max-content;
   gap: 14px;
   padding: 16px;
   align-content: start;
   overflow-y: auto;
   overflow-x: hidden;
+  min-height: 0;  /* ← critical: lets grid item shrink inside CSS Grid parent so overflow-y:auto works on Safari/WebKit */
+  height: 100%;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -1908,6 +1911,8 @@ table.bd tfoot td.r { text-align: right; }
   gap: 4px;
   position: relative;
   overflow: hidden;
+  min-height: 160px;  /* ← prevents card collapse when no image */
+  box-sizing: border-box;
 }
 .pos-product-card::before {
   content: '';
@@ -1942,16 +1947,26 @@ table.bd tfoot td.r { text-align: right; }
 /* Product image */
 .pos-product-card .ppc-img {
   width: calc(100% + 24px);
-  height: 100px;
+  height: 120px;  /* ↑ was 100px — taller for better visibility */
   overflow: hidden;
   border-radius: var(--r-small) var(--r-small) 0 0;
   margin: -14px -12px 10px;
   flex-shrink: 0;
   background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .pos-product-card.has-img { padding-top: 0; }
 .pos-product-card .ppc-img img {
   width: 100%; height: 100%; object-fit: cover; display: block;
+}
+/* Placeholder icon shown in ppc-img when card has no real photo */
+.pos-product-card .ppc-no-img {
+  font-size: 40px;
+  line-height: 1;
+  opacity: 0.18;
+  user-select: none;
 }
 
 /* Card text elements */
@@ -1970,17 +1985,19 @@ table.bd tfoot td.r { text-align: right; }
 }
 .pos-product-card .ppc-name {
   font-weight: 700;
-  font-size: 13px;
-  line-height: 1.3;
+  font-size: 14px;  /* ↑ was 13px */
+  line-height: 1.35;
   color: var(--color-text-main);
   width: 100%;
+  word-break: break-word;
 }
 .pos-product-card .ppc-price {
-  font-size: 19px;
+  font-size: 20px;  /* ↑ was 19px */
   font-weight: 900;
   color: var(--color-primary);
   letter-spacing: -0.3px;
   font-variant-numeric: tabular-nums;
+  margin-top: auto;  /* pushes price to bottom when card is taller */
 }
 .pos-product-card .ppc-stock {
   font-size: 10.5px;
@@ -2248,11 +2265,16 @@ table.bd tfoot td.r { text-align: right; }
     grid-template-columns: 1fr 280px;
   }
   #posProductGrid {
-    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
-    gap: 11px;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));  /* ↑ was 138px */
+    gap: 12px;
     padding: 12px;
   }
-  .pos-product-card .ppc-price { font-size: 17px; }
+  .pos-product-card {
+    min-height: 170px;  /* slightly taller on tablet for finger tap */
+  }
+  .pos-product-card .ppc-img { height: 110px; }
+  .pos-product-card .ppc-name { font-size: 13px; }
+  .pos-product-card .ppc-price { font-size: 18px; }
   .pos-cart-grand .amount { font-size: 24px; }
 }
 
