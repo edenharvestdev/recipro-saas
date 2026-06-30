@@ -59,7 +59,14 @@ function safetyCheck() {
 const API_URL = process.env.API_URL || 'http://localhost:3100';
 const PROD_GUARD_API_URL = process.env.PROD_GUARD_API_URL || '';  // second server: NODE_ENV=production
 const QA_EMAIL = 'qa-clone-test@local.test';
-const QA_PASS = process.env.QA_CLONE_PASSWORD || 'recipro-qa-clone-2026';  // QA-only, never production admin
+// B5: password read from env var only — never hardcoded in source
+const QA_PASS = process.env.LOCAL_QA_PASSWORD;
+if (!QA_PASS) {
+  console.error('\n[ABORT] LOCAL_QA_PASSWORD env var is required but not set.');
+  console.error('  Set it to the password used when the QA fixture was seeded.');
+  console.error('  Example: LOCAL_QA_PASSWORD=... node backend/scripts/test-clone-option-fix.js');
+  process.exit(2);
+}
 const OWNER_EMAIL = 'qa-owner@local.test';
 const STAFF_EMAIL = 'qa-staff@local.test';
 
@@ -731,11 +738,13 @@ async function runTests() {
   // ----------------------------------------------------------
   console.log('\n[T10] Transaction rollback on injected error');
   await resetDst();
-  // Seed source with a choice link so the injection fires
-  // (group→choice→link path needs to exist — it does in source)
   const beforeT10Groups = await countDstGroups();
   const beforeT10Choices = await countDstChoices();
   const beforeT10Recipes = (await dbq('SELECT count(id) AS n FROM recipes WHERE shop_id=$1',[DST]))[0].n;
+
+  // B3: Activate injection via internal control endpoint (NOT request body)
+  const injectSetResp = await apiCall('POST', '/api/admin/selective-clone/_test/inject', { at: 'option_choice_links' });
+  assert('T10: inject control endpoint returns 200', injectSetResp.status === 200, `got ${injectSetResp.status}`);
 
   r = await clone({
     srcShopId: SRC, dstShopId: DST,
@@ -743,7 +752,7 @@ async function runTests() {
     conflictStrategy: 'skip',
     dryRun: false,
     autoIncludeDependencies: true,
-    __testInjectErrorAt: 'option_choice_links',
+    // No __testInjectErrorAt here — injection is triggered by module-level flag only
   });
   // Should return 500 or a non-200 due to injected error
   assert('T10: returns error status', r.status === 500 || r.status >= 400,
@@ -758,6 +767,9 @@ async function runTests() {
     `before=${beforeT10Groups} after=${afterT10Groups}`);
   assert('T10: choices rolled back', afterT10Choices === beforeT10Choices,
     `before=${beforeT10Choices} after=${afterT10Choices}`);
+
+  // Reset injection flag so T11+ are not affected
+  await apiCall('POST', '/api/admin/selective-clone/_test/inject', { at: null });
 
   // ----------------------------------------------------------
   console.log('\n[T11] Rerun safety');
@@ -948,6 +960,169 @@ async function runTests() {
   console.log('  POS API Contract Verified — Visual UI Not Tested (backend-only)');
 
   // ----------------------------------------------------------
+  // T13-A: Cloned Recipe Missing Required Option → 400 REQUIRED_OPTION_MISSING
+  console.log('\n[T13-A] Cloned recipe sell — missing required option → 400');
+  {
+    await dbq(`UPDATE recipes SET fg_stock=10 WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]);
+    const dstRecipe = (await dbq(`SELECT id FROM recipes WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]))[0];
+    const billsBefore = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+    const movsBefore = (await dbq('SELECT count(*) AS n FROM stock_movements WHERE shop_id=$1', [DST]))[0].n;
+    const stockBefore = Number((await dbq(`SELECT fg_stock FROM recipes WHERE id=$1`, [dstRecipe.id]))[0].fg_stock);
+
+    const missingResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'recipe', ref_id: dstRecipe.id, qty: 1, chosen_options: [] }],
+      bill_no: 'QA-T13A-MISSING-REQUIRED',
+    }, { 'X-Shop-Id': DST });
+    assert('T13-A: missing required option → 400', missingResp.status === 400,
+      `got ${missingResp.status}: ${JSON.stringify(missingResp.body).slice(0,100)}`);
+    assert('T13-A: error = REQUIRED_OPTION_MISSING', String(missingResp.body.error || '').includes('REQUIRED_OPTION_MISSING'),
+      `got "${missingResp.body.error}"`);
+
+    const billsAfter = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+    const movsAfter = (await dbq('SELECT count(*) AS n FROM stock_movements WHERE shop_id=$1', [DST]))[0].n;
+    const stockAfter = Number((await dbq(`SELECT fg_stock FROM recipes WHERE id=$1`, [dstRecipe.id]))[0].fg_stock);
+    assert('T13-A: no bill created', billsAfter == billsBefore, `bills before=${billsBefore} after=${billsAfter}`);
+    assert('T13-A: no stock movement created', movsAfter == movsBefore, `movements before=${movsBefore} after=${movsAfter}`);
+    assert('T13-A: fg_stock unchanged', stockAfter === stockBefore, `before=${stockBefore} after=${stockAfter}`);
+  }
+
+  // T13-B: Cloned Recipe Correct Required Option → 200, bill created, option recorded
+  console.log('\n[T13-B] Cloned recipe sell — correct required option → 200');
+  {
+    const dstRecipe = (await dbq(`SELECT id FROM recipes WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]))[0];
+    await dbq(`UPDATE recipes SET fg_stock=10 WHERE id=$1`, [dstRecipe.id]);
+    const prepGroup = (await dbq(`SELECT id FROM option_groups WHERE shop_id=$1 AND label='การเตรียมสินค้า'`, [DST]))[0];
+    const prepChoice = (await dbq(
+      `SELECT oc.id FROM option_choices oc WHERE oc.group_id=$1 AND oc.label='อุ่น'`, [prepGroup.id]
+    ))[0];
+    const stockBefore = Number((await dbq(`SELECT fg_stock FROM recipes WHERE id=$1`, [dstRecipe.id]))[0].fg_stock);
+
+    const okResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'recipe', ref_id: dstRecipe.id, qty: 1,
+        chosen_options: [{ choice_id: prepChoice.id, qty: 1 }] }],
+      bill_no: 'QA-T13B-CORRECT-OPT',
+    }, { 'X-Shop-Id': DST });
+    assert('T13-B: correct required option → 200', okResp.status === 200,
+      `got ${okResp.status}: ${JSON.stringify(okResp.body).slice(0,100)}`);
+    const stockAfter = Number((await dbq(`SELECT fg_stock FROM recipes WHERE id=$1`, [dstRecipe.id]))[0].fg_stock);
+    assert('T13-B: fg_stock deducted by 1', stockAfter === stockBefore - 1,
+      `before=${stockBefore} after=${stockAfter}`);
+  }
+
+  // T13-C: Cloned Recipe Exceeds max_select → 400 OPTION_MAX_SELECT_EXCEEDED
+  console.log('\n[T13-C] Cloned recipe sell — exceeds max_select → 400');
+  {
+    await dbq(`UPDATE recipes SET fg_stock=10 WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]);
+    const dstRecipe = (await dbq(`SELECT id FROM recipes WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]))[0];
+    const prepGroup = (await dbq(`SELECT id FROM option_groups WHERE shop_id=$1 AND label='การเตรียมสินค้า'`, [DST]))[0];
+    const toppingGroup = (await dbq(`SELECT id FROM option_groups WHERE shop_id=$1 AND label='Topping'`, [DST]))[0];
+    const prepChoice = (await dbq(`SELECT id FROM option_choices WHERE group_id=$1 AND label='อุ่น'`, [prepGroup.id]))[0];
+    const topping1 = (await dbq(`SELECT id FROM option_choices WHERE group_id=$1 AND label='Cream Cheese'`, [toppingGroup.id]))[0];
+    const topping2 = (await dbq(`SELECT id FROM option_choices WHERE group_id=$1 AND label='Matcha Cloud'`, [toppingGroup.id]))[0];
+    // Create a third topping choice temporarily to exceed max_select=2
+    const topping3Id = (await dbq(
+      `INSERT INTO option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort)
+       VALUES (gen_random_uuid(), $1, 'Extra Topping QA', 10, 'NONE', true, false, 99) RETURNING id`, [toppingGroup.id]
+    ))[0].id;
+    const billsBefore = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+
+    const exceedResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'recipe', ref_id: dstRecipe.id, qty: 1,
+        chosen_options: [
+          { choice_id: prepChoice.id, qty: 1 },
+          { choice_id: topping1.id, qty: 1 },
+          { choice_id: topping2.id, qty: 1 },
+          { choice_id: topping3Id, qty: 1 },
+        ] }],
+      bill_no: 'QA-T13C-EXCEED-MAX',
+    }, { 'X-Shop-Id': DST });
+    // Cleanup temp choice
+    await dbq(`DELETE FROM option_choices WHERE id=$1`, [topping3Id]);
+
+    assert('T13-C: exceed max_select → 400', exceedResp.status === 400,
+      `got ${exceedResp.status}: ${JSON.stringify(exceedResp.body).slice(0,100)}`);
+    assert('T13-C: error = OPTION_MAX_SELECT_EXCEEDED', String(exceedResp.body.error || '').includes('OPTION_MAX_SELECT_EXCEEDED'),
+      `got "${exceedResp.body.error}"`);
+    const billsAfter = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+    assert('T13-C: no bill on reject', billsAfter == billsBefore, `bills before=${billsBefore} after=${billsAfter}`);
+  }
+
+  // T13-D: Cloned Direct-sale Material Missing Required Option → 400
+  console.log('\n[T13-D] Cloned direct-sale material — missing required option → 400');
+  {
+    const dstMat = (await dbq(`SELECT id FROM materials WHERE shop_id=$1 AND sku='TEST-DIRECT-CAKE-01'`, [DST]))[0];
+    const billsBefore = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+
+    const matMissResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'material', ref_id: dstMat.id, qty: 1, chosen_options: [] }],
+      bill_no: 'QA-T13D-MAT-MISSING',
+    }, { 'X-Shop-Id': DST });
+    assert('T13-D: material missing required option → 400', matMissResp.status === 400,
+      `got ${matMissResp.status}: ${JSON.stringify(matMissResp.body).slice(0,100)}`);
+    assert('T13-D: error = REQUIRED_OPTION_MISSING', String(matMissResp.body.error || '').includes('REQUIRED_OPTION_MISSING'),
+      `got "${matMissResp.body.error}"`);
+    const billsAfter = (await dbq('SELECT count(*) AS n FROM bills WHERE shop_id=$1', [DST]))[0].n;
+    assert('T13-D: no bill created', billsAfter == billsBefore, `bills before=${billsBefore} after=${billsAfter}`);
+  }
+
+  // T13-E: Cross-shop Choice (SRC choice ID against DST recipe) → 400 INVALID_OPTION_CHOICE
+  console.log('\n[T13-E] Cross-shop option choice → 400 INVALID_OPTION_CHOICE');
+  {
+    await dbq(`UPDATE recipes SET fg_stock=10 WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]);
+    const dstRecipe = (await dbq(`SELECT id FROM recipes WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]))[0];
+    const movsBefore = (await dbq('SELECT count(*) AS n FROM stock_movements WHERE shop_id=$1', [DST]))[0].n;
+
+    // Use SRC choice ID (ee000001-...) against DST recipe — choices belong to SRC, not DST
+    const crossResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'recipe', ref_id: dstRecipe.id, qty: 1,
+        chosen_options: [{ choice_id: IDS.ch1, qty: 1 }] }],  // SRC choice ID
+      bill_no: 'QA-T13E-CROSS-SHOP',
+    }, { 'X-Shop-Id': DST });
+    assert('T13-E: cross-shop choice → 400', crossResp.status === 400,
+      `got ${crossResp.status}: ${JSON.stringify(crossResp.body).slice(0,100)}`);
+    assert('T13-E: error = INVALID_OPTION_CHOICE', String(crossResp.body.error || '').includes('INVALID_OPTION_CHOICE'),
+      `got "${crossResp.body.error}"`);
+    const movsAfter = (await dbq('SELECT count(*) AS n FROM stock_movements WHERE shop_id=$1', [DST]))[0].n;
+    assert('T13-E: no stock movement on cross-shop reject', movsAfter == movsBefore,
+      `movements before=${movsBefore} after=${movsAfter}`);
+  }
+
+  // T13-F: Invalid choice not linked to recipe → 400 INVALID_OPTION_CHOICE
+  console.log('\n[T13-F] Choice not linked to recipe → 400 INVALID_OPTION_CHOICE');
+  {
+    await dbq(`UPDATE recipes SET fg_stock=10 WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]);
+    const dstRecipe = (await dbq(`SELECT id FROM recipes WHERE shop_id=$1 AND code='TEST-CLONE-MENU-01'`, [DST]))[0];
+    // Create a DST group with no link to this recipe
+    const unlinkedGroupId = (await dbq(
+      `INSERT INTO option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled)
+       VALUES (gen_random_uuid(), $1, 'Unlinked QA Group', 'single', false, 0, 1, 99, true) RETURNING id`, [DST]
+    ))[0].id;
+    const unlinkedChoiceId = (await dbq(
+      `INSERT INTO option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort)
+       VALUES (gen_random_uuid(), $1, 'Unlinked Choice QA', 0, 'NONE', true, false, 1) RETURNING id`, [unlinkedGroupId]
+    ))[0].id;
+    const prepGroup = (await dbq(`SELECT id FROM option_groups WHERE shop_id=$1 AND label='การเตรียมสินค้า'`, [DST]))[0];
+    const prepChoice = (await dbq(`SELECT id FROM option_choices WHERE group_id=$1 AND label='อุ่น'`, [prepGroup.id]))[0];
+
+    const invalidResp = await apiCall('POST', '/api/pos/sell', {
+      lines: [{ ref_type: 'recipe', ref_id: dstRecipe.id, qty: 1,
+        chosen_options: [
+          { choice_id: prepChoice.id, qty: 1 },
+          { choice_id: unlinkedChoiceId, qty: 1 },
+        ] }],
+      bill_no: 'QA-T13F-UNLINKED-CHOICE',
+    }, { 'X-Shop-Id': DST });
+    // Cleanup
+    await dbq(`DELETE FROM option_choices WHERE id=$1`, [unlinkedChoiceId]);
+    await dbq(`DELETE FROM option_groups WHERE id=$1`, [unlinkedGroupId]);
+
+    assert('T13-F: unlinked choice → 400', invalidResp.status === 400,
+      `got ${invalidResp.status}: ${JSON.stringify(invalidResp.body).slice(0,100)}`);
+    assert('T13-F: error = INVALID_OPTION_CHOICE', String(invalidResp.body.error || '').includes('INVALID_OPTION_CHOICE'),
+      `got "${invalidResp.body.error}"`);
+  }
+
+  // ----------------------------------------------------------
   console.log('\n[T10-PROD-GUARD] Injection must not fire when env flags absent');
   if (PROD_GUARD_API_URL) {
     // Second server running with NODE_ENV=production and no CLONE_TEST_INJECT_FAILURE
@@ -977,7 +1152,7 @@ async function runTests() {
       srcShopId: SRC, dstShopId: DST,
       sections: ['materials', 'recipes', 'option_groups'],
       conflictStrategy: 'skip', dryRun: false, autoIncludeDependencies: true,
-      __testInjectErrorAt: 'option_choice_links',
+      // No __testInjectErrorAt — B3 proves injection is not body-triggered
     });
     assert('T10-PROD-GUARD: inject body ignored in production mode (200)', pgr.status === 200,
       `got ${pgr.status}: ${JSON.stringify(pgr.body).slice(0,100)}`);
@@ -988,9 +1163,9 @@ async function runTests() {
   } else {
     // No prod guard server available — verify via code inspection result
     console.log('  [T10-PROD-GUARD] PROD_GUARD_API_URL not set — code-level verification only');
-    console.log('  Guard condition: NODE_ENV === "test" && CLONE_TEST_INJECT_FAILURE === "1" && body.__testInjectErrorAt');
-    console.log('  Production server has NODE_ENV=production → condition always false → injection impossible');
-    ok('T10-PROD-GUARD: double-guard condition prevents production injection (code-verified)');
+    console.log('  B3 guard: _injectAt module flag only set by /_test/inject endpoint (NODE_ENV=test only)');
+    console.log('  Production: NODE_ENV=production → /_test/inject not registered → _injectAt always null');
+    ok('T10-PROD-GUARD: module-level flag prevents production injection (code-verified)');
   }
 
   // ----------------------------------------------------------
@@ -1016,6 +1191,25 @@ async function runTests() {
       'material_name missing from warning');
     assert('T14: no silent NULL (warning prevents surprise)', t14warn.length > 0,
       'no warning = silent NULL risk');
+
+    // T14-EXECUTE: B2 — execute (dryRun=false) with unresolved deps must return 409, no writes
+    const dstGroupsBefore = await countDstGroups();
+    const t14exec = await clone({
+      srcShopId: SRC, dstShopId: DST,
+      sections: ['option_groups'],
+      conflictStrategy: 'skip',
+      dryRun: false,
+      autoIncludeDependencies: false,
+    });
+    assert('T14-EXECUTE: 409 blocks execute when FK deps unresolved', t14exec.status === 409,
+      `got ${t14exec.status}: ${JSON.stringify(t14exec.body).slice(0,100)}`);
+    assert('T14-EXECUTE: error = UNRESOLVED_CLONE_DEPENDENCIES', t14exec.body.error === 'UNRESOLVED_CLONE_DEPENDENCIES',
+      `got "${t14exec.body.error}"`);
+    assert('T14-EXECUTE: dependencies array in response', Array.isArray(t14exec.body.dependencies) && t14exec.body.dependencies.length > 0,
+      `dependencies: ${JSON.stringify(t14exec.body.dependencies)}`);
+    const dstGroupsAfter = await countDstGroups();
+    assert('T14-EXECUTE: no writes on 409 (transaction rolled back)', dstGroupsAfter === dstGroupsBefore,
+      `groups before=${dstGroupsBefore} after=${dstGroupsAfter}`);
   } finally {
     // Restore choice (always runs, even on test failure)
     await dbq('UPDATE option_choices SET target_material_id=NULL WHERE id=$1', [IDS.ch1]);

@@ -10,13 +10,31 @@
 
 ### Added
 * Add T14 dependency warning: `choice_target_material_missing` / `choice_variant_recipe_missing` in `dependencies[]` when an option choice references a `target_material_id` or `variant_recipe_id` not present in the clone scope — prevents silent NULL FK after clone.
-* Add T10 double-guard for test error injection: requires both `NODE_ENV=test` AND `CLONE_TEST_INJECT_FAILURE=1` — production server can never satisfy both, production requests cannot trigger injection.
-* Add QA fixture `backend/scripts/fixtures/clone-option-qa.sql` (idempotent, safety-guarded, separate QA credentials).
-* Add comprehensive QA test suite `backend/scripts/test-clone-option-fix.js` — 160 assertions (T1–T14, T10-PROD-GUARD, T-PERM) covering dry-run, all conflict strategies, rollback, POS API contract, permission regression, and nested dependency warnings.
+* Add T10 injection via module-level `_injectAt` flag — never reads from HTTP request body. Injection state set by `POST /api/admin/selective-clone/_test/inject` (registered only when `NODE_ENV=test`, unreachable in production). T10-PROD-GUARD confirms production server ignores all injection attempts.
+* Add T14 execute gate: `dryRun=false` with unresolved `choice_target_material_missing` / `choice_variant_recipe_missing` deps returns `409 UNRESOLVED_CLONE_DEPENDENCIES` with `dependencies[]` in response body. No rows written on 409.
+* Add T13-A through T13-F: server-side `validateOptionsForLine()` verified for cloned recipes and materials — missing required → 400 `REQUIRED_OPTION_MISSING`; exceed max_select → 400 `OPTION_MAX_SELECT_EXCEEDED`; cross-shop choice → 400 `INVALID_OPTION_CHOICE`; unlinked choice → 400. No bill, no movement, no stock change on any rejection.
+* Add QA fixture `backend/scripts/fixtures/clone-option-qa.sql` (idempotent, safety-guarded, QA credentials via `LOCAL_QA_PASSWORD` env var only — never hardcoded).
+* Add comprehensive QA test suite `backend/scripts/test-clone-option-fix.js` — 200+ assertions (T1–T14, T13-A/F, T10-PROD-GUARD, T-PERM, T14-EXECUTE).
+
+### Security
+* Remove `req.body.__testInjectErrorAt` from production code path entirely (B3). No HTTP field from any request can now trigger test injection. Production servers have zero code path to `_injectAt`.
+* Remove hardcoded `recipro-qa-clone-2026` password from source (B5). Test runner aborts if `LOCAL_QA_PASSWORD` env var is not set.
+
+### Rollback Plan (B4 — corrected)
+To revert all clone fix commits after production deploy (do NOT `git reset --hard` or force-push main):
+```bash
+# Record pre-deploy SHA before pushing:
+PRE_DEPLOY=$(git rev-parse origin/main)
+
+# After deploy, if rollback needed:
+git revert --no-commit ${PRE_DEPLOY}..HEAD
+git commit -m "revert: roll back clone option fix release"
+git push origin main
+```
 
 ### Business Rule (documented)
 * `copy` strategy: each execution creates a new uniquely-named group (not idempotent). Caller is responsible for not calling copy repeatedly if deduplication is desired.
-* POS required-option enforcement is client-side only; server deducts BOM from provided `chosen_options` without blocking absent required selections.
+* POS required-option enforcement is **server-side** (`validateOptionsForLine()` in `/api/pos/sell`). Missing required option → `400 REQUIRED_OPTION_MISSING`. Frontend validation is an additional UX layer, not the only guard.
 
 ## [S11.1.0] - 2026-06-29
 

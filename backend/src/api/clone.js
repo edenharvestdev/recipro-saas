@@ -3,6 +3,18 @@ const { query, tx } = require('../db');
 const { logEvent } = require('../logs');
 const router = express.Router();
 
+// B3: test-only injection hook — module-level flag, never read from HTTP request body.
+// Only registered/usable when NODE_ENV=test; production code path never touches this.
+let _injectAt = null;
+if (process.env.NODE_ENV === 'test') {
+  // Internal control endpoint: POST /api/admin/selective-clone/_test/inject
+  // Sets/resets the injection point for T10.  Not reachable in production.
+  router.post('/selective-clone/_test/inject', (req, res) => {
+    _injectAt = req.body && req.body.at ? req.body.at : null;
+    res.json({ ok: true, injectAt: _injectAt });
+  });
+}
+
 // Gather all shop master data
 async function gatherFullShopData(c, shopId) {
   const get = (sql) => c.query(sql, [shopId]).then(r => r.rows);
@@ -162,6 +174,20 @@ router.post('/selective-clone', async (req, res) => {
               message: `Choice "${ch.label}" (กลุ่ม: ${grpLabel}) อ้าง variant_recipe ที่ไม่ได้ Clone — FK จะเป็น NULL หลัง Clone`
             });
           }
+        }
+      }
+
+      // B2: Block execute when choices reference missing target_material / variant_recipe.
+      // Dry-run returns warnings; execute must be blocked until deps are resolved.
+      if (!dryRun) {
+        const fkDeps = dependencies.filter(d =>
+          d.type === 'choice_target_material_missing' || d.type === 'choice_variant_recipe_missing'
+        );
+        if (fkDeps.length > 0) {
+          const err = new Error('UNRESOLVED_CLONE_DEPENDENCIES');
+          err.statusCode = 409;
+          err.dependencies = fkDeps;
+          throw err;
         }
       }
 
@@ -412,13 +438,9 @@ router.post('/selective-clone', async (req, res) => {
           counts.option_choices++;
         }
 
-        // T10 test-only error injection — requires BOTH NODE_ENV=test AND CLONE_TEST_INJECT_FAILURE=1
-        // Double guard: production can never satisfy both conditions simultaneously
-        if (
-          process.env.NODE_ENV === 'test' &&
-          process.env.CLONE_TEST_INJECT_FAILURE === '1' &&
-          req.body.__testInjectErrorAt === 'option_choice_links'
-        ) {
+        // B3: T10 test-only error injection — reads module-level flag set by /_test/inject endpoint.
+        // Never reads from req.body. _injectAt is null in production (block above only runs in test).
+        if (process.env.NODE_ENV === 'test' && _injectAt === 'option_choice_links') {
           throw new Error('TEST_INJECT: simulated error during option_choice_links insert');
         }
 
@@ -482,6 +504,9 @@ router.post('/selective-clone', async (req, res) => {
     res.json({ ok: true, cloned: report.counts, logs: report.logs });
 
   } catch (e) {
+    if (e.statusCode === 409) {
+      return res.status(409).json({ error: e.message, dependencies: e.dependencies || [] });
+    }
     res.status(500).json({ error: e.message });
   }
 });
