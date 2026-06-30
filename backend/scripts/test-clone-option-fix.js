@@ -1170,12 +1170,16 @@ async function runTests() {
 
   // ----------------------------------------------------------
   console.log('\n[T14] Option nested dependency — silent NULL warning');
-  // Temporarily set target_material_id on choice อุ่น → matB (Flour) which won't be in clone scope
+  // Reset DST before T14 so matMap is empty (no pre-seeded materials from T3/T11).
+  // Without this, T3 clones matB to DST → matMap.has(matB)=true → dep check passes silently.
+  await resetDst();
+  // Temporarily set target_material_id on choice อุ่น → matB (Flour).
+  // DST is now empty so matB is NOT in matMap → dep check fires correctly.
   await dbq('UPDATE option_choices SET target_material_id=$1 WHERE id=$2', [IDS.matB, IDS.ch1]);
   try {
     r = await clone({
       srcShopId: SRC, dstShopId: DST,
-      sections: ['option_groups'],  // no materials — matB won't be in matMap
+      sections: ['option_groups'],  // no materials — matB won't be in empty matMap
       conflictStrategy: 'skip',
       dryRun: true,
       autoIncludeDependencies: false,
@@ -1211,7 +1215,7 @@ async function runTests() {
     assert('T14-EXECUTE: no writes on 409 (transaction rolled back)', dstGroupsAfter === dstGroupsBefore,
       `groups before=${dstGroupsBefore} after=${dstGroupsAfter}`);
   } finally {
-    // Restore choice (always runs, even on test failure)
+    // Always restore — matB reference is a test-only temporary mutation
     await dbq('UPDATE option_choices SET target_material_id=NULL WHERE id=$1', [IDS.ch1]);
   }
 
