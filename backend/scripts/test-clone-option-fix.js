@@ -1220,6 +1220,55 @@ async function runTests() {
   }
 
   // ----------------------------------------------------------
+  console.log('\n[T14B] Option nested dependency — variant_recipe_id silent NULL warning');
+  // DST is still empty from the resetDst() above (T14 execute gate left 0 groups due to 409).
+  // Temporarily set variant_recipe_id on choice อุ่น → IDS.recipe (SRC recipe).
+  // Clone only option_groups (no recipes) → recMap never seeded → dep check fires.
+  await dbq('UPDATE option_choices SET variant_recipe_id=$1 WHERE id=$2', [IDS.recipe, IDS.ch1]);
+  try {
+    r = await clone({
+      srcShopId: SRC, dstShopId: DST,
+      sections: ['option_groups'],  // no recipes — recipe won't be in empty recMap
+      conflictStrategy: 'skip',
+      dryRun: true,
+      autoIncludeDependencies: false,
+    });
+    assert('T14B: HTTP 200', r.status === 200, `got ${r.status}`);
+    const t14bDeps = r.body.preview?.dependencies || [];
+    const t14bWarn = t14bDeps.filter(d => d.type === 'choice_variant_recipe_missing');
+    assert('T14B: choice_variant_recipe_missing warning present', t14bWarn.length > 0,
+      `deps: ${t14bDeps.map(d=>d.type).join(',')}`);
+    assert('T14B: warning has correct choice_label', t14bWarn[0]?.choice_label === 'อุ่น',
+      `got "${t14bWarn[0]?.choice_label}"`);
+    assert('T14B: warning has recipe_name', !!t14bWarn[0]?.recipe_name,
+      'recipe_name missing from warning');
+    assert('T14B: no silent NULL (warning prevents surprise)', t14bWarn.length > 0,
+      'no warning = silent NULL risk');
+
+    // T14B-EXECUTE: B2 gate must return 409, no writes
+    const dstGrpsBefore14b = await countDstGroups();
+    const t14bExec = await clone({
+      srcShopId: SRC, dstShopId: DST,
+      sections: ['option_groups'],
+      conflictStrategy: 'skip',
+      dryRun: false,
+      autoIncludeDependencies: false,
+    });
+    assert('T14B-EXECUTE: 409 blocks execute when variant_recipe deps unresolved', t14bExec.status === 409,
+      `got ${t14bExec.status}: ${JSON.stringify(t14bExec.body).slice(0,100)}`);
+    assert('T14B-EXECUTE: error = UNRESOLVED_CLONE_DEPENDENCIES', t14bExec.body.error === 'UNRESOLVED_CLONE_DEPENDENCIES',
+      `got "${t14bExec.body.error}"`);
+    assert('T14B-EXECUTE: dependencies array in response', Array.isArray(t14bExec.body.dependencies) && t14bExec.body.dependencies.length > 0,
+      `dependencies: ${JSON.stringify(t14bExec.body.dependencies)}`);
+    const dstGrpsAfter14b = await countDstGroups();
+    assert('T14B-EXECUTE: no writes on 409 (transaction rolled back)', dstGrpsAfter14b === dstGrpsBefore14b,
+      `groups before=${dstGrpsBefore14b} after=${dstGrpsAfter14b}`);
+  } finally {
+    // Always restore — recipe reference is a test-only temporary mutation
+    await dbq('UPDATE option_choices SET variant_recipe_id=NULL WHERE id=$1', [IDS.ch1]);
+  }
+
+  // ----------------------------------------------------------
   console.log('\n[T-PERM] Permission regression');
   // Unauthenticated → 401
   const unauthed = await clone({ srcShopId: SRC, dstShopId: DST, sections: ['option_groups'], dryRun: true });
