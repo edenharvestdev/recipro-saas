@@ -49,6 +49,7 @@ const files = [
   '../db/schema-s10.sql',
   '../db/schema-s11.sql',
   '../db/schema-s12.sql',
+  '../db/schema-delivery-mvp.sql',
   '../db/seed.sql',
 ];
 

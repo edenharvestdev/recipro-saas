@@ -78,6 +78,12 @@ api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recip
 api.post('/billing/checkout', checkoutLimiter);   // rate-limit เฉพาะ POST /billing/checkout
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout
 api.use(require('./api/logs'));        // GET  /api/logs
+// Delivery MVP Release A — disabled globally by setting DELIVERY_ENABLED=0 env var
+if (process.env.DELIVERY_ENABLED !== '0') {
+  api.use('/delivery', require('./api/delivery'));
+} else {
+  api.use('/delivery', (req, res) => res.status(503).json({ error: 'delivery feature disabled' }));
+}
 api.use('/admin', requireSuperadmin, require('./api/admin')); // /api/admin/*
 api.use('/admin', requireSuperadmin, require('./api/clone')); // /api/admin/{export-shop,import-shop,clone-shop2}
 app.use('/api', api);
