@@ -142,18 +142,50 @@ INSERT INTO shop_settings (shop_id)
 VALUES ('aaaaaaaa-0002-0002-0002-000000000002')
 ON CONFLICT (shop_id) DO NOTHING;
 
--- QA superadmin user
+-- QA test user — uses QA-specific password (NOT the production admin password)
+-- Password: recipro-qa-clone-2026 (QA-only, never used in production)
 INSERT INTO users (id, email, password_hash)
 VALUES (
   'ffffffff-0000-0000-0000-000000000001',
   'qa-clone-test@local.test',
-  '$2a$12$yvFr.PxRFbNQ.Ri/3Pb5b.gmLkkc62LZ5xCXZTo7tc2P89mP1ZlR.'
+  '$2a$12$CvtQVOP0rIoTGiPdJ8YLKuORFSPuNG2hz9lJUgjhGY/6xSoK3PMJG'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
+-- Superadmin on source shop
 INSERT INTO memberships (user_id, shop_id, role)
 VALUES ('ffffffff-0000-0000-0000-000000000001', 'aaaaaaaa-0001-0001-0001-000000000001', 'superadmin')
 ON CONFLICT (user_id, shop_id) DO UPDATE SET role = 'superadmin';
+
+-- Superadmin on destination shop (needed for T13 bootstrap test)
+INSERT INTO memberships (user_id, shop_id, role)
+VALUES ('ffffffff-0000-0000-0000-000000000001', 'aaaaaaaa-0002-0002-0002-000000000002', 'superadmin')
+ON CONFLICT (user_id, shop_id) DO UPDATE SET role = 'superadmin';
+
+-- Permission test users (owner + staff — separate from QA superadmin)
+INSERT INTO users (id, email, password_hash)
+VALUES (
+  'ffffffff-0000-0000-0000-000000000002',
+  'qa-owner@local.test',
+  '$2a$12$CvtQVOP0rIoTGiPdJ8YLKuORFSPuNG2hz9lJUgjhGY/6xSoK3PMJG'
+)
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
+INSERT INTO memberships (user_id, shop_id, role)
+VALUES ('ffffffff-0000-0000-0000-000000000002', 'aaaaaaaa-0001-0001-0001-000000000001', 'owner')
+ON CONFLICT (user_id, shop_id) DO UPDATE SET role = 'owner';
+
+INSERT INTO users (id, email, password_hash)
+VALUES (
+  'ffffffff-0000-0000-0000-000000000003',
+  'qa-staff@local.test',
+  '$2a$12$CvtQVOP0rIoTGiPdJ8YLKuORFSPuNG2hz9lJUgjhGY/6xSoK3PMJG'
+)
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
+INSERT INTO memberships (user_id, shop_id, role)
+VALUES ('ffffffff-0000-0000-0000-000000000003', 'aaaaaaaa-0001-0001-0001-000000000001', 'staff')
+ON CONFLICT (user_id, shop_id) DO UPDATE SET role = 'staff';
 
 -- Materials
 INSERT INTO materials (

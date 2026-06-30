@@ -132,6 +132,39 @@ router.post('/selective-clone', async (req, res) => {
         }
       }
 
+      // T14: Warn when option choices reference target_material / variant_recipe not in clone scope
+      // Prevents silent NULL after clone — dependency must be resolved or warned explicitly
+      if (selectSec('option_groups')) {
+        const groupsForDepCheck = autoIncludedGroupIds.size > 0 && !rawSections.includes('option_groups')
+          ? srcData.option_groups.filter(g => autoIncludedGroupIds.has(g.id))
+          : srcData.option_groups;
+        const groupIdsForDep = new Set(groupsForDepCheck.map(g => g.id));
+        for (const ch of srcData.option_choices) {
+          if (!groupIdsForDep.has(ch.group_id)) continue;
+          const grpLabel = (srcData.option_groups.find(g => g.id === ch.group_id) || {}).label || '';
+          if (ch.target_material_id && !matMap.has(ch.target_material_id) && !rawSections.includes('materials')) {
+            const mat = srcData.materials.find(m => m.id === ch.target_material_id);
+            dependencies.push({
+              type: 'choice_target_material_missing',
+              choice_label: ch.label,
+              group_label: grpLabel,
+              material_name: mat ? mat.name : ch.target_material_id,
+              message: `Choice "${ch.label}" (กลุ่ม: ${grpLabel}) อ้าง target_material ที่ไม่ได้ Clone — FK จะเป็น NULL หลัง Clone`
+            });
+          }
+          if (ch.variant_recipe_id && !recMap.has(ch.variant_recipe_id) && !rawSections.includes('recipes')) {
+            const rec = srcData.recipes.find(r => r.id === ch.variant_recipe_id);
+            dependencies.push({
+              type: 'choice_variant_recipe_missing',
+              choice_label: ch.label,
+              group_label: grpLabel,
+              recipe_name: rec ? rec.name : ch.variant_recipe_id,
+              message: `Choice "${ch.label}" (กลุ่ม: ${grpLabel}) อ้าง variant_recipe ที่ไม่ได้ Clone — FK จะเป็น NULL หลัง Clone`
+            });
+          }
+        }
+      }
+
       // --- Dry-run ---
       if (dryRun) {
         const grpScope = autoIncludedGroupIds.size > 0 && !rawSections.includes('option_groups')
@@ -379,8 +412,13 @@ router.post('/selective-clone', async (req, res) => {
           counts.option_choices++;
         }
 
-        // T10 test-only error injection — never active outside NODE_ENV=test (placed before loop so fires even with 0 links)
-        if (process.env.NODE_ENV === 'test' && req.body.__testInjectErrorAt === 'option_choice_links') {
+        // T10 test-only error injection — requires BOTH NODE_ENV=test AND CLONE_TEST_INJECT_FAILURE=1
+        // Double guard: production can never satisfy both conditions simultaneously
+        if (
+          process.env.NODE_ENV === 'test' &&
+          process.env.CLONE_TEST_INJECT_FAILURE === '1' &&
+          req.body.__testInjectErrorAt === 'option_choice_links'
+        ) {
           throw new Error('TEST_INJECT: simulated error during option_choice_links insert');
         }
 
