@@ -11345,8 +11345,8 @@ async function dlvAddItem() {
   const priceInp = ($('dlvAddPriceInp') || {}).value;
   const price = priceInp ? parseFloat(priceInp) : _dlvSelectedMenu.price;
   const orderNo = (($('dlvAddOrderNo') || {}).value || '').trim() || null;
-  // Collect chosen options as array of { groupId, optionId }
-  const chosenOpts = Object.entries(_dlvChosenOptions).map(([gId, oId]) => ({ groupId: gId, optionId: oId }));
+  // Collect chosen options in backend format { group_id, choice_id }
+  const chosenOpts = Object.entries(_dlvChosenOptions).map(([gId, oId]) => ({ group_id: gId, choice_id: oId }));
   const body = {
     menu_type: _dlvSelectedMenu.refType === 'recipe' ? 'recipe' : 'material',
     menu_name: _dlvSelectedMenu.name,
