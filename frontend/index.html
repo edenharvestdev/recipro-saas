@@ -2437,7 +2437,7 @@ let USER_ROLE = null; // superadmin | owner | staff
 let BILLING = null;   // { state, days_left, grace_days } จาก bootstrap
 let SHOP_PLAN = null; // แพ็กเกจปัจจุบัน { code, name, features_json } — null = ยังไม่กำหนด (เปิดเต็ม)
 // S4: สิทธิ์ย่อยพนักงาน — ค่าเริ่มต้นปลอดภัย (ตรงกับ STAFF_PERM_DEFAULTS ฝั่ง backend)
-const DEFAULT_STAFF_PERMS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false };
+const DEFAULT_STAFF_PERMS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false, delivery_entry: false };
 const STAFF_PERM_LABELS = { discount: 'ให้ส่วนลด (ตามเพดาน)', void: 'ยกเลิกบิล', stock_receive: 'รับของเข้า/นับสต๊อก', waste: 'ตัดของเสีย', edit_recipes: 'เพิ่ม/แก้ วัตถุดิบ-สูตร', view_cost: 'ดูต้นทุน/กำไร', petty_cash: 'ดูเงินสดย่อย/ลิ้นชัก' };
 // can(key): owner/superadmin ทำได้เสมอ · staff ต้องได้รับสิทธิ์
 function can(key) {
@@ -7182,12 +7182,12 @@ function switchPosTab(tab) {
   if (isQuick) renderPosGrid();
   if (isLog)   renderSalesLog();
   if (isOnline   && typeof renderOnlineMenu === 'function') renderOnlineMenu();
-  if (isDelivery && serverFeatures.deliveryEnabledForShop && settings.useDelivery) dlvRefresh();
+  if (isDelivery && serverFeatures.deliveryEnabledForShop && settings.useDelivery && can('delivery_entry')) dlvRefresh();
 }
 
 function dlvUpdatePosTabVisibility() {
   const btn = $('posTabDelivery');
-  if (btn) btn.style.display = (settings && settings.useDelivery && serverFeatures.deliveryEnabledForShop) ? '' : 'none';
+  if (btn) btn.style.display = (settings && settings.useDelivery && serverFeatures.deliveryEnabledForShop && can('delivery_entry')) ? '' : 'none';
 }
 
 // แสดงจำนวนออเดอร์ออนไลน์ใหม่บนปุ่ม sub-tab "ออนไลน์ (QR)" (เห็นแม้อยู่แท็บอื่น)
@@ -11091,7 +11091,7 @@ function dlvDateTime(ts) {
 async function dlvRefresh() {
   const el = $('deliverySection');
   if (!el) return;
-  if (!serverFeatures.deliveryEnabledForShop) { el.innerHTML = ''; return; }
+  if (!serverFeatures.deliveryEnabledForShop || !can('delivery_entry')) { el.innerHTML = ''; return; }
   if (!settings.useDelivery) {
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);">' + icon('truck') + ' ขายผ่าน Delivery (Grab/LINE MAN...)? เปิดเพื่อกระทบยอด + ตัดสต็อก</span><button class="btn btn-primary btn-sm" onclick="toggleDelivery(true)">' + icon('truck') + ' เปิดใช้</button></div>';
     renderIcons(el); return;

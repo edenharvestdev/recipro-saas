@@ -942,6 +942,41 @@ async function countLinks(batchId, type) {
     process.env.DELIVERY_ENABLED = ffSavedEnabled;
     process.env.DELIVERY_ALLOWED_SHOP_IDS = ffSavedAllowed;
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // PERMISSION POLICY TESTS (PP1–PP3)
+    // Backend enforcement of delivery_entry permission via requirePerm().
+    // Mirrors frontend can('delivery_entry') in all three visibility guards.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n=== Permission Policy Tests (PP1–PP3) ===\n');
+
+    // --- PP1: Staff without delivery_entry → 403 on bill open ---
+    // staffB21 on shopB — no delivery_entry in shop_settings (STAFF_PERM_DEFAULTS.delivery_entry = false)
+    const pp1 = await api('POST', '/api/delivery/bill/open', {
+      token: staffB21Token, shop: shopB,
+      body: { platform: 'PP1Test', sales_date: DB_DATE }
+    });
+    check('PP1 Staff without delivery_entry → 403', pp1.status === 403, pp1.data);
+
+    // --- PP2: Grant delivery_entry to shopB → staff can now open bill ---
+    await query(
+      `INSERT INTO shop_settings(shop_id, staff_permissions)
+       VALUES($1,$2::jsonb)
+       ON CONFLICT(shop_id) DO UPDATE SET staff_permissions=EXCLUDED.staff_permissions`,
+      [shopB, JSON.stringify({ delivery_entry: true })]
+    );
+    const pp2 = await api('POST', '/api/delivery/bill/open', {
+      token: staffB21Token, shop: shopB,
+      body: { platform: 'PP2Test', sales_date: DB_DATE }
+    });
+    check('PP2 Staff with delivery_entry granted → 201', pp2.status === 201, pp2.data);
+
+    // --- PP3: Owner always bypasses requirePerm (no explicit grant needed) ---
+    const pp3 = await api('POST', '/api/delivery/bill/open', {
+      token: ownerToken, shop: shopA,
+      body: { platform: 'PP3Test', sales_date: DB_DATE }
+    });
+    check('PP3 Owner bypasses delivery_entry check → 201', pp3.status === 201, pp3.data);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;
