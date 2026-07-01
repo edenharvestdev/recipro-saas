@@ -623,23 +623,47 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
       const shopRow = (await c.query('SELECT make_to_order FROM shop_settings WHERE shop_id=$1', [req.shopId])).rows[0];
       const globalMTO = shopRow ? !!shopRow.make_to_order : false;
       const cats = await engine.loadCats(c);
+      const isOwner = req.role === 'owner' || req.isSuperadmin === true;
 
-      // Negative-stock safety — applies to HISTORICAL backfill only (sales_date in the past),
-      // where a past sale may legitimately exceed today's stock. Same-day entries keep the
+      // ── Manual stock mode (historical coverage) — Owner-controlled per item ──
+      // DEDUCT_FULL (default) | DEDUCT_REMAINDER | ACCOUNTING_ONLY_ALREADY_DEDUCTED | HOLD_FOR_REVIEW
+      // NOT auto-matching: the Owner explicitly chooses the mode + reason for ambiguous cases.
+      const MODES = ['DEDUCT_FULL', 'DEDUCT_REMAINDER', 'ACCOUNTING_ONLY_ALREADY_DEDUCTED', 'HOLD_FOR_REVIEW'];
+      const stockMode = String(req.body.stock_mode || 'DEDUCT_FULL');
+      if (!MODES.includes(stockMode)) { const e = new Error('INVALID_STOCK_MODE'); e.statusCode = 400; throw e; }
+      const coverageReason = String(req.body.coverage_reason || '').trim();
+      const sourcePosBillNo = req.body.source_pos_bill_no ? String(req.body.source_pos_bill_no).trim() : null;
+      // Coverage (non-default) modes are for AMBIGUOUS cases → Owner only, reason required.
+      if (stockMode !== 'DEDUCT_FULL') {
+        if (!isOwner) { const e = new Error('STOCK_MODE_REQUIRES_OWNER'); e.statusCode = 403; throw e; }
+        if (!coverageReason) { const e = new Error('COVERAGE_REASON_REQUIRED'); e.statusCode = 400; throw e; }
+      }
+      // Resolve covered vs deducted quantities. Invariant: deductQty = qty - coveredQty; 0 <= deductQty <= qty.
+      let coveredQty = 0, deductQty = qty;
+      if (stockMode === 'DEDUCT_REMAINDER') {
+        coveredQty = Number(req.body.covered_quantity);
+        if (!(coveredQty >= 0 && coveredQty <= qty)) { const e = new Error('INVALID_COVERED_QUANTITY'); e.statusCode = 400; throw e; }
+        deductQty = qty - coveredQty;
+      } else if (stockMode === 'ACCOUNTING_ONLY_ALREADY_DEDUCTED') {
+        coveredQty = qty; deductQty = 0;
+      } else if (stockMode === 'HOLD_FOR_REVIEW') {
+        coveredQty = 0; deductQty = 0;
+      }
+
+      // Negative-stock safety — applies to HISTORICAL backfill only (sales_date in the past)
+      // AND only to the quantity actually being deducted (deductQty). Same-day entries keep the
       // original behaviour (materials clamp at 0, FG hard-blocks) so live POS/Delivery is unchanged.
-      // On a historical shortfall: warn + require Owner confirmation. Normal staff can never
-      // override; only owner/superadmin with an explicit reason.
+      // On a historical shortfall: warn + require Owner confirmation. Normal staff can never override.
       const isHistorical = (await c.query(
         'SELECT (sales_date IS NOT NULL AND sales_date < CURRENT_DATE) AS h FROM delivery_sales_batches WHERE id=$1',
         [req.params.id]
       )).rows[0]?.h === true;
-      const isOwner = req.role === 'owner' || req.isSuperadmin === true;
       const allowNegative = req.body.allow_negative === true;
       const negativeReason = String(req.body.negative_reason || '').trim();
       let overridden = false;
-      if (isHistorical) {
+      if (isHistorical && deductQty > 0) {
         const shortfalls = await assessShortfalls(
-          c, req.shopId, { menu_type, recipe_id, material_id, qty, chosen_options }, cats, globalMTO
+          c, req.shopId, { menu_type, recipe_id, material_id, qty: deductQty, chosen_options }, cats, globalMTO
         );
         overridden = shortfalls.length > 0 && isOwner && allowNegative && negativeReason.length > 0;
         if (shortfalls.length > 0 && !overridden) {
@@ -654,16 +678,21 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
         + (overridden ? ` [neg-override: ${negativeReason}]` : '');
 
       const movementLinks = [];
-      let itemCogs = 0;
+      // unitCogs = cost per SINGLE unit (independent of qty deducted). Channel COGS and the
+      // consolidated (newly-recognised) COGS are both derived from it — keeping inventory
+      // deduction and channel-cost attribution as separate concepts.
+      let unitCogs = 0;
 
       if (menu_type === 'material') {
         const matRow = (await c.query('SELECT price, qty, conv_qty FROM materials WHERE id=$1 AND shop_id=$2', [material_id, req.shopId])).rows[0];
-        const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, material_id, qty, 'on_sale', note);
-        if (r.mvId) movementLinks.push(r.mvId);
         if (matRow) {
           const pQty = Number(matRow.qty) || 1;
           const cQty = Number(matRow.conv_qty) || 1;
-          itemCogs = pQty > 0 ? (Number(matRow.price) / (pQty * cQty)) * qty : 0;
+          unitCogs = pQty > 0 ? (Number(matRow.price) / (pQty * cQty)) : 0;
+        }
+        if (deductQty > 0) {
+          const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, material_id, deductQty, 'on_sale', note);
+          if (r.mvId) movementLinks.push(r.mvId);
         }
       } else {
         const rec = (await c.query(
@@ -680,17 +709,18 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
 
         if (effectiveMode !== 'non_stock') {
           if (effectiveMode === 'finished_goods') {
-            const fg = Number(rec.fg_stock) || 0;
-            if (fg < qty && !overridden) {
-              const e = new Error('FG_STOCK_INSUFFICIENT');
-              e.statusCode = 409; e.recipeName = rec.name; e.have = fg; e.need = qty; throw e;
+            unitCogs = await engine.computeRecipeCostPerUnit(c, req.shopId, recipe_id);
+            if (deductQty > 0) {
+              const fg = Number(rec.fg_stock) || 0;
+              if (fg < deductQty && !overridden) {
+                const e = new Error('FG_STOCK_INSUFFICIENT');
+                e.statusCode = 409; e.recipeName = rec.name; e.have = fg; e.need = deductQty; throw e;
+              }
+              const r = await engine.deductRecipeFg(c, req.shopId, req.userId, rec, deductQty, 'on_sale', 'recipe_fg', note);
+              if (r.mvId) movementLinks.push(r.mvId);
             }
-            const r = await engine.deductRecipeFg(c, req.shopId, req.userId, rec, qty, 'on_sale', 'recipe_fg', note);
-            if (r.mvId) movementLinks.push(r.mvId);
-            const fgCostPerUnit = await engine.computeRecipeCostPerUnit(c, req.shopId, recipe_id);
-            itemCogs = fgCostPerUnit * qty;
           } else {
-            // make_to_order — deduct BOM, accumulate COGS
+            // make_to_order — accumulate per-unit COGS from the effective BOM; deduct deductQty
             const { bom, subs } = await engine.buildEffectiveBom(c, recipe_id, chosen_options);
             const matIds = [...bom.keys()];
             const matPrices = matIds.length
@@ -704,14 +734,16 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
             }));
 
             for (const [matId, entry] of bom) {
-              const amt = entry.amount * qty;
+              unitCogs += (priceMap[matId] || 0) * entry.amount;   // per single unit — always
+              const amt = entry.amount * deductQty;
               if (amt <= 0) continue;
               const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, matId, amt, 'recipe_use', note);
               if (r.mvId) movementLinks.push(r.mvId);
-              itemCogs += (priceMap[matId] || 0) * amt;
             }
             for (const s of subs) {
-              const amt = s.amount * qty;
+              const subCostPerUnit = await engine.computeRecipeCostPerUnit(c, req.shopId, s.sub_recipe_id);
+              unitCogs += subCostPerUnit * s.amount;               // per single unit — always
+              const amt = s.amount * deductQty;
               if (amt <= 0) continue;
               const sub = (await c.query(
                 'SELECT id,name,fg_stock,yield_unit FROM recipes WHERE id=$1 AND shop_id=$2 FOR UPDATE',
@@ -720,28 +752,51 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
               if (!sub) continue;
               const r = await engine.deductRecipeFg(c, req.shopId, req.userId, sub, amt, 'recipe_use', 'sub_recipe', note);
               if (r.mvId) movementLinks.push(r.mvId);
-              const subCostPerUnit = await engine.computeRecipeCostPerUnit(c, req.shopId, s.sub_recipe_id);
-              itemCogs += subCostPerUnit * amt;
             }
           }
         }
       }
 
-      const costBreakdown = { type: menu_type, cogs: itemCogs };
+      // ── COGS: separate channel attribution from accounting recognition ──
+      // delivery_channel_cogs = unit × FULL delivery qty (channel P&L; never zero for ACCOUNTING_ONLY).
+      // cogs_amount = FINALISED channel COGS posted to the bill (0 while HOLD is pending).
+      // Consolidated (newly-recognised) COGS is derivable as unit × deduction_quantity, so
+      // ACCOUNTING_ONLY (deduction 0) adds nothing new to consolidated P&L → no double counting.
+      const channelCogs = unitCogs * qty;
+      let cogsSource, cogsAlreadyRecognized;
+      if (stockMode === 'DEDUCT_FULL') { cogsSource = 'delivery_deduction'; cogsAlreadyRecognized = false; }
+      else if (stockMode === 'DEDUCT_REMAINDER') { cogsSource = 'mixed_pos_and_delivery'; cogsAlreadyRecognized = coveredQty > 0; }
+      else if (stockMode === 'ACCOUNTING_ONLY_ALREADY_DEDUCTED') { cogsSource = 'existing_pos_coverage'; cogsAlreadyRecognized = true; }
+      else { cogsSource = 'pending'; cogsAlreadyRecognized = false; } // HOLD_FOR_REVIEW
+      const isHold = stockMode === 'HOLD_FOR_REVIEW';
+      const itemCogs = isHold ? 0 : channelCogs;   // finalised channel COGS posted to the bill
+
+      const costBreakdown = { type: menu_type, cogs: itemCogs, unit_cogs: unitCogs, channel_cogs: channelCogs, stock_mode: stockMode, cogs_source: cogsSource };
+      const stockApprovedBy = stockMode !== 'DEDUCT_FULL' ? req.userId : null;
       const itemRow = (await c.query(
         `INSERT INTO delivery_sales_items
            (batch_id, shop_id, menu_type, recipe_id, material_id, menu_code,
             menu_name, quantity, unit_price, gross_amount, discount_amount,
             chosen_options, cogs_amount, cost_breakdown, cost_calculated_at,
-            order_no, staff_added_by, staff_added_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15,$16,$17) RETURNING *`,
+            order_no, staff_added_by, staff_added_name,
+            stock_mode, delivery_quantity, covered_quantity, deduction_quantity,
+            coverage_reason, source_pos_bill_no, stock_approved_by,
+            stock_approved_at,
+            unit_cogs_snapshot, delivery_channel_cogs, cogs_source, cogs_already_recognized)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15,$16,$17,
+                 $18,$19,$20,$21,$22,$23,$24,
+                 CASE WHEN $24::uuid IS NULL THEN NULL ELSE now() END,
+                 $25,$26,$27,$28) RETURNING *`,
         [
           req.params.id, req.shopId, menu_type,
           menu_type === 'recipe'   ? recipe_id   : null,
           menu_type === 'material' ? material_id : null,
           menu_code || null, menu_name, qty, price, itemGross, disc,
           JSON.stringify(chosen_options), itemCogs, JSON.stringify(costBreakdown),
-          order_no || null, req.userId, req.userName || null
+          order_no || null, req.userId, req.userName || null,
+          stockMode, qty, coveredQty, deductQty,
+          coverageReason || null, sourcePosBillNo, stockApprovedBy,
+          unitCogs, channelCogs, cogsSource, cogsAlreadyRecognized
         ]
       )).rows[0];
 
@@ -760,9 +815,14 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
         );
       }
 
-      const newGross = Number(bill.batch_item_gross) + itemGross;
-      const newNet   = Number(bill.batch_item_net)   + itemNet;
-      const newCogs  = Number(bill.cogs_total)        + itemCogs;
+      // HOLD_FOR_REVIEW items are pending — do NOT finalise gross/net/COGS into the bill totals
+      // until an Owner resolves them. All other modes post gross/net + finalised channel COGS.
+      const postGross = isHold ? 0 : itemGross;
+      const postNet   = isHold ? 0 : itemNet;
+      const postCogs  = isHold ? 0 : itemCogs;
+      const newGross = Number(bill.batch_item_gross) + postGross;
+      const newNet   = Number(bill.batch_item_net)   + postNet;
+      const newCogs  = Number(bill.cogs_total)        + postCogs;
       await c.query(
         `UPDATE delivery_sales_batches
          SET batch_item_gross=$1, batch_item_net=$2, cogs_total=$3, gross_profit=$4,
