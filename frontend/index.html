@@ -11040,6 +11040,7 @@ let _dlvChosenOptions = {};      // { groupId: optionId }
 let _dlvBillView      = 'queue'; // 'queue' | 'bill'
 let _dlvCatFilter     = '';      // category filter for menu search
 let _dlvMenuSearch    = '';      // text filter for menu search
+let _dlvSelectedDate  = null;    // sales_date chosen for opening bills (null → today)
 
 const DLV_STATUS_COLOR = {
   open: '#f59e0b', pending_review: '#6366f1',
@@ -11087,6 +11088,14 @@ function dlvDateTime(ts) {
   const d = new Date(ts);
   return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
+// Local YYYY-MM-DD from a DATE column. The API serialises DATE as a tz-shifted ISO
+// (local-midnight in UTC); using local date components un-shifts it for TH-tz browsers.
+function dlvDateOnly(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d).slice(0, 10);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
 
 async function dlvRefresh() {
   const el = $('deliverySection');
@@ -11125,11 +11134,13 @@ function dlvQueueHtml(r) {
   const todayMap = {};
   (r.today || []).forEach(b => { todayMap[b.platform] = b; });
 
+  const selDate = _dlvSelectedDate || today;   // date bills will be opened for
+  const isHist  = selDate < today;             // historical backfill?
   const platBtns = platforms.map(p => {
-    const b = todayMap[p];
+    const b = (selDate === today) ? todayMap[p] : null;   // colour-code only same-day active bills
     const clr = b ? DLV_STATUS_COLOR[b.status] : 'var(--color-text-muted)';
     const dot = b ? '<span style="width:8px;height:8px;border-radius:50%;background:' + clr + ';display:inline-block;margin-right:4px;"></span>' : '';
-    return '<button class="btn btn-ghost btn-sm" data-plat="' + esc(p) + '" data-date="' + today + '" onclick="dlvOpenBill(this.dataset.plat,this.dataset.date)" style="font-size:12px;border:1px solid ' + clr + ';display:flex;align-items:center;gap:3px;">'
+    return '<button class="btn btn-ghost btn-sm" data-plat="' + esc(p) + '" onclick="dlvOpenBillForSelected(this.dataset.plat)" style="font-size:12px;border:1px solid ' + clr + ';display:flex;align-items:center;gap:3px;">'
       + dot + esc(p) + '</button>';
   }).join('');
 
@@ -11148,7 +11159,15 @@ function dlvQueueHtml(r) {
   return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
     + '<h3 style="font-size:15px;font-weight:700;margin:0;">' + icon('truck') + ' Delivery Platform</h3>'
     + '<button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="toggleDelivery(false)">ปิด</button></div>'
-    + '<div style="margin-bottom:14px;"><div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;font-weight:600;">เปิดบิลวันนี้ (' + today + ')</div>'
+    + '<div style="margin-bottom:14px;">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'
+    +   '<label for="dlvSalesDateInp" style="font-size:11px;color:var(--color-text-muted);font-weight:600;">วันที่ขาย</label>'
+    +   '<input type="date" id="dlvSalesDateInp" value="' + selDate + '" max="' + today + '" onchange="dlvSetSalesDate(this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border-soft);border-radius:8px;">'
+    +   (isHist
+          ? '<span style="font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:2px 8px;">⏱ บันทึกย้อนหลัง</span>'
+          : '<span style="font-size:11px;color:var(--color-text-muted);">วันนี้</span>')
+    + '</div>'
+    + (isHist ? '<div style="font-size:11px;color:#b45309;margin-bottom:6px;">กำลังบันทึกยอดขายย้อนหลังของวันที่ ' + selDate + ' — สต๊อกจะถูกตัดตามวันที่นี้ (เวลาที่กรอกบันทึกแยกต่างหาก)</div>' : '')
     + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + platBtns + '</div></div>'
     + section('วันนี้', 'var(--color-text-muted)', allToday)
     + (!allToday.length ? '<p style="font-size:12px;color:var(--color-text-muted);margin:8px 0 0;">ยังไม่มีบิลวันนี้</p>' : '')
@@ -11156,6 +11175,18 @@ function dlvQueueHtml(r) {
     + section('รอยอดเงินเข้า', DLV_STATUS_COLOR.awaiting_settlement, r.awaiting_settlement || [])
     + section('ยอดไม่ตรง', DLV_STATUS_COLOR.discrepancy, r.discrepancy || [])
     + section('กระทบยอดแล้ว', DLV_STATUS_COLOR.reconciled, r.recent_reconciled || []);
+}
+
+// ── historical date selection ─────────────────────────────────────────────
+function dlvSetSalesDate(v) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (v && v > today) { v = today; ui.toast('เลือกวันในอนาคตไม่ได้', 'warning'); }
+  _dlvSelectedDate = (v && v < today) ? v : null;   // null → today
+  dlvRefresh();
+}
+function dlvOpenBillForSelected(platform) {
+  const today = new Date().toISOString().slice(0, 10);
+  dlvOpenBill(platform, _dlvSelectedDate || today);
 }
 
 // ── open or return existing active bill ───────────────────────────────────
@@ -11195,7 +11226,15 @@ function dlvBillHtml(b, items, movements) {
     + '<button class="btn btn-ghost btn-sm" onclick="_dlvBillView=\'queue\';_dlvActiveBillId=null;_dlvSelectedMenu=null;dlvRefresh();">' + icon('arrow-left') + '</button>'
     + '<div style="flex:1;min-width:0;">'
     + '<div style="font-size:16px;font-weight:700;">' + icon('truck') + ' ' + esc(b.platform) + ' &nbsp;' + dlvBadge(b.status) + '</div>'
-    + '<div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;">' + (b.sales_date || b.sales_date_from || '') + '</div>'
+    + (function(){
+        const sd = dlvDateOnly(b.sales_date || b.sales_date_from);
+        const hist = sd && sd < dlvDateOnly(new Date());
+        return '<div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+          + '<span>📅 วันที่ขาย ' + esc(sd) + '</span>'
+          + (hist ? '<span style="font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:1px 6px;">⏱ บันทึกย้อนหลัง</span>' : '')
+          + (b.created_at ? '<span>· บันทึกเมื่อ ' + esc(dlvDateTime(b.created_at)) + '</span>' : '')
+          + '</div>';
+      })()
     + '</div>'
     + (isEditable ? '<button class="btn btn-ghost btn-sm" onclick="dlvSetPendingReview()" title="รอตรวจสอบ">' + icon('clock') + '</button>' : '')
     + (b.status !== 'voided' && b.status !== 'reconciled' ? '<button class="btn btn-ghost btn-sm" style="color:var(--color-danger,#e53e3e);" onclick="dlvVoidBill()" title="ยกเลิกบิล">' + icon('x-circle') + '</button>' : '')
@@ -11342,7 +11381,7 @@ function dlvAdjQty(delta) {
   inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
 }
 
-async function dlvAddItem() {
+async function dlvAddItem(override) {
   if (!_dlvSelectedMenu) { ui.toast('เลือกเมนูก่อน'); return; }
   const qty = parseInt(($('dlvAddQtyInp') || {}).value) || 1;
   const priceInp = ($('dlvAddPriceInp') || {}).value;
@@ -11359,17 +11398,50 @@ async function dlvAddItem() {
   };
   if (_dlvSelectedMenu.refType === 'recipe') body.recipe_id = _dlvSelectedMenu.id;
   else body.material_id = _dlvSelectedMenu.id;
+  if (override && override.allow_negative) { body.allow_negative = true; body.negative_reason = override.negative_reason; }
   try {
     await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/item', body);
     _dlvSelectedMenu = null; _dlvChosenOptions = {};
     await dlvShowBill(_dlvActiveBillId);
     ui.toast('เพิ่มรายการแล้ว');
   } catch (e) {
+    const d = (e && e.data) || {};
+    if (d.error === 'NEGATIVE_STOCK_WARNING') { dlvShowNegativeWarning(d); return; }   // owner-confirm flow
     const msg = (e && e.message) || '';
-    if (msg.includes('DUPLICATE_ORDER_NO')) ui.toast('เลขออเดอร์นี้ถูกกรอกแล้ว', 'warning');
-    else if (msg.includes('FG_STOCK_INSUFFICIENT')) ui.toast('สต็อกไม่พอ: ' + msg, 'warning');
+    if (msg.includes('DUPLICATE_ORDER_NO')) ui.toast('เลขออเดอร์นี้ถูกกรอกแล้ว — ป้องกันการบันทึกซ้ำ', 'warning');
+    else if (msg.includes('FG_STOCK_INSUFFICIENT')) ui.toast('สต็อกไม่พอสำหรับบิลวันนี้: ' + msg, 'warning');
     else ui.toast('เพิ่มไม่ได้: ' + msg, 'error');
   }
+}
+
+// Owner-confirmed negative-stock override for historical backfill.
+// Staff see the warning but cannot override (canOverride=false from backend).
+async function dlvShowNegativeWarning(d) {
+  const rows = (d.shortfalls || []).map(s =>
+    '<tr><td style="padding:3px 8px;">' + esc(s.name || '') + '</td>'
+    + '<td style="padding:3px 8px;text-align:right;">' + Number(s.current).toLocaleString() + '</td>'
+    + '<td style="padding:3px 8px;text-align:right;color:#dc2626;">−' + Number(s.deduct).toLocaleString() + '</td>'
+    + '<td style="padding:3px 8px;text-align:right;font-weight:700;color:' + (Number(s.resulting) < 0 ? '#dc2626' : 'inherit') + ';">'
+    + Number(s.resulting).toLocaleString() + (s.unit ? ' ' + esc(s.unit) : '') + '</td></tr>'
+  ).join('');
+  const table = '<div style="font-size:12px;margin:10px 0;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">'
+    + '<tr style="font-size:11px;color:var(--color-text-muted);"><th style="text-align:left;padding:3px 8px;">รายการ</th>'
+    + '<th style="text-align:right;padding:3px 8px;">คงเหลือ</th><th style="text-align:right;padding:3px 8px;">ตัด</th>'
+    + '<th style="text-align:right;padding:3px 8px;">ผลลัพธ์</th></tr>' + rows + '</table></div>';
+
+  if (!d.canOverride) {
+    await ui.confirm('⚠️ การบันทึกย้อนหลังนี้จะทำให้สต๊อกติดลบ' + table
+      + '<div style="font-size:12px;color:#b45309;">พนักงานไม่สามารถยืนยันทับสต๊อกติดลบได้ — กรุณาให้เจ้าของร้านยืนยัน</div>',
+      { okText: 'รับทราบ', icon: 'alert-triangle' });
+    return;
+  }
+  const ok = await ui.confirm('⚠️ การบันทึกย้อนหลังนี้จะทำให้สต๊อกติดลบ' + table
+    + '<div style="font-size:12px;color:#b45309;">ยืนยันในฐานะเจ้าของร้าน และต้องระบุเหตุผล</div>',
+    { okText: 'ยืนยัน + ระบุเหตุผล', danger: true, icon: 'alert-triangle' });
+  if (!ok) return;
+  const reason = prompt('เหตุผลที่ยอมให้สต๊อกติดลบ (เช่น ยังไม่ได้บันทึกสต๊อกตั้งต้น):');
+  if (!reason || !reason.trim()) { ui.toast('ต้องระบุเหตุผลก่อนยืนยัน', 'warning'); return; }
+  await dlvAddItem({ allow_negative: true, negative_reason: reason.trim() });
 }
 
 async function dlvRemoveItem(itemId) {

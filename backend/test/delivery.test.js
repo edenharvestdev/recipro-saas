@@ -977,6 +977,116 @@ async function countLinks(batchId, type) {
     });
     check('PP3 Owner bypasses delivery_entry check → 201', pp3.status === 201, pp3.data);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // HISTORICAL-ENTRY SAFETY TESTS (HD1–HD11)
+    // Backdated sales_date, business_date on stock movement, negative-stock
+    // owner-confirm, duplicate prevention, settlement isolation.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n=== Historical-Entry Safety Tests (HD1–HD11) ===\n');
+
+    const HD_DATE = new Date(Date.now() - 20 * 86400000).toISOString().slice(0, 10); // 20 days ago → historical
+
+    // Fixtures: a high-stock direct-sale material + a low-stock FG recipe (for shortfall).
+    const hdMat = crypto.randomUUID();
+    const hdFG  = crypto.randomUUID();
+    await query("INSERT INTO materials(id,shop_id,name,unit,stock_unit,price,qty,conv_qty,stock,updated_at) VALUES($1,$2,'HD-Mat','pcs','pcs',10,1,1,1000,now())", [hdMat, shopA]);
+    await query("INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,batch_yield,inventory_mode,updated_at) VALUES($1,$2,'HD-FG','pcs',1,1,'finished_goods',now())", [hdFG, shopA]);
+
+    // ─── HD1: Backdated sales_date accepted ───────────────────────────────
+    const hdOpen = await api('POST', '/api/delivery/bill/open', { token: ownerToken, shop: shopA, body: { platform: 'GrabHD', sales_date: HD_DATE } });
+    const hdBillId = hdOpen.data.bill?.id;
+    check('HD1 Backdated sales_date accepted', hdOpen.status === 201 || hdOpen.status === 200, hdOpen.data);
+    const hdSalesText = (await query("SELECT to_char(sales_date,'YYYY-MM-DD') d FROM delivery_sales_batches WHERE id=$1", [hdBillId])).rows[0].d;
+    check('HD1 bill.sales_date = historical date', hdSalesText === HD_DATE, { got: hdSalesText, want: HD_DATE });
+
+    const hdAdd = await api('POST', '/api/delivery/bill/' + hdBillId + '/item', { token: ownerToken, shop: shopA, body: {
+      menu_type: 'material', material_id: hdMat, menu_name: 'HD-Mat', quantity: 3, unit_price: 100, chosen_options: [], order_no: 'HD-ORD-1'
+    }});
+    check('HD1 Historical item added', hdAdd.status === 201, hdAdd.data);
+    const hdItemId = hdAdd.data.item?.id;
+
+    // ─── HD2: created_at is actual entry time, NOT the historical date ─────
+    const hdItemRow = (await query('SELECT created_at, cogs_amount, cost_calculated_at FROM delivery_sales_items WHERE id=$1', [hdItemId])).rows[0];
+    const createdMs = new Date(hdItemRow.created_at).getTime();
+    check('HD2 created_at ≈ now (actual entry time)', Math.abs(Date.now() - createdMs) < 5 * 60 * 1000, hdItemRow.created_at);
+    check('HD2 created_at date ≠ historical sales_date', String(hdItemRow.created_at).slice(0,10) !== HD_DATE, hdItemRow.created_at);
+
+    // ─── HD3: stock movement business_date = historical sales_date ────────
+    const hdMv = (await query(
+      "SELECT to_char(business_date,'YYYY-MM-DD') AS business_date, entry_reason FROM delivery_batch_stock_movements WHERE batch_id=$1 AND item_id=$2 AND operation_type='deduct'",
+      [hdBillId, hdItemId]
+    )).rows;
+    check('HD3 movement business_date = historical sales_date', hdMv.length > 0 && hdMv[0].business_date === HD_DATE, hdMv.map(r=>r.business_date));
+    check('HD3 entry_reason = historical_backfill', hdMv.length > 0 && hdMv[0].entry_reason === 'historical_backfill', hdMv.map(r=>r.entry_reason));
+
+    // ─── HD4: stock deducts exactly once ──────────────────────────────────
+    check('HD4 Exactly 1 deduct movement for historical item', hdMv.length === 1, hdMv.length);
+    const hdMatStockAfterAdd = Number((await query('SELECT stock FROM materials WHERE id=$1', [hdMat])).rows[0].stock);
+    check('HD4 Material stock deducted by qty=3 (1000→997)', hdMatStockAfterAdd === 997, hdMatStockAfterAdd);
+
+    // ─── HD5: COGS snapshot stored ────────────────────────────────────────
+    check('HD5 COGS snapshot stored (cogs_amount set)', hdItemRow.cogs_amount != null && Number(hdItemRow.cogs_amount) >= 0, hdItemRow.cogs_amount);
+    check('HD5 cost_calculated_at stamped', hdItemRow.cost_calculated_at != null, hdItemRow.cost_calculated_at);
+
+    // ─── HD6: duplicate order_no blocked ──────────────────────────────────
+    const hdDup = await api('POST', '/api/delivery/bill/' + hdBillId + '/item', { token: ownerToken, shop: shopA, body: {
+      menu_type: 'material', material_id: hdMat, menu_name: 'HD-Mat', quantity: 1, unit_price: 100, chosen_options: [], order_no: 'HD-ORD-1'
+    }});
+    check('HD6 Duplicate order_no → 409', hdDup.status === 409, hdDup.data);
+    check('HD6 error = DUPLICATE_ORDER_NO', hdDup.data?.error === 'DUPLICATE_ORDER_NO', hdDup.data?.error);
+
+    // ─── HD7: negative-stock warning (owner, no confirmation) → 409 ───────
+    const hdNegOpen = await api('POST', '/api/delivery/bill/open', { token: ownerToken, shop: shopA, body: { platform: 'LineManHD', sales_date: HD_DATE } });
+    const hdNegBillId = hdNegOpen.data.bill?.id;
+    const hdNeg = await api('POST', '/api/delivery/bill/' + hdNegBillId + '/item', { token: ownerToken, shop: shopA, body: {
+      menu_type: 'recipe', recipe_id: hdFG, menu_name: 'HD-FG', quantity: 5, unit_price: 50, chosen_options: []
+    }});
+    check('HD7 Negative stock → 409 NEGATIVE_STOCK_WARNING', hdNeg.status === 409 && hdNeg.data?.error === 'NEGATIVE_STOCK_WARNING', hdNeg.data);
+    check('HD7 Warning includes shortfalls (current/deduct/resulting)', Array.isArray(hdNeg.data?.shortfalls) && hdNeg.data.shortfalls.length > 0 && hdNeg.data.shortfalls[0].resulting < 0, hdNeg.data?.shortfalls);
+
+    // ─── HD8b: owner allow_negative WITHOUT reason → still 409 ─────────────
+    const hdNoReason = await api('POST', '/api/delivery/bill/' + hdNegBillId + '/item', { token: ownerToken, shop: shopA, body: {
+      menu_type: 'recipe', recipe_id: hdFG, menu_name: 'HD-FG', quantity: 5, unit_price: 50, chosen_options: [], allow_negative: true
+    }});
+    check('HD8b Owner override without reason → 409', hdNoReason.status === 409, hdNoReason.data);
+
+    // ─── HD9: staff cannot override even with reason → 409 ─────────────────
+    const staffHDEmail = 'staffhd_' + sfx + '@test.local';
+    await api('POST', '/auth/register', { body: { email: staffHDEmail, password: 'password123' } });
+    const staffHDLogin = await api('POST', '/auth/login', { body: { email: staffHDEmail, password: 'password123' } });
+    const staffHDToken = staffHDLogin.data.accessToken;
+    await query("INSERT INTO memberships(user_id,shop_id,role) VALUES($1,$2,'staff')", [staffHDLogin.data.user.id, shopA]);
+    await query("UPDATE shop_settings SET staff_permissions = COALESCE(staff_permissions,'{}'::jsonb) || '{\"delivery_entry\":true}'::jsonb WHERE shop_id=$1", [shopA]);
+    const hdStaff = await api('POST', '/api/delivery/bill/' + hdNegBillId + '/item', { token: staffHDToken, shop: shopA, body: {
+      menu_type: 'recipe', recipe_id: hdFG, menu_name: 'HD-FG', quantity: 5, unit_price: 50, chosen_options: [], allow_negative: true, negative_reason: 'staff attempt'
+    }});
+    check('HD9 Staff cannot override negative stock → 409', hdStaff.status === 409, hdStaff.data);
+    check('HD9 Warning marks canOverride=false for staff', hdStaff.data?.canOverride === false, hdStaff.data?.canOverride);
+
+    // ─── HD8: owner allow_negative + reason → 201 (confirmation works) ─────
+    const hdOverride = await api('POST', '/api/delivery/bill/' + hdNegBillId + '/item', { token: ownerToken, shop: shopA, body: {
+      menu_type: 'recipe', recipe_id: hdFG, menu_name: 'HD-FG', quantity: 5, unit_price: 50, chosen_options: [], allow_negative: true, negative_reason: 'owner-confirmed backfill'
+    }});
+    check('HD8 Owner confirmation (allow_negative + reason) → 201', hdOverride.status === 201, hdOverride.data);
+    const hdOverrideNeg = (await query("SELECT negative_reason FROM delivery_batch_stock_movements WHERE batch_id=$1 AND item_id=$2", [hdNegBillId, hdOverride.data.item?.id])).rows;
+    check('HD8 negative_reason recorded on movement', hdOverrideNeg.some(r => r.negative_reason === 'owner-confirmed backfill'), hdOverrideNeg.map(r=>r.negative_reason));
+
+    // ─── HD10: settlement does not alter item Gross or stock ───────────────
+    const hdGrossBefore = Number((await api('GET', '/api/delivery/bill/' + hdBillId, { token: ownerToken, shop: shopA })).data.bill.batch_item_gross);
+    const hdMatBeforeSettle = Number((await query('SELECT stock FROM materials WHERE id=$1', [hdMat])).rows[0].stock);
+    await api('POST', '/api/delivery/bill/' + hdBillId + '/close', { token: ownerToken, shop: shopA });
+    await api('PATCH', '/api/delivery/bill/' + hdBillId + '/settle', { token: ownerToken, shop: shopA, body: {
+      commission_amount: 30, withholding_tax: 3, merchant_discount_amount: 10, platform_discount_amount: 5, actual_bank_deposit: 250
+    }});
+    const hdGrossAfter = Number((await api('GET', '/api/delivery/bill/' + hdBillId, { token: ownerToken, shop: shopA })).data.bill.batch_item_gross);
+    const hdMatAfterSettle = Number((await query('SELECT stock FROM materials WHERE id=$1', [hdMat])).rows[0].stock);
+    check('HD10 Settlement does not change item Gross', hdGrossAfter === hdGrossBefore, { before: hdGrossBefore, after: hdGrossAfter });
+    check('HD10 Settlement does not change stock', hdMatAfterSettle === hdMatBeforeSettle, { before: hdMatBeforeSettle, after: hdMatAfterSettle });
+
+    // ─── HD11: tenant isolation — Shop B cannot read Shop A historical bill ─
+    const hd11 = await api('GET', '/api/delivery/bill/' + hdBillId, { token: ownerBToken, shop: shopB });
+    check('HD11 Shop B cannot read Shop A historical bill (404)', hd11.status === 404, hd11.status);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;
