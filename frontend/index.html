@@ -791,6 +791,7 @@
         <button id="posTabBill" class="btn btn-ghost" onclick="switchPosTab('bill')"><span class="ico" data-icon="file-text"></span> เอกสารบิล</button>
         <button id="posTabLog" class="btn btn-ghost" onclick="switchPosTab('log')"><span class="ico" data-icon="history"></span> ประวัติ</button>
         <button id="posTabOnline" class="btn btn-ghost" onclick="switchPosTab('online')"><span class="ico" data-icon="qr-code"></span> ออนไลน์ (QR) <span id="posOnlineBadge" style="display:none;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;margin-left:4px;"></span></button>
+        <button id="posTabDelivery" class="btn btn-ghost" onclick="switchPosTab('delivery')" style="display:none;"><span class="ico" data-icon="truck"></span> Delivery</button>
       </div>
 
       <!-- ===== QUICK SELL PANEL ===== -->
@@ -1012,6 +1013,11 @@
       <!-- ===== ONLINE (QR) PANEL — ขายหน้าร้านออนไลน์ + ตั้งค่าเครื่องพิมพ์ ===== -->
       <div id="posOnlinePanel" class="hidden" style="margin-top:16px;">
         <div id="onlineMenuSection"></div>
+      </div>
+
+      <!-- ===== DELIVERY PLATFORM PANEL ===== -->
+      <div id="posDeliveryPanel" class="hidden" style="margin-top:16px;">
+        <div id="deliverySection"></div>
       </div>
 
     </section>
@@ -1469,7 +1475,6 @@
         </div>
       </div>
 
-      <div id="deliverySection"></div>
       <div id="cashDrawerSection"></div>
       <div id="pettyCashSection"></div>
       <div id="recurringSection"></div>
@@ -4431,7 +4436,7 @@ function switchTab(t) {
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
-  if (t === 'pos') switchPosTab('quick');
+  if (t === 'pos') { switchPosTab('quick'); dlvUpdatePosTabVisibility(); }
 
   // ปิดเมนูบัญชี/ลิ้นชักหลังเลือกหน้า
   if (typeof toggleAccountMenu === 'function') toggleAccountMenu(false);
@@ -7157,21 +7162,30 @@ function posScanEnter(inp) {
 }
 
 function switchPosTab(tab) {
-  const isQuick = tab === 'quick';
-  const isBill = tab === 'bill';
-  const isLog = tab === 'log';
-  const isOnline = tab === 'online';
+  const isQuick    = tab === 'quick';
+  const isBill     = tab === 'bill';
+  const isLog      = tab === 'log';
+  const isOnline   = tab === 'online';
+  const isDelivery = tab === 'delivery';
   $('posQuickSell').classList.toggle('hidden', !isQuick);
   $('posBillingPanel').classList.toggle('hidden', !isBill);
   $('posSalesLog').classList.toggle('hidden', !isLog);
-  if ($('posOnlinePanel')) $('posOnlinePanel').classList.toggle('hidden', !isOnline);
-  $('posTabQS').className = 'btn ' + (isQuick ? 'btn-primary' : 'btn-ghost');
-  $('posTabBill').className = 'btn ' + (isBill ? 'btn-primary' : 'btn-ghost');
-  $('posTabLog').className = 'btn ' + (isLog ? 'btn-primary' : 'btn-ghost');
-  if ($('posTabOnline')) $('posTabOnline').className = 'btn ' + (isOnline ? 'btn-primary' : 'btn-ghost');
+  if ($('posOnlinePanel'))   $('posOnlinePanel').classList.toggle('hidden', !isOnline);
+  if ($('posDeliveryPanel')) $('posDeliveryPanel').classList.toggle('hidden', !isDelivery);
+  $('posTabQS').className   = 'btn ' + (isQuick    ? 'btn-primary' : 'btn-ghost');
+  $('posTabBill').className = 'btn ' + (isBill     ? 'btn-primary' : 'btn-ghost');
+  $('posTabLog').className  = 'btn ' + (isLog      ? 'btn-primary' : 'btn-ghost');
+  if ($('posTabOnline'))   $('posTabOnline').className   = 'btn ' + (isOnline   ? 'btn-primary' : 'btn-ghost');
+  if ($('posTabDelivery')) $('posTabDelivery').className = 'btn ' + (isDelivery ? 'btn-primary' : 'btn-ghost');
   if (isQuick) renderPosGrid();
-  if (isLog) renderSalesLog();
-  if (isOnline && typeof renderOnlineMenu === 'function') renderOnlineMenu();
+  if (isLog)   renderSalesLog();
+  if (isOnline   && typeof renderOnlineMenu === 'function') renderOnlineMenu();
+  if (isDelivery && settings.useDelivery) dlvRefresh();
+}
+
+function dlvUpdatePosTabVisibility() {
+  const btn = $('posTabDelivery');
+  if (btn) btn.style.display = (settings && settings.useDelivery) ? '' : 'none';
 }
 
 // แสดงจำนวนออเดอร์ออนไลน์ใหม่บนปุ่ม sub-tab "ออนไลน์ (QR)" (เห็นแม้อยู่แท็บอื่น)
@@ -11005,245 +11019,557 @@ function addDlvLine() {
   if (ex) ex.qty++; else dlvLines.push({ ...item, qty: 1 });
   renderDeliveryReconcile();
 }
-// --- Delivery MVP Release A - 3-Step Wizard ---
-// dlvLines already declared above (legacy compat, kept for addDlvLine)
+// ─────────────────────────────────────────────────────────────────────────
+// DELIVERY PLATFORM — Daily Open Bill Model (v2)
+// หนึ่งสาขา + หนึ่ง Platform + หนึ่งวัน = บิล Delivery ค้างหนึ่งใบ
+// พนักงานทยอยกรอกได้ทั้งวัน · ปิดวัน → รอยอดเงินเข้า → กระทบยอด
+// ─────────────────────────────────────────────────────────────────────────
+
+// Legacy stubs (keep for any old callsites)
+function dlvLineQty() {}
+function removeDlvLine() {}
+let _dlvItemLines = [];
 let dlvWizard = { view: 'list', batchId: null, batches: [], currentBatch: null };
-let _dlvItemLines = []; // temp item lines for step1 form
 
-function dlvLineQty() {} // no-op (replaced by wizard)
-function removeDlvLine() {} // no-op
-function toggleDelivery(on) { settings.useDelivery = !!on; saveAll(); renderDeliveryReconcile(); }
+// Daily bill state
+let _dlvActiveBillId  = null;
+let _dlvSelectedMenu  = null;   // { refType, id, name, price, optGroups }
+let _dlvChosenOptions = {};      // { groupId: optionId }
+let _dlvBillView      = 'queue'; // 'queue' | 'bill'
+let _dlvCatFilter     = '';      // category filter for menu search
+let _dlvMenuSearch    = '';      // text filter for menu search
 
-function renderDeliveryReconcile() {
+const DLV_STATUS_COLOR = {
+  open: '#f59e0b', pending_review: '#6366f1',
+  awaiting_settlement: '#2563eb', discrepancy: '#dc2626',
+  reconciled: '#16a34a', voided: '#9ca3af'
+};
+const DLV_STATUS_LABEL = {
+  open: 'เปิด', pending_review: 'รอตรวจสอบ',
+  awaiting_settlement: 'รอยอดเงินเข้า', discrepancy: 'ยอดไม่ตรง',
+  reconciled: 'กระทบยอดแล้ว', voided: 'ยกเลิกแล้ว'
+};
+const DLV_GROSS_REASONS = [
+  'ส่วนลดระดับ Platform (ไม่แบ่งตามเมนู)',
+  'ออเดอร์ยกเลิกนับรวมใน Gross',
+  'Platform ปรับยอดให้',
+  'ค่าบริการส่งนับรวม',
+  'อื่นๆ (ระบุในหมายเหตุ)',
+];
+
+function toggleDelivery(on) {
+  settings.useDelivery = !!on;
+  saveAll();
+  dlvUpdatePosTabVisibility();
+  if (on) { switchTab('pos'); switchPosTab('delivery'); }
+}
+
+function renderDeliveryReconcile() {} // no-op: delivery is now in POS tab
+
+// ── helper: render a status badge ────────────────────────────────────────
+function dlvBadge(status) {
+  const c = DLV_STATUS_COLOR[status] || '#888';
+  const l = DLV_STATUS_LABEL[status] || status;
+  return '<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';white-space:nowrap;">' + l + '</span>';
+}
+// ── helper: format baht ───────────────────────────────────────────────────
+function dlvFmt(n) { return '฿' + Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// ── helper: format date/time ──────────────────────────────────────────────
+function dlvTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}
+function dlvDateTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function dlvRefresh() {
   const el = $('deliverySection');
   if (!el) return;
   if (!settings.useDelivery) {
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);">' + icon('truck') + ' ขายผ่าน Delivery (Grab/LINE MAN...)? เปิดเพื่อกระทบยอด + ตัดสต็อก</span><button class="btn btn-primary btn-sm" onclick="toggleDelivery(true)">' + icon('truck') + ' เปิดใช้</button></div>';
     renderIcons(el); return;
   }
-  el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">กำลังโหลด...</div></div>';
-  dlvRefresh();
+  if (_dlvBillView === 'bill' && _dlvActiveBillId) {
+    await dlvShowBill(_dlvActiveBillId);
+  } else {
+    await dlvShowQueue();
+  }
 }
 
-async function dlvRefresh() {
+async function dlvShowQueue() {
   const el = $('deliverySection');
-  if (!el || !settings.useDelivery) return;
-  let inner = '';
+  if (!el) return;
+  el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">กำลังโหลด...</div></div>';
   try {
-    if (dlvWizard.view === 'step2' && dlvWizard.batchId) {
-      const r = await API.get('/api/delivery/batch/' + dlvWizard.batchId);
-      dlvWizard.currentBatch = r.batch || r;
-      inner = dlvStep2Html(dlvWizard.currentBatch);
-    } else if (dlvWizard.view === 'step3' && dlvWizard.batchId) {
-      if (!dlvWizard.currentBatch) {
-        const r = await API.get('/api/delivery/batch/' + dlvWizard.batchId);
-        dlvWizard.currentBatch = r.batch || r;
-      }
-      inner = dlvStep3Html(dlvWizard.currentBatch);
-    } else if (dlvWizard.view === 'step1') {
-      inner = dlvStep1Html();
-    } else {
-      const r = await API.get('/api/delivery/batches');
-      dlvWizard.batches = (r && r.batches) || [];
-      inner = dlvListHtml();
-    }
+    const r = await API.get('/api/delivery/bill/queue');
+    el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;">' + dlvQueueHtml(r) + '</div>';
+    renderIcons(el);
   } catch (e) {
-    inner = '<p style="color:var(--color-danger,#e53e3e);font-size:13px;">โหลดไม่ได้: ' + esc(e && e.message || 'error') + '</p>';
+    el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><p style="color:var(--color-danger,#e53e3e);font-size:13px;">โหลดไม่ได้: ' + esc(e && e.message || 'error') + '</p></div>';
   }
-  el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;">' + _dlvHeaderHtml() + inner + '</div>';
-  renderIcons(el);
 }
 
-function _dlvHeaderHtml() {
-  const v = dlvWizard.view;
-  const back = v !== 'list' ? '<button class="btn btn-ghost btn-sm" onclick="dlvGo(\'list\')">' + icon('arrow-left') + '</button>' : '';
-  const newBtn = v === 'list' ? '<button class="btn btn-primary btn-sm" onclick="dlvGo(\'step1\')">' + icon('plus') + ' Batch ใหม่</button>' : '';
-  const stepLabels = ['1 กรอกยอด', '2 ยืนยัน', '3 Settlement'];
-  const stepHtml = ['step1','step2','step3'].map((s,i) => '<span style="font-size:11px;padding:2px 10px;border-radius:6px;background:' + (s===v?'var(--color-primary,#6366f1)':'var(--surface-2)') + ';color:' + (s===v?'#fff':'var(--color-text-muted)') + ';">' + stepLabels[i] + '</span>').join('');
-  const steps = v !== 'list' ? '<div style="display:flex;gap:5px;margin-bottom:10px;">' + stepHtml + '</div>' : '';
-  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;"><h3 style="font-size:15px;margin:0;flex:1;">' + icon('truck') + ' Delivery</h3>' + back + newBtn + '<button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="toggleDelivery(false)">ปิด</button></div>' + steps;
-}
-
-function dlvGo(view, batchId) {
-  dlvWizard.view = view;
-  if (batchId !== undefined) dlvWizard.batchId = batchId;
-  if (view === 'step1' || view === 'list') { dlvWizard.batchId = null; dlvWizard.currentBatch = null; _dlvItemLines = []; }
-  dlvRefresh();
-}
-
-// --- Step 1: Create batch ---
-function dlvStep1Html() {
+// ── queue HTML — all 5 sections ──────────────────────────────────────────
+function dlvQueueHtml(r) {
   const today = new Date().toISOString().slice(0, 10);
-  const platOpts = DELIVERY_PLATFORMS.map(p => '<option value="' + p + '">' + p + '</option>').join('');
-  const menuOpts = '<option value="">+ เลือกเมนู...</option>' + deliverySellable().map(s => '<option value="' + s.refType + '|' + s.id + '|' + esc(s.name) + '|' + s.price + '">' + esc(s.name) + '</option>').join('');
-  const itemRows = _dlvItemLines.map((l, i) => '<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border-soft);"><span style="flex:1;">' + esc(l.name) + '</span><input type="number" value="' + l.qty + '" min="1" style="width:50px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);" onchange="_dlvItemLines[' + i + '].qty=Math.max(1,+this.value||1)"><span style="color:var(--color-text-muted);font-size:11px;">x ฿' + l.price + '</span><button class="btn btn-ghost btn-sm" style="padding:2px 5px;color:var(--color-danger,#e53e3e);" onclick="_dlvItemLines.splice(' + i + ',1);dlvRefresh()">' + icon('x') + '</button></div>').join('');
-  const grossEst = _dlvItemLines.reduce((s, l) => s + l.qty * l.price, 0);
-  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;"><div><label style="font-size:11px;color:var(--color-text-muted);">Platform</label><select id="dlv1Plat" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">' + platOpts + '</select></div><div><label style="font-size:11px;color:var(--color-text-muted);">วันที่ขาย</label><input id="dlv1Date" type="date" value="' + today + '" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div><div><label style="font-size:11px;color:var(--color-text-muted);">ยอดขาย Gross (฿)</label><input id="dlv1Gross" type="number" step="any" placeholder="0" value="' + (grossEst || '') + '" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div><div><label style="font-size:11px;color:var(--color-text-muted);">จำนวนออเดอร์</label><input id="dlv1Count" type="number" step="1" min="0" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div></div><div style="display:flex;gap:12px;margin-bottom:10px;align-items:center;"><span style="font-size:12px;color:var(--color-text-muted);">โหมด:</span><label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="radio" name="dlv1Mode" value="financial_only" checked> ตัดเงินอย่างเดียว</label><label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="radio" name="dlv1Mode" value="stock_aware"> ตัดสต็อกด้วย</label></div><div style="background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-bottom:10px;"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">เมนูที่ขาย <span style="font-weight:400;color:var(--color-text-muted);">(ตัดสต็อก · ไม่บังคับถ้าโหมดตัดเงิน)</span></div><div style="display:flex;gap:6px;margin-bottom:6px;"><select id="dlv1MenuSel" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);">' + menuOpts + '</select><button class="btn btn-ghost btn-sm" onclick="dlvAddItem()">' + icon('plus') + '</button></div>' + (itemRows || '<p style="font-size:11px;color:var(--color-text-muted);margin:0;">ยังไม่ได้เลือกเมนู</p>') + '</div><button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvSaveDraft()">' + icon('save') + ' บันทึก Draft</button>';
+  const platforms = DELIVERY_PLATFORMS || ['Grab','LINE MAN','Foodpanda','ShopeeFood','Robinhood','อื่นๆ'];
+
+  // For each platform, show button coloured by whether an active bill exists today
+  const todayMap = {};
+  (r.today || []).forEach(b => { todayMap[b.platform] = b; });
+
+  const platBtns = platforms.map(p => {
+    const b = todayMap[p];
+    const clr = b ? DLV_STATUS_COLOR[b.status] : 'var(--color-text-muted)';
+    const dot = b ? '<span style="width:8px;height:8px;border-radius:50%;background:' + clr + ';display:inline-block;margin-right:4px;"></span>' : '';
+    return '<button class="btn btn-ghost btn-sm" data-plat="' + esc(p) + '" data-date="' + today + '" onclick="dlvOpenBill(this.dataset.plat,this.dataset.date)" style="font-size:12px;border:1px solid ' + clr + ';display:flex;align-items:center;gap:3px;">'
+      + dot + esc(p) + '</button>';
+  }).join('');
+
+  const billRow = b => '<div onclick="dlvShowBill(\'' + b.id + '\')" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);cursor:pointer;">'
+    + '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">' + esc(b.platform) + ' <span style="font-weight:400;font-size:11px;color:var(--color-text-muted);">' + (b.sales_date || '') + '</span> ' + dlvBadge(b.status) + '</div>'
+    + '<div style="font-size:11px;color:var(--color-text-muted);">' + (b.item_count || 0) + ' รายการ · ' + dlvFmt(b.batch_item_net) + (b.settlement_variance != null ? ' · ส่วนต่าง ' + dlvFmt(b.settlement_variance) : '') + '</div></div>'
+    + '<span style="color:var(--color-text-muted);">' + icon('chevron-right') + '</span></div>';
+
+  const section = (label, color, rows) => rows.length
+    ? '<div style="font-size:11px;font-weight:700;color:' + color + ';margin:14px 0 4px;letter-spacing:.5px;text-transform:uppercase;">' + label + '</div>' + rows.map(billRow).join('')
+    : '';
+
+  const todayOther = (r.today || []).filter(b => !platforms.includes(b.platform));
+  const allToday = [...(r.today || [])];
+
+  return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+    + '<h3 style="font-size:15px;font-weight:700;margin:0;">' + icon('truck') + ' Delivery Platform</h3>'
+    + '<button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="toggleDelivery(false)">ปิด</button></div>'
+    + '<div style="margin-bottom:14px;"><div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;font-weight:600;">เปิดบิลวันนี้ (' + today + ')</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + platBtns + '</div></div>'
+    + section('วันนี้', 'var(--color-text-muted)', allToday)
+    + (!allToday.length ? '<p style="font-size:12px;color:var(--color-text-muted);margin:8px 0 0;">ยังไม่มีบิลวันนี้</p>' : '')
+    + section('รอตรวจสอบ', DLV_STATUS_COLOR.pending_review, r.pending_review || [])
+    + section('รอยอดเงินเข้า', DLV_STATUS_COLOR.awaiting_settlement, r.awaiting_settlement || [])
+    + section('ยอดไม่ตรง', DLV_STATUS_COLOR.discrepancy, r.discrepancy || [])
+    + section('กระทบยอดแล้ว', DLV_STATUS_COLOR.reconciled, r.recent_reconciled || []);
 }
 
-function dlvAddItem() {
-  const sel = $('dlv1MenuSel');
-  if (!sel || !sel.value) { ui.toast('เลือกเมนูก่อน'); return; }
-  const parts = sel.value.split('|');
-  const refType = parts[0], id = parts[1], name = parts[2], price = parts[3];
-  if (!id) return;
-  const ex = _dlvItemLines.find(l => l.id === id);
-  if (ex) { ex.qty++; } else { _dlvItemLines.push({ refType, id, name, qty: 1, price: parseFloat(price) || 0 }); }
-  dlvRefresh();
-}
-
-async function dlvSaveDraft() {
-  const plat = ($('dlv1Plat') && $('dlv1Plat').value) || 'อื่นๆ';
-  const date = ($('dlv1Date') && $('dlv1Date').value) || new Date().toISOString().slice(0, 10);
-  const gross = parseFloat($('dlv1Gross') && $('dlv1Gross').value) || 0;
-  const cnt = parseInt($('dlv1Count') && $('dlv1Count').value) || 0;
-  const modeEl = document.querySelector('input[name="dlv1Mode"]:checked');
-  const mode = modeEl ? modeEl.value : 'financial_only';
-  if (!gross && !_dlvItemLines.length) { ui.toast('ใส่ยอดขาย หรือเลือกเมนู'); return; }
-  const items = _dlvItemLines.map(l => {
-    const obj = { menu_type: l.refType === 'recipe' ? 'recipe' : 'material', menu_name: l.name, quantity: l.qty, unit_price: l.price, gross_amount: l.qty * l.price };
-    if (l.refType === 'recipe') obj.recipe_id = l.id; else obj.material_id = l.id;
-    return obj;
-  });
+// ── open or return existing active bill ───────────────────────────────────
+async function dlvOpenBill(platform, dateStr) {
   try {
-    const r = await API.post('/api/delivery/batch', { platform: plat, sales_date_from: date, mode, gross_sales: gross, order_count: cnt, items });
-    _dlvItemLines = [];
-    dlvWizard.batchId = r.batch_id;
-    dlvWizard.view = 'step2';
-    dlvRefresh();
-  } catch (e) { ui.toast('บันทึก draft ไม่ได้: ' + (e && e.message || '')); }
+    const r = await API.post('/api/delivery/bill/open', { platform, sales_date: dateStr });
+    _dlvActiveBillId = r.bill.id;
+    _dlvBillView = 'bill';
+    _dlvSelectedMenu = null; _dlvChosenOptions = {}; _dlvCatFilter = ''; _dlvMenuSearch = '';
+    await dlvShowBill(r.bill.id);
+  } catch (e) { ui.toast('เปิดบิลไม่ได้: ' + (e && e.message || ''), 'error'); }
 }
 
-// --- Step 2: Review & Confirm ---
-const _DLV_VAR_REASONS = [
-  { v: 'platform_level_discount', l: 'ส่วนลดระดับ platform (ไม่แบ่งตามเมนู)' },
-  { v: 'cancelled_orders_counted', l: 'ออเดอร์ยกเลิกนับรวมใน gross' },
-  { v: 'adjustment_by_platform', l: 'platform ปรับยอดให้' },
-  { v: 'other', l: 'อื่นๆ (ระบุในหมายเหตุ)' },
-];
-
-function dlvStep2Html(b) {
-  const items = b.items || [];
-  const itemsHtml = items.map(it => '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border-soft);"><span>' + esc(it.menu_name || '?') + '</span><span>' + it.quantity + ' x ฿' + Number(it.unit_price || 0).toLocaleString('th-TH') + ' = ฿' + Number(it.gross_amount || 0).toLocaleString('th-TH') + '</span></div>').join('');
-  const varOpts = _DLV_VAR_REASONS.map(r => '<option value="' + r.v + '">' + r.l + '</option>').join('');
-  const statusLabel = { draft: 'Draft', confirmed: 'ยืนยันแล้ว', voided: 'ยกเลิก' }[b.status] || b.status;
-  const badgeColor = { confirmed: '#16a34a', voided: '#dc2626', draft: '#f59e0b' }[b.status] || '#888';
-  const isDraft = b.status === 'draft';
-  const canSettle = b.status === 'confirmed';
-  let html = '<div style="background:var(--surface-2);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px;"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:4px;margin-bottom:6px;"><span><b>' + esc(b.platform) + '</b> · ' + (b.sales_date_from || '') + ' · ' + (b.mode === 'stock_aware' ? 'ตัดสต็อก' : 'ตัดเงิน') + '</span><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + badgeColor + '22;color:' + badgeColor + ';">' + statusLabel + '</span></div><div>ยอดขาย Gross: <b>฿' + Number(b.gross_sales || 0).toLocaleString('th-TH') + '</b> · ออเดอร์: ' + (b.order_count || 0) + ' รายการ</div>' + (items.length ? '<div style="margin-top:8px;">' + itemsHtml + '</div>' : '') + '</div>';
-  if (isDraft) {
-    html += '<div id="dlv2VarBox" style="display:none;background:var(--surface-2);border-radius:10px;padding:10px;margin-bottom:10px;"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">เหตุผลที่ยอดเมนูไม่ตรงกับ Gross</div><select id="dlv2VarReason" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);margin-bottom:6px;">' + varOpts + '</select><input id="dlv2VarNote" type="text" placeholder="หมายเหตุ (ถ้ามี)" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div>';
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" style="flex:1;" onclick="dlvConfirmBatch()">' + icon('check') + ' ยืนยัน' + (b.mode === 'stock_aware' ? ' (ตัดสต็อก)' : '') + '</button><button class="btn btn-ghost btn-sm" style="color:var(--color-danger,#e53e3e);" onclick="dlvDeleteBatch()">' + icon('trash-2') + '</button></div>';
-  }
-  if (canSettle) {
-    html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" style="flex:1;" onclick="dlvWizard.view=\'step3\';dlvWizard.currentBatch=null;dlvRefresh()">' + icon('file-text') + ' บันทึก Settlement</button><button class="btn btn-ghost btn-sm" onclick="dlvVoidBatch()">' + icon('x-circle') + '</button></div>';
-  }
-  return html;
-}
-
-async function dlvConfirmBatch() {
-  const batchId = dlvWizard.batchId;
-  if (!batchId) return;
-  const varBox = $('dlv2VarBox');
-  if (varBox && varBox.style.display !== 'none') {
-    const vr = $('dlv2VarReason') && $('dlv2VarReason').value;
-    const vn = $('dlv2VarNote') && $('dlv2VarNote').value;
-    if (vr) await API.patch('/api/delivery/batch/' + batchId, { variance_reason: vr, variance_note: vn });
-  }
+// ── load + display bill detail ────────────────────────────────────────────
+async function dlvShowBill(billId) {
+  const el = $('deliverySection');
+  if (!el) return;
+  _dlvActiveBillId = billId;
+  _dlvBillView = 'bill';
+  el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">กำลังโหลด...</div></div>';
   try {
-    await API.post('/api/delivery/batch/' + batchId + '/confirm');
-    ui.toast('ยืนยัน Batch เรียบร้อย');
-    dlvRefresh();
+    const r = await API.get('/api/delivery/bill/' + billId);
+    el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;">' + dlvBillHtml(r.bill, r.items || [], r.movements || []) + '</div>';
+    renderIcons(el);
+  } catch (e) {
+    el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><p style="color:var(--color-danger,#e53e3e);font-size:13px;">โหลดบิลไม่ได้: ' + esc(e && e.message || '') + '</p></div>';
+  }
+}
+
+// ── full bill HTML ────────────────────────────────────────────────────────
+function dlvBillHtml(b, items, movements) {
+  const isEditable = ['open','pending_review'].includes(b.status);
+  const canSettle  = ['awaiting_settlement','discrepancy','reconciled'].includes(b.status);
+
+  // ── Bill header ─────────────────────────────────────────────────────────
+  const header = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'
+    + '<button class="btn btn-ghost btn-sm" onclick="_dlvBillView=\'queue\';_dlvActiveBillId=null;_dlvSelectedMenu=null;dlvRefresh();">' + icon('arrow-left') + '</button>'
+    + '<div style="flex:1;min-width:0;">'
+    + '<div style="font-size:16px;font-weight:700;">' + icon('truck') + ' ' + esc(b.platform) + ' &nbsp;' + dlvBadge(b.status) + '</div>'
+    + '<div style="font-size:12px;color:var(--color-text-muted);margin-top:2px;">' + (b.sales_date || b.sales_date_from || '') + '</div>'
+    + '</div>'
+    + (isEditable ? '<button class="btn btn-ghost btn-sm" onclick="dlvSetPendingReview()" title="รอตรวจสอบ">' + icon('clock') + '</button>' : '')
+    + (b.status !== 'voided' && b.status !== 'reconciled' ? '<button class="btn btn-ghost btn-sm" style="color:var(--color-danger,#e53e3e);" onclick="dlvVoidBill()" title="ยกเลิกบิล">' + icon('x-circle') + '</button>' : '')
+    + '</div>';
+
+  // ── Bill stats ──────────────────────────────────────────────────────────
+  const stats = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;background:var(--surface-2);border-radius:10px;padding:10px;margin-bottom:12px;" data-batch-net="' + (b.batch_item_net || 0) + '">'
+    + '<div style="text-align:center;"><div style="font-size:10px;color:var(--color-text-muted);">ยอดรายการ</div><div style="font-size:14px;font-weight:700;">' + dlvFmt(b.batch_item_gross) + '</div></div>'
+    + '<div style="text-align:center;"><div style="font-size:10px;color:var(--color-text-muted);">COGS</div><div style="font-size:14px;color:#e53e3e;">' + dlvFmt(b.cogs_total) + '</div></div>'
+    + '<div style="text-align:center;"><div style="font-size:10px;color:var(--color-text-muted);">กำไรขั้นต้น</div><div style="font-size:14px;font-weight:700;color:#16a34a;">' + dlvFmt(b.gross_profit) + '</div></div>'
+    + '<div style="text-align:center;"><div style="font-size:10px;color:var(--color-text-muted);">รายการ</div><div style="font-size:14px;">' + (b.item_count || 0) + ' รายการ</div></div>'
+    + '</div>';
+
+  // ── Item history table ──────────────────────────────────────────────────
+  const itemsHtml = items.length
+    ? '<div style="margin-bottom:12px;">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--color-text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">ประวัติรายการ</div>'
+      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+      + '<thead><tr style="color:var(--color-text-muted);font-size:11px;">'
+      + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border-soft);">เวลา</th>'
+      + '<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border-soft);">เมนู</th>'
+      + '<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border-soft);">จำนวน</th>'
+      + '<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border-soft);">ราคา</th>'
+      + '<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--border-soft);">รวม</th>'
+      + (isEditable ? '<th style="padding:4px 6px;border-bottom:1px solid var(--border-soft);"></th>' : '')
+      + '</tr></thead><tbody>'
+      + items.map(it => {
+          const optLabel = it.chosen_options && it.chosen_options.length
+            ? '<div style="font-size:10px;color:var(--color-text-muted);">' + (Array.isArray(it.chosen_options) ? it.chosen_options.map(o => esc(typeof o === 'string' ? o : o.name || '')).join(', ') : '') + '</div>'
+            : '';
+          const staffLabel = it.staff_added_name ? '<div style="font-size:10px;color:var(--color-text-muted);">' + esc(it.staff_added_name) + '</div>' : '';
+          const orderLabel = it.order_no ? '<div style="font-size:10px;color:var(--color-text-muted);">#' + esc(it.order_no) + '</div>' : '';
+          return '<tr style="border-bottom:1px solid var(--border-soft);">'
+            + '<td style="padding:5px 6px;white-space:nowrap;vertical-align:top;">' + dlvTime(it.created_at) + staffLabel + '</td>'
+            + '<td style="padding:5px 6px;vertical-align:top;"><b>' + esc(it.menu_name || '?') + '</b>' + optLabel + orderLabel + '</td>'
+            + '<td style="padding:5px 6px;text-align:right;vertical-align:top;">' + it.quantity + '</td>'
+            + '<td style="padding:5px 6px;text-align:right;vertical-align:top;">' + dlvFmt(it.unit_price) + '</td>'
+            + '<td style="padding:5px 6px;text-align:right;font-weight:700;vertical-align:top;">' + dlvFmt(it.gross_amount) + '</td>'
+            + (isEditable ? '<td style="padding:5px 6px;vertical-align:top;"><button class="btn btn-ghost btn-sm" style="padding:1px 4px;color:var(--color-danger,#e53e3e);" onclick="dlvRemoveItem(\'' + it.id + '\')">' + icon('x') + '</button></td>' : '')
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div></div>'
+    : '<p style="font-size:12px;color:var(--color-text-muted);padding:8px 0;margin:0 0 12px;">ยังไม่มีรายการ — เพิ่มเมนูด้านล่าง</p>';
+
+  // ── POS-like menu selector (editable only) ──────────────────────────────
+  let addForm = '';
+  if (isEditable) {
+    const allItems = deliverySellable();
+    const cats = [...new Set(allItems.map(s => s.category || 'อื่นๆ'))];
+    const catBtns = ['ทั้งหมด', ...cats].map(c =>
+      '<button class="btn btn-ghost btn-sm" onclick="dlvFilterCat(\'' + esc(c) + '\')" style="font-size:11px;border-radius:6px;padding:3px 8px;' + (_dlvCatFilter === c || (!_dlvCatFilter && c === 'ทั้งหมด') ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(c) + '</button>'
+    ).join('');
+
+    const filteredItems = _dlvCatFilter
+      ? allItems.filter(s => (s.category || 'อื่นๆ') === _dlvCatFilter)
+      : allItems;
+    const searchedItems = _dlvMenuSearch
+      ? filteredItems.filter(s => s.name.toLowerCase().includes(_dlvMenuSearch.toLowerCase()))
+      : filteredItems;
+
+    const menuCards = searchedItems.slice(0, 40).map(s => {
+      const sel = _dlvSelectedMenu && _dlvSelectedMenu.id === s.id;
+      return '<div onclick="dlvPickMenu(\'' + s.refType + '|' + s.id + '|' + esc(s.name).replace(/'/g,"&#39;") + '|' + s.price + '\')" style="cursor:pointer;border-radius:8px;padding:7px 8px;border:2px solid ' + (sel ? 'var(--color-primary,#3b82f6)' : 'var(--border-soft)') + ';background:' + (sel ? 'rgba(59,130,246,.08)' : 'transparent') + ';user-select:none;">'
+        + '<div style="font-size:12px;font-weight:600;margin-bottom:2px;">' + esc(s.name) + '</div>'
+        + '<div style="font-size:11px;color:var(--color-text-muted);">' + dlvFmt(s.price) + '</div>'
+        + '</div>';
+    }).join('');
+
+    // If a menu is selected and has option groups, render pickers
+    let optPickers = '';
+    if (_dlvSelectedMenu && _dlvSelectedMenu.optGroups && _dlvSelectedMenu.optGroups.length) {
+      optPickers = '<div style="margin:6px 0;">' + _dlvSelectedMenu.optGroups.map(g =>
+        '<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:600;color:var(--color-text-muted);margin-bottom:3px;">' + esc(g.name) + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + g.options.map(o =>
+          '<button class="btn btn-ghost btn-sm" onclick="dlvChooseOpt(\'' + g.id + '\',\'' + o.id + '\')" style="font-size:11px;padding:2px 8px;' + (_dlvChosenOptions[g.id] === o.id ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(o.name) + (o.price_delta ? ' +฿' + o.price_delta : '') + '</button>'
+        ).join('') + '</div></div>'
+      ).join('') + '</div>';
+    }
+
+    addForm = '<div style="border-top:1px solid var(--border-soft);padding-top:12px;margin-top:4px;">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--color-text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">เพิ่มเมนูในบิล</div>'
+      + '<input type="text" placeholder="ค้นหาเมนู..." value="' + esc(_dlvMenuSearch) + '" oninput="dlvMenuSearch(this.value)" style="width:100%;padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);font-size:12px;margin-bottom:6px;">'
+      + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">' + catBtns + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:8px;">' + (menuCards || '<span style="font-size:12px;color:var(--color-text-muted);">ไม่พบเมนู</span>') + '</div>'
+      + optPickers
+      + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
+      + '<label style="font-size:11px;color:var(--color-text-muted);">จำนวน</label>'
+      + '<button class="btn btn-ghost btn-sm" onclick="dlvAdjQty(-1)" style="padding:2px 8px;">-</button>'
+      + '<input type="number" id="dlvAddQtyInp" value="1" min="1" style="width:52px;text-align:center;padding:4px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
+      + '<button class="btn btn-ghost btn-sm" onclick="dlvAdjQty(1)" style="padding:2px 8px;">+</button>'
+      + '<label style="font-size:11px;color:var(--color-text-muted);">ราคา Platform (฿)</label>'
+      + '<input type="number" id="dlvAddPriceInp" step="any" placeholder="' + (_dlvSelectedMenu ? _dlvSelectedMenu.price : '0') + '" style="width:80px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
+      + '<label style="font-size:11px;color:var(--color-text-muted);">เลขออเดอร์</label>'
+      + '<input type="text" id="dlvAddOrderNo" placeholder="ไม่บังคับ" style="width:90px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
+      + '</div>'
+      + '<button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvAddItem()" ' + (!_dlvSelectedMenu ? 'disabled' : '') + '>'
+      + icon('plus') + ' เพิ่ม' + (_dlvSelectedMenu ? ' ' + esc(_dlvSelectedMenu.name) : ' (เลือกเมนูก่อน)') + '</button>'
+      + '</div>';
+  }
+
+  // ── Close-day button ────────────────────────────────────────────────────
+  let actionArea = '';
+  if (b.status === 'open') {
+    actionArea = '<div style="margin-top:12px;">'
+      + '<button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvCloseSales()">'
+      + icon('check') + ' ปิดยอดขายวันนี้ → รอ Settlement</button></div>';
+  } else if (b.status === 'pending_review') {
+    actionArea = '<div style="margin-top:12px;">'
+      + '<button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:6px;" onclick="dlvCloseSales()">'
+      + icon('check') + ' ปิดยอดขาย (ยืนยันหลังตรวจสอบ) → รอ Settlement</button></div>';
+  }
+
+  let settlePanel = '';
+  if (canSettle) settlePanel = dlvSettlePanelHtml(b);
+
+  return header + stats + itemsHtml + addForm + actionArea + settlePanel;
+}
+
+function dlvPickMenu(val) {
+  if (!val) { _dlvSelectedMenu = null; _dlvChosenOptions = {}; if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId); return; }
+  const parts = val.split('|');
+  const refType = parts[0], id = parts[1];
+  const linkedGroups = refType === 'recipe'
+    ? (optionGroups || []).filter(g => g.enabled !== false && (g.recipeIds || []).includes(id))
+    : (optionGroups || []).filter(g => g.enabled !== false && (g.materialIds || []).includes(id));
+  _dlvSelectedMenu = {
+    refType, id, name: parts[2], price: parseFloat(parts[3]) || 0,
+    optGroups: linkedGroups.map(g => ({
+      id: g.id, name: g.label, required: g.required,
+      options: (g.choices || []).filter(c => c.enabled !== false).map(c => ({ id: c.id, name: c.label, price_delta: c.priceAdd || 0 }))
+    }))
+  };
+  _dlvChosenOptions = {};
+  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+  else {
+    const priceInp = $('dlvAddPriceInp');
+    if (priceInp && !priceInp.value) priceInp.value = _dlvSelectedMenu.price;
+  }
+}
+
+function dlvAdjQty(delta) {
+  const inp = $('dlvAddQtyInp');
+  if (!inp) return;
+  inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
+}
+
+async function dlvAddItem() {
+  if (!_dlvSelectedMenu) { ui.toast('เลือกเมนูก่อน'); return; }
+  const qty = parseInt(($('dlvAddQtyInp') || {}).value) || 1;
+  const priceInp = ($('dlvAddPriceInp') || {}).value;
+  const price = priceInp ? parseFloat(priceInp) : _dlvSelectedMenu.price;
+  const orderNo = (($('dlvAddOrderNo') || {}).value || '').trim() || null;
+  // Collect chosen options as array of { groupId, optionId }
+  const chosenOpts = Object.entries(_dlvChosenOptions).map(([gId, oId]) => ({ groupId: gId, optionId: oId }));
+  const body = {
+    menu_type: _dlvSelectedMenu.refType === 'recipe' ? 'recipe' : 'material',
+    menu_name: _dlvSelectedMenu.name,
+    quantity: qty, unit_price: price,
+    order_no: orderNo || undefined,
+    chosen_options: chosenOpts,
+  };
+  if (_dlvSelectedMenu.refType === 'recipe') body.recipe_id = _dlvSelectedMenu.id;
+  else body.material_id = _dlvSelectedMenu.id;
+  try {
+    await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/item', body);
+    _dlvSelectedMenu = null; _dlvChosenOptions = {};
+    await dlvShowBill(_dlvActiveBillId);
+    ui.toast('เพิ่มรายการแล้ว');
   } catch (e) {
     const msg = (e && e.message) || '';
-    if (msg.includes('GROSS_MISMATCH')) {
-      if (varBox) varBox.style.display = '';
-      ui.toast('ยอดรวมเมนูไม่ตรง Gross — ระบุเหตุผลด้านบนแล้วกดยืนยันอีกครั้ง');
-    } else { ui.toast('ยืนยันไม่ได้: ' + msg); }
+    if (msg.includes('DUPLICATE_ORDER_NO')) ui.toast('เลขออเดอร์นี้ถูกกรอกแล้ว', 'warning');
+    else if (msg.includes('FG_STOCK_INSUFFICIENT')) ui.toast('สต็อกไม่พอ: ' + msg, 'warning');
+    else ui.toast('เพิ่มไม่ได้: ' + msg, 'error');
   }
 }
 
-async function dlvDeleteBatch() {
-  if (!confirm('ลบ draft นี้?')) return;
-  try { await API.del('/api/delivery/batch/' + dlvWizard.batchId); } catch (_) {}
-  dlvGo('list');
-}
-
-async function dlvVoidBatch() {
-  const reason = prompt('เหตุผลที่ Void batch นี้?');
-  if (!reason) return;
+async function dlvRemoveItem(itemId) {
+  if (!confirm('ลบรายการนี้?')) return;
   try {
-    await API.post('/api/delivery/batch/' + dlvWizard.batchId + '/void', { reason });
-    ui.toast('Void เรียบร้อย');
-  } catch (e) { ui.toast('Void ไม่ได้: ' + (e && e.message || '')); return; }
-  dlvGo('list');
+    await API.del('/api/delivery/bill/' + _dlvActiveBillId + '/item/' + itemId);
+    await dlvShowBill(_dlvActiveBillId);
+    ui.toast('ลบรายการแล้ว');
+  } catch (e) { ui.toast('ลบไม่ได้: ' + (e && e.message || ''), 'error'); }
 }
 
-// --- Step 3: Settlement ---
-function dlvStep3Html(b) {
-  const today = new Date().toISOString().slice(0, 10);
-  const gross = Number(b.gross_sales || 0);
-  return '<div style="font-size:13px;margin-bottom:8px;">Settlement: <b>' + esc(b.platform) + '</b> · ยอดขาย ฿' + gross.toLocaleString('th-TH') + '</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;"><div><label style="font-size:11px;color:var(--color-text-muted);">วันที่ Settlement</label><input id="dlv3SDate" type="date" value="' + today + '" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div><div><label style="font-size:11px;color:var(--color-text-muted);">Commission (฿)</label><input id="dlv3Comm" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);" oninput="dlvCalc()"></div><div><label style="font-size:11px;color:var(--color-text-muted);">ค่า Promo/โฆษณา (฿)</label><input id="dlv3PromFee" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);" oninput="dlvCalc()"></div><div><label style="font-size:11px;color:var(--color-text-muted);">ส่วนลดที่ร้านออก (฿)</label><input id="dlv3MerDisc" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);" oninput="dlvCalc()"></div><div><label style="font-size:11px;color:var(--color-text-muted);">ภาษีหัก ณ ที่จ่าย (฿)</label><input id="dlv3WHT" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);" oninput="dlvCalc()"></div><div><label style="font-size:11px;color:var(--color-text-muted);">เงินเข้าบัญชีจริง (฿)</label><input id="dlv3Dep" type="number" step="any" placeholder="0" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);" oninput="dlvCalc()"></div></div><div id="dlv3Calc" style="background:var(--surface-2);border-radius:10px;padding:10px;font-size:12px;margin-bottom:10px;"><span style="color:var(--color-text-muted);">กรอกตัวเลขเพื่อดูสรุป</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;"><div><label style="font-size:11px;color:var(--color-text-muted);">เลขที่ Settlement (Ref)</label><input id="dlv3Ref" type="text" placeholder="เช่น GRAB-2026-07-01" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div><div><label style="font-size:11px;color:var(--color-text-muted);">บัญชีรับเงิน</label><input id="dlv3Bank" type="text" placeholder="เช่น KBANK xxx8888" style="width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);"></div></div><button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvSaveSettlement()">' + icon('check') + ' บันทึก Settlement</button>';
+async function dlvCloseSales() {
+  if (!_dlvActiveBillId) return;
+  if (!confirm('ปิดยอดขายวันนี้?\nบิลจะรอยอดเงินเข้า — พนักงานจะเพิ่มรายการไม่ได้แล้ว')) return;
+  try {
+    await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/close');
+    ui.toast('ปิดยอดขายแล้ว');
+    await dlvShowBill(_dlvActiveBillId);
+  } catch (e) { ui.toast('ปิดไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+
+async function dlvVoidBill() {
+  const reason = prompt('เหตุผลที่ยกเลิกบิล?');
+  if (reason === null) return;
+  try {
+    await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/void', { reason });
+    ui.toast('ยกเลิกบิลแล้ว');
+    _dlvBillView = 'queue'; _dlvActiveBillId = null;
+    await dlvShowQueue();
+  } catch (e) { ui.toast('ยกเลิกไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+
+function dlvSettlePanelHtml(b) {
+  const comm    = Number(b.commission_amount || 0);
+  const promFee = Number(b.promotion_fee || 0);
+  const advFee  = Number(b.advertising_fee || 0);
+  const vatFee  = Number(b.vat_on_fee || 0);
+  const refund  = Number(b.refund_amount || 0);
+  const wht     = Number(b.withholding_tax || 0);
+  const merDisc = Number(b.merchant_discount_amount || 0);
+  const otherDed = Number(b.other_deduction || 0);
+  const otherAdj = Number(b.other_adjustment || 0);
+  const dep     = b.actual_bank_deposit != null ? Number(b.actual_bank_deposit) : '';
+  const baseNet = Number(b.batch_item_net || 0);
+
+  const inp = (id, label, val) =>
+    '<div><label style="font-size:11px;color:var(--color-text-muted);">' + label + ' (฿)</label>'
+    + '<input type="number" id="' + id + '" step="any" value="' + (val || 0) + '" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;" oninput="dlvCalc()"></div>';
+
+  const fields = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'
+    + inp('dlvComm', 'Commission/GP', comm)
+    + inp('dlvPromFee', 'ค่าส่งเสริม/โฆษณา', promFee)
+    + inp('dlvAdvFee', 'ค่าธรรมเนียม (VAT)', vatFee)
+    + inp('dlvRefund', 'Refund', refund)
+    + inp('dlvWHT', 'ภาษีหัก ณ ที่จ่าย', wht)
+    + inp('dlvMerDisc', 'ส่วนลดที่ร้านออก', merDisc)
+    + inp('dlvOtherDed', 'หักอื่นๆ', otherDed)
+    + inp('dlvOtherAdj', 'ปรับเพิ่ม/อื่นๆ', otherAdj)
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">เงินเข้าบัญชีจริง (฿)</label><input type="number" id="dlvDep" step="any" value="' + dep + '" placeholder="ระบุเพื่อกระทบยอด" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;" oninput="dlvCalc()"></div>'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">วันที่เงินเข้า</label><input type="date" id="dlvSettleDate" value="' + (b.settlement_date || '') + '" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;"></div>'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">เลขที่อ้างอิง Platform</label><input type="text" id="dlvSettleRef" value="' + esc(b.settlement_reference || '') + '" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;"></div>'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">ธนาคาร/บัญชี</label><input type="text" id="dlvSettleBank" value="' + esc(b.bank_account || '') + '" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;"></div>'
+    + '</div>';
+
+  const calcBox = '<div id="dlvCalcBox" style="background:var(--surface-2);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;"><span style="color:var(--color-text-muted);">กรอกตัวเลขเพื่อดูสรุป</span></div>';
+
+  // Platform gross comparison
+  const itemGross = Number(b.batch_item_gross || 0);
+  const platGross = b.platform_gross != null ? Number(b.platform_gross) : null;
+  const platVar   = platGross != null ? platGross - itemGross : null;
+  const platVarColor = platVar != null && Math.abs(platVar) > 1 ? '#dc2626' : '#16a34a';
+  const platGrossSection = '<div style="background:var(--surface-2);border-radius:8px;padding:10px;font-size:12px;margin-bottom:10px;">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--color-text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">เปรียบเทียบยอด Platform</div>'
+    + '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>ยอดจากรายการขาย (item-derived)</span><b>' + dlvFmt(itemGross) + '</b></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">ยอดตามรายงาน Platform (฿)</label>'
+    + '<input type="number" id="dlvPlatGross" step="any" value="' + (platGross != null ? platGross : '') + '" placeholder="ยอด Gross จาก Platform" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;" oninput="dlvCalc()"></div>'
+    + '<div><label style="font-size:11px;color:var(--color-text-muted);">เหตุผล (ถ้ายอดต่าง)</label>'
+    + '<select id="dlvPlatGrossReason" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
+    + '<option value="">-</option>' + DLV_GROSS_REASONS.map(r => '<option' + (b.platform_gross_reason === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('')
+    + '</select></div>'
+    + '</div>'
+    + (platVar != null ? '<div style="margin-top:6px;display:flex;justify-content:space-between;font-size:12px;"><span>ส่วนต่าง</span><b style="color:' + platVarColor + ';">' + dlvFmt(platVar) + '</b></div>' : '')
+    + '</div>';
+
+  const isLocked = b.status === 'reconciled';
+  const saveBtn = isLocked
+    ? '<div style="padding:8px;text-align:center;font-size:12px;color:#16a34a;font-weight:600;">' + icon('check') + ' กระทบยอดแล้ว — ล็อค</div>'
+    : '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">'
+      + '<button class="btn btn-ghost btn-sm" onclick="dlvMarkDiscrepancy()">' + icon('alert-triangle') + ' ยอดไม่ตรง</button>'
+      + '<button class="btn btn-primary btn-sm" onclick="dlvSaveSettle()">' + icon('check') + ' กระทบยอด / บันทึก</button>'
+      + '</div>';
+
+  return '<div style="border-top:2px solid var(--border-soft);padding-top:14px;margin-top:12px;">'
+    + '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">' + icon('file-text') + ' Settlement</div>'
+    + '<div style="background:var(--surface-2);border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px;">'
+    + '<div style="display:flex;justify-content:space-between;"><span>ยอดจากรายการ (Gross)</span><b>' + dlvFmt(itemGross) + '</b></div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:2px;"><span>Net (หลังหักส่วนลด)</span><b>' + dlvFmt(baseNet) + '</b></div></div>'
+    + platGrossSection
+    + fields + calcBox + saveBtn
+    + '</div>';
 }
 
 function dlvCalc() {
-  const el = $('dlv3Calc');
-  if (!el || !dlvWizard.currentBatch) return;
-  const gross = Number(dlvWizard.currentBatch.gross_sales || 0);
-  const comm = parseFloat(($('dlv3Comm') || {}).value) || 0;
-  const promFee = parseFloat(($('dlv3PromFee') || {}).value) || 0;
-  const merDisc = parseFloat(($('dlv3MerDisc') || {}).value) || 0;
-  const wht = parseFloat(($('dlv3WHT') || {}).value) || 0;
-  const dep = parseFloat(($('dlv3Dep') || {}).value) || 0;
-  const merchantNet = gross - comm - promFee - merDisc;
+  const el = $('dlvCalcBox');
+  if (!el) return;
+  const g = id => parseFloat(($( id) || {}).value) || 0;
+  const comm  = g('dlvComm'), promFee = g('dlvPromFee'), advFee = g('dlvAdvFee');
+  const refund = g('dlvRefund'), wht = g('dlvWHT');
+  const merDisc = g('dlvMerDisc'), otherDed = g('dlvOtherDed'), otherAdj = g('dlvOtherAdj');
+  const dep = g('dlvDep');
+
+  const card = el.closest('.glass-card');
+  const netEl = card ? card.querySelector('[data-batch-net]') : null;
+  const batchNet = netEl ? parseFloat(netEl.dataset.batchNet) || 0 : 0;
+
+  const merchantNet  = batchNet - comm - merDisc - promFee - advFee - refund - otherDed + otherAdj;
   const expectedCash = merchantNet - wht;
-  const variance = dep - expectedCash;
-  const varColor = Math.abs(variance) > 1 ? '#dc2626' : '#16a34a';
-  el.innerHTML = '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;"><span style="color:var(--color-text-muted);">Merchant Net</span><b>฿' + merchantNet.toLocaleString('th-TH', { minimumFractionDigits: 2 }) + '</b><span style="color:var(--color-text-muted);">คาดรับ (หลังหัก WHT)</span><b>฿' + expectedCash.toLocaleString('th-TH', { minimumFractionDigits: 2 }) + '</b><span style="color:var(--color-text-muted);">เงินเข้าจริง</span><b>฿' + dep.toLocaleString('th-TH', { minimumFractionDigits: 2 }) + '</b><span style="color:var(--color-text-muted);">ส่วนต่าง</span><b style="color:' + varColor + ';">฿' + variance.toLocaleString('th-TH', { minimumFractionDigits: 2 }) + '</b></div>';
+  const variance     = dep - expectedCash;
+  const varColor     = Math.abs(variance) > 1 ? '#dc2626' : '#16a34a';
+  const fmtB = n => dlvFmt(n);
+  el.innerHTML = '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;">'
+    + '<span style="color:var(--color-text-muted);">Merchant Net</span><b>' + fmtB(merchantNet) + '</b>'
+    + '<span style="color:var(--color-text-muted);">คาดรับ (หลัง WHT)</span><b>' + fmtB(expectedCash) + '</b>'
+    + (dep ? '<span style="color:var(--color-text-muted);">เงินเข้าจริง</span><b>' + fmtB(dep) + '</b>'
+           + '<span style="color:var(--color-text-muted);">ส่วนต่าง</span><b style="color:' + varColor + ';">' + fmtB(variance) + '</b>' : '')
+    + '</div>';
 }
 
-async function dlvSaveSettlement() {
-  const b = dlvWizard.currentBatch;
-  if (!b) return;
-  const gross = Number(b.gross_sales || 0);
-  const comm = parseFloat(($('dlv3Comm') || {}).value) || 0;
-  const promFee = parseFloat(($('dlv3PromFee') || {}).value) || 0;
-  const merDisc = parseFloat(($('dlv3MerDisc') || {}).value) || 0;
-  const wht = parseFloat(($('dlv3WHT') || {}).value) || 0;
-  const dep = parseFloat(($('dlv3Dep') || {}).value) || 0;
-  const sDate = (($('dlv3SDate') || {}).value) || new Date().toISOString().slice(0, 10);
-  const ref = (($('dlv3Ref') || {}).value) || '';
-  const bank = (($('dlv3Bank') || {}).value) || '';
-  if (dep <= 0) { ui.toast('ใส่ยอดเงินเข้าบัญชีก่อน'); return; }
+async function dlvSaveSettle() {
+  if (!_dlvActiveBillId) return;
+  const g = id => parseFloat(($( id) || {}).value) || 0;
+  const dep = ($('dlvDep') || {}).value;
+  const platGrossEl = $('dlvPlatGross');
+  const platGrossReasonEl = $('dlvPlatGrossReason');
+  const body = {
+    commission_amount: g('dlvComm'), promotion_fee: g('dlvPromFee'),
+    advertising_fee: g('dlvAdvFee'), vat_on_fee: g('dlvAdvFee'),
+    refund_amount: g('dlvRefund'), withholding_tax: g('dlvWHT'),
+    merchant_discount_amount: g('dlvMerDisc'),
+    other_deduction: g('dlvOtherDed'), other_adjustment: g('dlvOtherAdj'),
+    bank_account: (($('dlvSettleBank') || {}).value || '').trim() || null,
+    settlement_reference: (($('dlvSettleRef') || {}).value || '').trim() || null,
+    settlement_date: (($('dlvSettleDate') || {}).value || null),
+  };
+  if (dep) body.actual_bank_deposit = parseFloat(dep);
+  if (platGrossEl && platGrossEl.value) {
+    body.platform_gross = parseFloat(platGrossEl.value);
+    body.platform_gross_reason = platGrossReasonEl ? platGrossReasonEl.value || null : null;
+  }
   try {
-    await API.post('/api/delivery/settlement', {
-      platform: b.platform, settlement_date: sDate,
-      gross_sales: gross, commission_amount: comm,
-      discount_funding_source: merDisc > 0 ? 'merchant' : 'platform',
-      merchant_discount_amount: merDisc, platform_discount_amount: 0,
-      promotion_fee: promFee, advertising_fee: 0, vat_on_fee: 0,
-      refund_amount: 0, withholding_tax: wht,
-      other_deduction: 0, other_adjustment: 0,
-      actual_bank_deposit: dep, bank_account: bank, settlement_reference: ref,
-    });
-    ui.toast('บันทึก Settlement เรียบร้อย');
-    dlvGo('list');
-  } catch (e) { ui.toast('บันทึกไม่ได้: ' + (e && e.message || '')); }
+    const r = await API.patch('/api/delivery/bill/' + _dlvActiveBillId + '/settle', body);
+    const lbl = r.status === 'reconciled' ? 'กระทบยอดแล้ว ✓' : (r.status === 'discrepancy' ? 'มีส่วนต่าง — โปรดตรวจสอบ' : 'บันทึกแล้ว');
+    ui.toast(lbl);
+    await dlvShowBill(_dlvActiveBillId);
+  } catch (e) { ui.toast('บันทึกไม่ได้: ' + (e && e.message || ''), 'error'); }
 }
 
-// --- Batch list view ---
-function dlvListHtml() {
-  const batches = dlvWizard.batches || [];
-  if (!batches.length) return '<p style="font-size:13px;color:var(--color-text-muted);text-align:center;padding:16px 0;">ยังไม่มี Batch — กด &quot;Batch ใหม่&quot; เพื่อเริ่ม</p>';
-  const badgeMap = { confirmed: '#16a34a', voided: '#dc2626', draft: '#f59e0b' };
-  const labelMap = { draft: 'Draft', confirmed: 'ยืนยัน', voided: 'Void' };
-  return batches.slice(0, 10).map(b => {
-    const c = badgeMap[b.status] || '#888';
-    return '<div onclick="dlvWizard.batchId=\'' + b.id + '\';dlvWizard.view=\'step2\';dlvRefresh();" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:13px;cursor:pointer;"><div style="flex:1;min-width:0;"><div><b>' + esc(b.platform) + '</b> · ' + (b.sales_date_from || '') + '</div><div style="font-size:11px;color:var(--color-text-muted);">' + (b.mode === 'stock_aware' ? 'ตัดสต็อก' : 'ตัดเงิน') + ' · ฿' + Number(b.gross_sales || 0).toLocaleString('th-TH') + '</div></div><span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';">' + (labelMap[b.status] || b.status) + '</span>' + icon('chevron-right') + '</div>';
-  }).join('');
+async function dlvMarkDiscrepancy() {
+  if (!_dlvActiveBillId) return;
+  const dep = ($('dlvDep') || {}).value;
+  if (!dep) { ui.toast('กรอกยอดเงินเข้าจริงก่อน', 'warning'); return; }
+  const body = { actual_bank_deposit: parseFloat(dep) };
+  const platGrossEl = $('dlvPlatGross');
+  if (platGrossEl && platGrossEl.value) body.platform_gross = parseFloat(platGrossEl.value);
+  try {
+    await API.patch('/api/delivery/bill/' + _dlvActiveBillId + '/settle', body);
+    ui.toast('ทำเครื่องหมายยอดไม่ตรงแล้ว');
+    await dlvShowBill(_dlvActiveBillId);
+  } catch (e) { ui.toast('ไม่สำเร็จ: ' + (e && e.message || ''), 'error'); }
 }
 
-async function saveDeliveryPayout() {} // no-op: replaced by 3-step wizard
+async function dlvSetPendingReview() {
+  if (!_dlvActiveBillId) return;
+  try {
+    await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/close', { to_pending: true });
+    ui.toast('ตั้งเป็นรอตรวจสอบแล้ว');
+    await dlvShowBill(_dlvActiveBillId);
+  } catch (e) { ui.toast('ไม่สำเร็จ: ' + (e && e.message || ''), 'error'); }
+}
+
+function dlvFilterCat(cat) {
+  _dlvCatFilter = cat === 'ทั้งหมด' ? '' : cat;
+  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+}
+
+function dlvMenuSearch(val) {
+  _dlvMenuSearch = val || '';
+  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+}
+
+function dlvChooseOpt(groupId, optionId) {
+  _dlvChosenOptions[groupId] = optionId;
+  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+}
+
+// Legacy stubs
+async function saveDeliveryPayout() {}
+function dlvGo(view, batchId) {
+  if (view === 'list') { _dlvBillView = 'queue'; _dlvActiveBillId = null; dlvRefresh(); }
+}
 
 // ============================================================
 // M3: เมนูออนไลน์ (QR) ฝั่งร้าน — เปิด/ปิด + แสดง QR/ลิงก์ + คิวออเดอร์ลูกค้า

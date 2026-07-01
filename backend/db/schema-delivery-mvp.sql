@@ -115,6 +115,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS dsb_idempotency_key
   ON delivery_sales_batches(shop_id, client_request_id)
   WHERE client_request_id IS NOT NULL;
 
+-- Item-based sales fields (Founder UX redesign — Release A revision)
+-- batch_item_gross/net = derived from item lines; gross_sales = platform-reported reconciliation field
+ALTER TABLE delivery_sales_batches
+  ADD COLUMN IF NOT EXISTS batch_item_gross NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS batch_item_net   NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS cogs_total       NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS gross_profit     NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS financial_only_reason TEXT,
+  ADD COLUMN IF NOT EXISTS financial_only_note   TEXT;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- C. Delivery Sales Items
 -- ─────────────────────────────────────────────────────────────────────────
@@ -147,6 +157,10 @@ CREATE TABLE IF NOT EXISTS delivery_sales_items (
 
 CREATE INDEX IF NOT EXISTS dsi_batch_idx ON delivery_sales_items(batch_id);
 CREATE INDEX IF NOT EXISTS dsi_shop_idx  ON delivery_sales_items(shop_id);
+
+-- COGS per item (populated at confirm time)
+ALTER TABLE delivery_sales_items
+  ADD COLUMN IF NOT EXISTS cogs_amount NUMERIC DEFAULT 0;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- D. Structured Stock Movement Links (correction 1)
@@ -343,3 +357,95 @@ BEGIN
       REFERENCES delivery_sales_batches(id) ON DELETE SET NULL;
   END IF;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- REVISION: Daily Bill Model (Founder Workflow Correction)
+-- หนึ่งสาขา + หนึ่ง Platform + หนึ่งวัน = บิล Delivery ค้างหนึ่งใบ
+-- ─────────────────────────────────────────────────────────────────────────
+
+-- Expand status constraint to include daily-bill statuses
+DO $$
+BEGIN
+  BEGIN
+    ALTER TABLE delivery_sales_batches DROP CONSTRAINT delivery_sales_batches_status_check;
+  EXCEPTION WHEN undefined_object THEN NULL;
+  END;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name='delivery_sales_batches' AND constraint_name='chk_dsb_status_v2'
+  ) THEN
+    ALTER TABLE delivery_sales_batches ADD CONSTRAINT chk_dsb_status_v2
+      CHECK (status IN (
+        'open','pending_review','awaiting_settlement','discrepancy','reconciled',
+        'draft','confirmed','settled','locked','voided'
+      ));
+  END IF;
+END $$;
+
+-- Canonical sales_date (used for daily-bill uniqueness index)
+ALTER TABLE delivery_sales_batches
+  ADD COLUMN IF NOT EXISTS sales_date DATE;
+UPDATE delivery_sales_batches
+  SET sales_date = sales_date_from::date
+  WHERE sales_date IS NULL;
+
+-- ONE active bill per shop + platform + date
+-- Active = open/pending_review/awaiting_settlement/discrepancy
+CREATE UNIQUE INDEX IF NOT EXISTS dsb_active_daily_bill
+  ON delivery_sales_batches(shop_id, platform, sales_date)
+  WHERE status IN ('open','pending_review','awaiting_settlement','discrepancy');
+
+-- Settlement fields stored inline on the bill (next-day reconciliation)
+ALTER TABLE delivery_sales_batches
+  ADD COLUMN IF NOT EXISTS commission_amount        NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS promotion_fee            NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS advertising_fee          NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS vat_on_fee               NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS refund_amount            NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS withholding_tax          NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS merchant_discount_amount NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS platform_discount_amount NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS other_deduction          NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS other_adjustment         NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS actual_bank_deposit      NUMERIC,
+  ADD COLUMN IF NOT EXISTS bank_account             TEXT,
+  ADD COLUMN IF NOT EXISTS settlement_reference     TEXT,
+  ADD COLUMN IF NOT EXISTS settlement_date          DATE,
+  ADD COLUMN IF NOT EXISTS settlement_note          TEXT,
+  ADD COLUMN IF NOT EXISTS merchant_net             NUMERIC,
+  ADD COLUMN IF NOT EXISTS expected_bank_cash       NUMERIC,
+  ADD COLUMN IF NOT EXISTS settlement_variance      NUMERIC,
+  ADD COLUMN IF NOT EXISTS closed_at               TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS closed_by               UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS settled_at              TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS settled_by              UUID REFERENCES users(id);
+
+-- Item: platform order_no for dedup + staff attribution
+ALTER TABLE delivery_sales_items
+  ADD COLUMN IF NOT EXISTS order_no         TEXT,
+  ADD COLUMN IF NOT EXISTS staff_added_by   UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS staff_added_name TEXT;
+
+-- Prevent duplicate order_no within same bill
+CREATE UNIQUE INDEX IF NOT EXISTS dsi_order_no_unique
+  ON delivery_sales_items(batch_id, order_no)
+  WHERE order_no IS NOT NULL;
+
+-- Link movements to specific items (for per-item reversal)
+ALTER TABLE delivery_batch_stock_movements
+  ADD COLUMN IF NOT EXISTS item_id UUID REFERENCES delivery_sales_items(id) ON DELETE SET NULL;
+
+-- Audit trail: track which deduct records have been reversed and by which reverse record
+-- Never delete movement relation rows — mark reversed_at instead
+ALTER TABLE delivery_batch_stock_movements
+  ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reversal_of UUID REFERENCES delivery_batch_stock_movements(id);
+
+CREATE INDEX IF NOT EXISTS dbsm_reversal_of_idx
+  ON delivery_batch_stock_movements(reversal_of) WHERE reversal_of IS NOT NULL;
+
+-- Platform gross comparison fields (settlement review)
+ALTER TABLE delivery_sales_batches
+  ADD COLUMN IF NOT EXISTS platform_gross          NUMERIC DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS platform_gross_variance NUMERIC,
+  ADD COLUMN IF NOT EXISTS platform_gross_reason   TEXT;
