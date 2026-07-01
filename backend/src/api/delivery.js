@@ -15,106 +15,9 @@ function isUUID(s) { return typeof s === 'string' && UUID_RE.test(s); }
 // Batch CRUD
 // ─────────────────────────────────────────────────────────────────────────
 
-// POST /api/delivery/batch — create draft batch with items
+// POST /api/delivery/batch — LEGACY WRITE (disabled Release A+)
 router.post('/batch', requirePerm('delivery_entry'), async (req, res) => {
-  const { platform, sales_date_from, sales_date_to, mode, gross_sales, order_count, items,
-          client_request_id, replacement_of_batch_id } = req.body || {};
-
-  if (!platform) return res.status(400).json({ error: 'platform required' });
-  if (!sales_date_from) return res.status(400).json({ error: 'sales_date_from required' });
-  if (!['stock_aware', 'financial_only'].includes(mode)) return res.status(400).json({ error: 'invalid mode' });
-
-  const safeItems = Array.isArray(items) ? items : [];
-  for (const it of safeItems) {
-    if (!['recipe', 'material'].includes(it.menu_type)) return res.status(400).json({ error: 'invalid menu_type' });
-    if (it.menu_type === 'recipe' && !isUUID(it.recipe_id)) return res.status(400).json({ error: 'recipe_id must be UUID' });
-    if (it.menu_type === 'material' && !isUUID(it.material_id)) return res.status(400).json({ error: 'material_id must be UUID' });
-    if (!(Number(it.quantity) > 0)) return res.status(400).json({ error: 'quantity must be positive' });
-  }
-
-  try {
-    const out = await tx(async (c) => {
-      // Idempotency: if client_request_id given and already exists, return existing batch_id
-      if (client_request_id) {
-        const existing = await c.query(
-          'SELECT id FROM delivery_sales_batches WHERE shop_id=$1 AND client_request_id=$2',
-          [req.shopId, client_request_id]
-        );
-        if (existing.rowCount) {
-          const e = new Error('DUPLICATE_CLIENT_REQUEST_ID');
-          e.statusCode = 409; e.batch_id = existing.rows[0].id; throw e;
-        }
-      }
-
-      // Validate replacement_of_batch_id: must exist, be voided, belong to this shop
-      if (replacement_of_batch_id) {
-        if (!isUUID(replacement_of_batch_id)) {
-          const e = new Error('invalid replacement_of_batch_id'); e.statusCode = 400; throw e;
-        }
-        const orig = await c.query(
-          'SELECT status FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2',
-          [replacement_of_batch_id, req.shopId]
-        );
-        if (!orig.rowCount) { const e = new Error('REPLACEMENT_ORIGINAL_NOT_FOUND'); e.statusCode = 404; throw e; }
-        if (orig.rows[0].status !== 'voided') {
-          const e = new Error('REPLACEMENT_ORIGINAL_NOT_VOIDED'); e.statusCode = 409; throw e;
-        }
-      }
-
-      const batchR = await c.query(
-        `insert into delivery_sales_batches
-           (shop_id, platform, sales_date_from, sales_date_to, mode, gross_sales, order_count, item_count,
-            source_type, client_request_id, replacement_of_batch_id, created_by)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,'manual',$9,$10,$11) returning id`,
-        [req.shopId, platform, sales_date_from, sales_date_to || sales_date_from,
-         mode, Number(gross_sales) || 0, Number(order_count) || 0, safeItems.length,
-         client_request_id || null, replacement_of_batch_id || null, req.userId]
-      );
-      const batchId = batchR.rows[0].id;
-
-      // Validate menu refs belong to this shop before inserting items
-      let grossFromItems = 0;
-      for (const it of safeItems) {
-        if (it.menu_type === 'recipe') {
-          const check = await c.query('select 1 from recipes where id=$1 and shop_id=$2', [it.recipe_id, req.shopId]);
-          if (!check.rowCount) {
-            const global = (await c.query('select 1 from recipes where id=$1', [it.recipe_id])).rowCount;
-            const e = new Error(global ? 'FORBIDDEN_RECIPE' : 'RECIPE_NOT_FOUND'); e.statusCode = global ? 403 : 404; throw e;
-          }
-        } else {
-          const check = await c.query('select 1 from materials where id=$1 and shop_id=$2', [it.material_id, req.shopId]);
-          if (!check.rowCount) {
-            const global = (await c.query('select 1 from materials where id=$1', [it.material_id])).rowCount;
-            const e = new Error(global ? 'FORBIDDEN_MATERIAL' : 'MATERIAL_NOT_FOUND'); e.statusCode = global ? 403 : 404; throw e;
-          }
-        }
-        const gross = Number(it.gross_amount) || (Number(it.quantity) * Number(it.unit_price));
-        grossFromItems += gross;
-        await c.query(
-          `insert into delivery_sales_items
-             (batch_id, shop_id, menu_type, recipe_id, material_id, menu_code, menu_name,
-              quantity, unit_price, gross_amount, discount_amount, chosen_options, refund_flag)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [batchId, req.shopId,
-           it.menu_type,
-           it.menu_type === 'recipe' ? it.recipe_id : null,
-           it.menu_type === 'material' ? it.material_id : null,
-           it.menu_code || null, it.menu_name,
-           Number(it.quantity), Number(it.unit_price) || 0,
-           Number(it.gross_amount) || 0, Number(it.discount_amount) || 0,
-           JSON.stringify(it.chosen_options || []),
-           !!it.refund_flag]
-        );
-      }
-
-      return { batch_id: batchId, gross_from_items: grossFromItems, header_gross: Number(gross_sales) || 0 };
-    });
-    res.status(201).json(out);
-  } catch (e) {
-    if (e.statusCode === 409 && e.batch_id) return res.status(409).json({ error: e.message, batch_id: e.batch_id });
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
 });
 
 // GET /api/delivery/batches — list batches for this shop
@@ -175,8 +78,9 @@ router.get('/batch/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /api/delivery/batch/:id — update draft batch (gross, order_count, variance info)
+// PATCH /api/delivery/batch/:id — LEGACY WRITE (disabled Release A+)
 router.patch('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -211,7 +115,9 @@ router.patch('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
 });
 
 // POST /api/delivery/batch/:id/confirm — confirm draft, deduct stock (stock_aware only)
+// POST /api/delivery/batch/:id/confirm — LEGACY WRITE (disabled Release A+)
 router.post('/batch/:id/confirm', requirePerm('delivery_entry'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -361,8 +267,9 @@ router.post('/batch/:id/confirm', requirePerm('delivery_entry'), async (req, res
   }
 });
 
-// DELETE /api/delivery/batch/:id — delete draft with no movements
+// DELETE /api/delivery/batch/:id — LEGACY WRITE (disabled Release A+)
 router.delete('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -389,8 +296,9 @@ router.delete('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
   }
 });
 
-// POST /api/delivery/batch/:id/void — void confirmed batch, reverse stock
+// POST /api/delivery/batch/:id/void — LEGACY WRITE (disabled Release A+)
 router.post('/batch/:id/void', requirePerm('void_bill'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   const { reason } = req.body || {};
   try {
@@ -454,8 +362,9 @@ router.post('/batch/:id/void', requirePerm('void_bill'), async (req, res) => {
 // Batch Items
 // ─────────────────────────────────────────────────────────────────────────
 
-// POST /api/delivery/batch/:id/items — add item to draft batch
+// POST /api/delivery/batch/:id/items — LEGACY WRITE (disabled Release A+)
 router.post('/batch/:id/items', requirePerm('delivery_entry'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -500,8 +409,9 @@ router.post('/batch/:id/items', requirePerm('delivery_entry'), async (req, res) 
   }
 });
 
-// DELETE /api/delivery/batch/:id/items/:itemId — remove item from draft batch
+// DELETE /api/delivery/batch/:id/items/:itemId — LEGACY WRITE (disabled Release A+)
 router.delete('/batch/:id/items/:itemId', requirePerm('delivery_entry'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id) || !isUUID(req.params.itemId)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -566,8 +476,9 @@ async function validateAllocations(c, shopId, platform, settlementId, allocation
   }
 }
 
-// POST /api/delivery/settlement — create settlement (draft)
+// POST /api/delivery/settlement — LEGACY WRITE (disabled Release A+)
 router.post('/settlement', requirePerm('delivery_settlement'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   const {
     platform, settlement_date,
     gross_sales, commission_rate, commission_amount,
@@ -651,8 +562,9 @@ router.post('/settlement', requirePerm('delivery_settlement'), async (req, res) 
   }
 });
 
-// POST /api/delivery/settlement/:id/confirm
+// POST /api/delivery/settlement/:id/confirm — LEGACY WRITE (disabled Release A+)
 router.post('/settlement/:id/confirm', requirePerm('delivery_settlement'), async (req, res) => {
+  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx(async (c) => {
@@ -1131,9 +1043,14 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
             const { bom, subs } = await engine.buildEffectiveBom(c, recipe_id, chosen_options);
             const matIds = [...bom.keys()];
             const matPrices = matIds.length
-              ? (await c.query('SELECT id, price FROM materials WHERE id=ANY($1::uuid[]) AND shop_id=$2', [matIds, req.shopId])).rows
+              ? (await c.query('SELECT id, price, qty, conv_qty FROM materials WHERE id=ANY($1::uuid[]) AND shop_id=$2', [matIds, req.shopId])).rows
               : [];
-            const priceMap = Object.fromEntries(matPrices.map(p => [p.id, Number(p.price)]));
+            // cost per base stock unit = purchase_price / (purchase_qty × conv_qty)
+            const priceMap = Object.fromEntries(matPrices.map(p => {
+              const purchaseQty = Number(p.qty)      || 1;
+              const convQty     = Number(p.conv_qty) || 1;
+              return [p.id, purchaseQty > 0 ? Number(p.price) / (purchaseQty * convQty) : 0];
+            }));
 
             for (const [matId, entry] of bom) {
               const amt = entry.amount * qty;
