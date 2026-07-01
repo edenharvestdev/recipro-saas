@@ -52,6 +52,7 @@ const files = [
   '../db/schema-delivery-mvp.sql',
   '../db/schema-delivery-historical.sql',
   '../db/schema-delivery-manual-stock.sql',
+  '../db/schema-delivery-cogs-model.sql',
   '../db/seed.sql',
 ];
 

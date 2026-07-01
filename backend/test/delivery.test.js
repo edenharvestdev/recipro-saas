@@ -1125,8 +1125,11 @@ async function countLinks(batchId, type) {
     check('MS3 NO stock deducted', (await msStock()) === ms3Before, ms3Before);
     const ms3Mov = (await query("SELECT count(*)::int n FROM delivery_batch_stock_movements WHERE batch_id=$1 AND item_id=$2", [ms3Bill, ms3.data.item.id])).rows[0].n;
     check('MS3 zero stock movements', ms3Mov === 0, ms3Mov);
-    const ms3I = (await query('SELECT covered_quantity,deduction_quantity,coverage_reason,source_pos_bill_no,cogs_amount FROM delivery_sales_items WHERE id=$1', [ms3.data.item.id])).rows[0];
-    check('MS3 covered=qty, deduction=0, reason+source+cogs=0 stored', Number(ms3I.covered_quantity) === 4 && Number(ms3I.deduction_quantity) === 0 && ms3I.coverage_reason === 'already deducted in POS' && ms3I.source_pos_bill_no === 'INV-123' && Number(ms3I.cogs_amount) === 0, ms3I);
+    const ms3I = (await query('SELECT covered_quantity,deduction_quantity,coverage_reason,source_pos_bill_no,cogs_amount,delivery_channel_cogs,unit_cogs_snapshot,cogs_source,cogs_already_recognized FROM delivery_sales_items WHERE id=$1', [ms3.data.item.id])).rows[0];
+    check('MS3 covered=qty, deduction=0, reason+source stored', Number(ms3I.covered_quantity) === 4 && Number(ms3I.deduction_quantity) === 0 && ms3I.coverage_reason === 'already deducted in POS' && ms3I.source_pos_bill_no === 'INV-123', ms3I);
+    check('MS3 delivery_channel_cogs NON-zero (unit×full = 10×4 = 40)', Number(ms3I.delivery_channel_cogs) === 40 && Number(ms3I.unit_cogs_snapshot) === 10, ms3I);
+    check('MS3 cogs_source=existing_pos_coverage, already_recognized=true', ms3I.cogs_source === 'existing_pos_coverage' && ms3I.cogs_already_recognized === true, ms3I);
+    check('MS3 consolidated (unit×deduction) = 0 → no double count', Number(ms3I.unit_cogs_snapshot) * Number(ms3I.deduction_quantity) === 0, ms3I);
 
     // ─── MS4: HOLD_FOR_REVIEW posts no stock, stays pending ───────────────
     const ms4Bill = await msOpen('MS-Hold');
@@ -1149,6 +1152,50 @@ async function countLinks(batchId, type) {
     check('MS7 invalid stock_mode → 400 INVALID_STOCK_MODE', ms7.status === 400 && ms7.data?.error === 'INVALID_STOCK_MODE', ms7.data);
     const ms8 = await api('POST', '/api/delivery/bill/' + ms5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [], stock_mode: 'DEDUCT_REMAINDER', covered_quantity: 5, coverage_reason: 'x' } });
     check('MS8 covered>qty → 400 INVALID_COVERED_QUANTITY', ms8.status === 400 && ms8.data?.error === 'INVALID_COVERED_QUANTITY', ms8.data);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // COGS MODEL TESTS (CG1–CG5) — channel attribution vs consolidated recognition
+    // msMat unit cost = price/(qty×conv) = 10/(1×1) = 10 per unit.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n=== COGS Model Tests (CG1–CG5) ===\n');
+
+    // ─── CG1: REMAINDER attributes channel COGS to FULL qty; stock only remainder ─
+    const cg1Bill = await msOpen('CG-Remainder');
+    const cg1 = await api('POST', '/api/delivery/bill/' + cg1Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 5, unit_price: 20, chosen_options: [], stock_mode: 'DEDUCT_REMAINDER', covered_quantity: 2, coverage_reason: 'POS covered 2' } });
+    const cg1I = (await query('SELECT delivery_channel_cogs,deduction_quantity,unit_cogs_snapshot,cogs_source FROM delivery_sales_items WHERE id=$1', [cg1.data.item.id])).rows[0];
+    check('CG1 channel COGS = unit×FULL (10×5=50)', Number(cg1I.delivery_channel_cogs) === 50, cg1I);
+    check('CG1 consolidated = unit×deduction (10×3=30)', Number(cg1I.unit_cogs_snapshot) * Number(cg1I.deduction_quantity) === 30, cg1I);
+    check('CG1 cogs_source=mixed_pos_and_delivery', cg1I.cogs_source === 'mixed_pos_and_delivery', cg1I.cogs_source);
+
+    // ─── CG2: HOLD finalises neither stock nor COGS into the bill ──────────
+    const cg2Bill = await msOpen('CG-Hold');
+    const cg2Before = (await api('GET', '/api/delivery/bill/' + cg2Bill, { token: ownerToken, shop: shopA })).data.bill;
+    const cg2 = await api('POST', '/api/delivery/bill/' + cg2Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 4, unit_price: 20, chosen_options: [], stock_mode: 'HOLD_FOR_REVIEW', coverage_reason: 'pending' } });
+    const cg2I = (await query('SELECT cogs_amount,cogs_source FROM delivery_sales_items WHERE id=$1', [cg2.data.item.id])).rows[0];
+    check('CG2 HOLD finalised cogs_amount=0, source=pending', Number(cg2I.cogs_amount) === 0 && cg2I.cogs_source === 'pending', cg2I);
+    const cg2After = (await api('GET', '/api/delivery/bill/' + cg2Bill, { token: ownerToken, shop: shopA })).data.bill;
+    check('CG2 HOLD not posted to bill totals (gross+cogs unchanged)', Number(cg2After.cogs_total) === Number(cg2Before.cogs_total) && Number(cg2After.batch_item_gross) === Number(cg2Before.batch_item_gross), { before: cg2Before.cogs_total, after: cg2After.cogs_total });
+
+    // ─── CG3: stock deduction and COGS attribution are independent ─────────
+    const cg3Bill = await msOpen('CG-Full');
+    const cg3 = await api('POST', '/api/delivery/bill/' + cg3Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 5, unit_price: 20, chosen_options: [] } });
+    const cg3I = (await query('SELECT delivery_channel_cogs,deduction_quantity FROM delivery_sales_items WHERE id=$1', [cg3.data.item.id])).rows[0];
+    check('CG3 FULL & REMAINDER share channel COGS (both 50) — attribution ⟂ deduction', Number(cg3I.delivery_channel_cogs) === Number(cg1I.delivery_channel_cogs), { full: cg3I.delivery_channel_cogs, rem: cg1I.delivery_channel_cogs });
+    check('CG3 FULL deduction(5) ≠ REMAINDER deduction(3) — stock independent', Number(cg3I.deduction_quantity) !== Number(cg1I.deduction_quantity), { full: cg3I.deduction_quantity, rem: cg1I.deduction_quantity });
+
+    // ─── CG4: channel Gross Profit correct even for ACCOUNTING_ONLY ────────
+    const cg4Bill = await msOpen('CG-ChannelGP');
+    await api('POST', '/api/delivery/bill/' + cg4Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 3, unit_price: 20, chosen_options: [], stock_mode: 'ACCOUNTING_ONLY_ALREADY_DEDUCTED', coverage_reason: 'pos' } });
+    const cg4B = (await api('GET', '/api/delivery/bill/' + cg4Bill, { token: ownerToken, shop: shopA })).data.bill;
+    check('CG4 channel COGS posted (30) for ACCOUNTING_ONLY', Number(cg4B.cogs_total) === 30, cg4B.cogs_total);
+    check('CG4 channel gross_profit = net − channel COGS', Number(cg4B.gross_profit) === Number(cg4B.batch_item_net) - Number(cg4B.cogs_total), cg4B);
+
+    // ─── CG5: consolidated P&L free of duplicate COGS ─────────────────────
+    const cg5Bill = await msOpen('CG-Consolidated');
+    await api('POST', '/api/delivery/bill/' + cg5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [] } }); // FULL → consolidated 20
+    await api('POST', '/api/delivery/bill/' + cg5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 3, unit_price: 20, chosen_options: [], stock_mode: 'ACCOUNTING_ONLY_ALREADY_DEDUCTED', coverage_reason: 'pos' } }); // deduction 0 → consolidated 0
+    const cg5Cons = (await query('SELECT COALESCE(SUM(unit_cogs_snapshot*deduction_quantity),0) c FROM delivery_sales_items WHERE batch_id=$1', [cg5Bill])).rows[0].c;
+    check('CG5 consolidated = FULL only (20); ACCOUNTING_ONLY adds 0 → no double count', Number(cg5Cons) === 20, cg5Cons);
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
