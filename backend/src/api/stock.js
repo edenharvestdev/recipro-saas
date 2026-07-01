@@ -3,9 +3,10 @@
 const express = require('express');
 const { tx, query } = require('../db');
 const { requirePerm } = require('../tenant');   // S4: บังคับสิทธิ์พนักงานในรายการสำคัญ
+const engine = require('../stockEngine');
 const router = express.Router();
 
-const TBL = { material: { table: 'materials', col: 'stock' }, recipe: { table: 'recipes', col: 'fg_stock' } };
+const TBL = engine.TBL;
 
 async function logMove(c, shopId, userId, m) {
   const r = await c.query(
@@ -163,192 +164,37 @@ router.post('/pos/sell', async (req, res) => {
   const note = bill_no ? ('ขาย ' + bill_no) : 'ขาย';
   try {
     const out = await tx(async (c) => {
-      // อ่าน make_to_order จาก DB เสมอ — ห้ามเชื่อ client body
       const shopRow = (await c.query('select make_to_order from shop_settings where shop_id=$1', [req.shopId])).rows[0];
       const globalMTO = shopRow ? !!shopRow.make_to_order : false;
-
-      // หมวด: code -> { deducted, event }
-      const cats = {};
-      for (const r of (await c.query('select code, is_stock_deducted, deduct_event from item_categories')).rows) {
-        cats[r.code] = { deducted: r.is_stock_deducted, event: r.deduct_event };
-      }
+      const cats = await engine.loadCats(c);
       const results = [];
-
-      const deductMaterial = async (matId, amount, defaultCcat) => {
-        const m = (await c.query(
-          'select id,name,unit,stock,item_type from materials where id=$1 and shop_id=$2 for update',
-          [matId, req.shopId])).rows[0];
-        if (!m) {
-          // Gate 3: check if it exists in another branch
-          const globalCheck = (await c.query('select 1 from materials where id=$1', [matId])).rowCount > 0;
-          const err = new Error(globalCheck ? 'FORBIDDEN_MATERIAL' : 'MATERIAL_NOT_FOUND');
-          err.statusCode = globalCheck ? 403 : 404;
-          throw err;
-        }
-        const cat = m.item_type ? cats[m.item_type] : null;
-        // ASSET: ไม่หักตัวเองเสมอ · SALE: ข้ามเมื่อใช้เป็นส่วนผสมในสูตร (recipe_use) แต่ถ้า "ขายตรง" (on_sale) ให้หักสต๊อกตัวเอง
-        const isDirectSale = defaultCcat === 'on_sale';
-        if (cat && cat.deducted === false && !(m.item_type === 'SALE' && isDirectSale)) {
-          results.push({ type: 'skip', ref_id: matId, item_type: m.item_type });
-          return;
-        }
-        const ccat = (cat && cat.event && cat.event !== 'none') ? cat.event : defaultCcat;
-        const before = Number(m.stock) || 0;
-        const after = Math.max(0, before - amount);
-        await c.query('update materials set stock=$1, updated_at=now() where id=$2', [after, matId]);
-        await logMove(c, req.shopId, req.userId, { kind: 'sale', ref_type: 'material', ref_id: matId, ref_name: m.name, unit: m.unit, before, after, note, consumption_category: ccat });
-        results.push({ type: 'material', ref_id: matId, item_type: m.item_type || null, before, after });
-      };
-
-      const deductRecipeFg = async (rec, amount, ccat, tag) => {
-        const before = Number(rec.fg_stock) || 0;
-        const after = Math.max(0, before - amount);
-        await c.query('update recipes set fg_stock=$1, updated_at=now() where id=$2', [after, rec.id]);
-        await logMove(c, req.shopId, req.userId, { kind: 'sale', ref_type: 'recipe', ref_id: rec.id, ref_name: rec.name, unit: rec.yield_unit, before, after, note, consumption_category: ccat });
-        results.push({ type: tag, ref_id: rec.id, before, after });
-      };
-
-      // M2: effective BOM ฝั่ง server จากสูตร + options (mirror resolveLineBOM: RECIPE_VARIANT/REPLACE/ADD, ข้าม is_metadata_only)
-      const buildEffectiveBom = async (recipeId, chosenOptions) => {
-        const opts = Array.isArray(chosenOptions) ? chosenOptions.filter((o) => o && o.choice_id) : [];
-        let choices = [];
-        if (opts.length) {
-          const ids = opts.map((o) => o.choice_id);
-          const qById = {}; opts.forEach((o) => { qById[o.choice_id] = Number(o.qty) || 1; });
-          const cr = (await c.query('select id, effect_type, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount from option_choices where id = any($1::uuid[])', [ids])).rows;
-          const lr = (await c.query('select choice_id, material_id, amount from option_choice_links where choice_id = any($1::uuid[])', [ids])).rows;
-          const byChoice = {}; lr.forEach((l) => { (byChoice[l.choice_id] = byChoice[l.choice_id] || []).push(l); });
-          choices = cr.map((x) => ({ ...x, qty: qById[x.id] || 1, links: byChoice[x.id] || [] })).filter((x) => !x.is_metadata_only);
-        }
-        const variant = choices.find((x) => x.effect_type === 'RECIPE_VARIANT' && x.variant_recipe_id);
-        const baseId = variant ? variant.variant_recipe_id : recipeId;
-        const items = (await c.query('select material_id, sub_recipe_id, amount, role from recipe_items where recipe_id=$1', [baseId])).rows;
-        const bom = new Map(); const subs = []; const roleIndex = new Map();
-        for (const it of items) {
-          if (it.sub_recipe_id) { subs.push({ sub_recipe_id: it.sub_recipe_id, amount: Number(it.amount) || 0 }); continue; }
-          if (!it.material_id) continue;
-          const e = bom.get(it.material_id) || { amount: 0 };
-          e.amount += Number(it.amount) || 0; bom.set(it.material_id, e);
-          if (it.role) roleIndex.set(it.role, it.material_id);
-        }
-        for (const ch of choices) { // REPLACE: เอาวัตถุดิบเป้าหมายออก (เลือกตรง target_material_id หรือผ่าน role) แล้วใส่ตัวใหม่จาก links
-          if (ch.effect_type !== 'REPLACE') continue;
-          const oldId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
-          if (oldId) { bom.delete(oldId); if (ch.target_role) roleIndex.delete(ch.target_role); }
-          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += Number(l.amount) || 0; bom.set(l.material_id, e); if (ch.target_role) roleIndex.set(ch.target_role, l.material_id); }
-        }
-        for (const ch of choices) { // QUANTITY: ตั้งปริมาณวัตถุดิบเป้าหมายเป็นค่าสัมบูรณ์ (0 = ตัดออก) — มิเรอร์ resolveLineBOM
-          if (ch.effect_type !== 'QUANTITY') continue;
-          const matId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
-          if (!matId) continue;
-          const newAmt = Number(ch.amount) || 0;
-          if (newAmt <= 0) { bom.delete(matId); }
-          else { const e = bom.get(matId) || { amount: 0 }; e.amount = newAmt; bom.set(matId, e); }
-        }
-        for (const ch of choices) { // ADD
-          if (ch.effect_type !== 'ADD') continue;
-          for (const l of ch.links) { if (!l.material_id) continue; const e = bom.get(l.material_id) || { amount: 0 }; e.amount += (Number(l.amount) || 0) * (ch.qty || 1); bom.set(l.material_id, e); }
-        }
-        for (const [k, v] of bom) { if (v.amount <= 0) bom.delete(k); }
-        return { bom, subs };
-      };
-
-      const validateOptionsForLine = async (itemType, itemId, chosenOptions) => {
-        const opts = Array.isArray(chosenOptions) ? chosenOptions.filter(o => o && o.choice_id) : [];
-        
-        // 1. Fetch groups
-        const groups = (await c.query(
-          itemType === 'recipe'
-            ? `select id, label, required, min_select, max_select from option_groups where id in (select group_id from recipe_option_groups where recipe_id = $1) and enabled = true`
-            : `select id, label, required, min_select, max_select from option_groups where id in (select group_id from material_option_groups where material_id = $1) and enabled = true`,
-          [itemId]
-        )).rows;
-
-        if (groups.length === 0) {
-          if (opts.length > 0) {
-            const err = new Error('OPTIONS_NOT_ALLOWED');
-            err.statusCode = 400;
-            throw err;
-          }
-          return;
-        }
-
-        // 2. Fetch choices
-        const groupIds = groups.map(g => g.id);
-        const dbChoices = (await c.query(
-          `select id, group_id, enabled, max_qty from option_choices where group_id = any($1::uuid[]) and enabled = true`,
-          [groupIds]
-        )).rows;
-
-        for (const o of opts) {
-          const ch = dbChoices.find(c => c.id === o.choice_id);
-          if (!ch) {
-            const err = new Error('INVALID_OPTION_CHOICE');
-            err.statusCode = 400;
-            throw err;
-          }
-          const choiceQty = Number(o.qty) || 1;
-          if (ch.max_qty && choiceQty > ch.max_qty) {
-            const err = new Error('OPTION_QTY_EXCEEDED_MAX');
-            err.statusCode = 400;
-            throw err;
-          }
-        }
-
-        // 3. Rule checks
-        for (const g of groups) {
-          const gChoiceIds = dbChoices.filter(ch => ch.group_id === g.id).map(ch => ch.id);
-          const chosenForGroup = opts.filter(o => gChoiceIds.includes(o.choice_id));
-          const count = chosenForGroup.length;
-
-          if (g.required && count === 0) {
-            const err = new Error(`REQUIRED_OPTION_MISSING: ${g.label}`);
-            err.statusCode = 400;
-            throw err;
-          }
-          if (g.min_select && count < g.min_select) {
-            const err = new Error(`OPTION_MIN_SELECT_UNMET: ${g.label}`);
-            err.statusCode = 400;
-            throw err;
-          }
-          if (g.max_select && count > g.max_select) {
-            const err = new Error(`OPTION_MAX_SELECT_EXCEEDED: ${g.label}`);
-            err.statusCode = 400;
-            throw err;
-          }
-        }
-      };
 
       for (const ln of (lines || [])) {
         const qty = Number(ln.qty) || 0;
         if (qty <= 0) continue;
 
-        // Perform option rules validation
-        await validateOptionsForLine(ln.ref_type, ln.ref_id, ln.chosen_options);
+        await engine.validateOptionsForLine(c, ln.ref_type, ln.ref_id, ln.chosen_options);
 
         if (ln.ref_type === 'material') {
-          await deductMaterial(ln.ref_id, qty, 'on_sale');
-          
-          // Deduct direct sale option choice links (if any)
+          const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, ln.ref_id, qty, 'on_sale', note);
+          results.push(r);
+          // Deduct ADD-type option linked materials for direct material sales
           const opts = Array.isArray(ln.chosen_options) ? ln.chosen_options.filter(o => o && o.choice_id) : [];
           if (opts.length) {
             const ids = opts.map(o => o.choice_id);
             const choices = (await c.query(
-              `select id, effect_type, target_material_id, amount from option_choices where id = any($1::uuid[])`,
-              [ids]
+              `select id, effect_type from option_choices where id=any($1::uuid[])`, [ids]
             )).rows;
-
             for (const ch of choices) {
+              if (ch.effect_type !== 'ADD') continue;
               const choiceQty = Number(opts.find(o => o.choice_id === ch.id)?.qty || 1);
-              if (ch.effect_type === 'ADD') {
-                const links = (await c.query(
-                  `select material_id, amount from option_choice_links where choice_id = $1`,
-                  [ch.id]
-                )).rows;
-                for (const l of links) {
-                  if (l.material_id && Number(l.amount) > 0) {
-                    await deductMaterial(l.material_id, Number(l.amount) * choiceQty * qty, 'recipe_use');
-                  }
+              const links = (await c.query(
+                `select material_id, amount from option_choice_links where choice_id=$1`, [ch.id]
+              )).rows;
+              for (const l of links) {
+                if (l.material_id && Number(l.amount) > 0) {
+                  const lr = await engine.deductMaterial(c, req.shopId, req.userId, cats, l.material_id, Number(l.amount) * choiceQty * qty, 'recipe_use', note);
+                  results.push(lr);
                 }
               }
             }
@@ -358,38 +204,32 @@ router.post('/pos/sell', async (req, res) => {
             'select id,name,fg_stock,yield_unit,inventory_mode from recipes where id=$1 and shop_id=$2 for update',
             [ln.ref_id, req.shopId])).rows[0];
           if (!rec) {
-            // Gate 3: check if it exists in another branch
             const globalCheck = (await c.query('select 1 from recipes where id=$1', [ln.ref_id])).rowCount > 0;
             const err = new Error(globalCheck ? 'FORBIDDEN_RECIPE' : 'RECIPE_NOT_FOUND');
-            err.statusCode = globalCheck ? 403 : 404;
-            throw err;
+            err.statusCode = globalCheck ? 403 : 404; throw err;
           }
 
-          // S11: per-recipe mode — อ่านจาก DB เสมอ ไม่เชื่อ client
           const invMode = rec.inventory_mode || 'inherit';
-          const effectiveMode = invMode === 'inherit'
-            ? (globalMTO ? 'make_to_order' : 'finished_goods')
-            : invMode;
+          const effectiveMode = invMode === 'inherit' ? (globalMTO ? 'make_to_order' : 'finished_goods') : invMode;
 
           if (effectiveMode === 'non_stock') {
-            results.push({ type: 'non_stock', ref_id: rec.id });
-            continue;
+            results.push({ type: 'non_stock', ref_id: rec.id }); continue;
           }
           if (effectiveMode === 'finished_goods') {
             const fg = Number(rec.fg_stock) || 0;
             if (fg < qty) {
               const err = new Error('FG_STOCK_INSUFFICIENT');
-              err.statusCode = 409; err.recipeName = rec.name; err.have = fg; err.need = qty;
-              throw err;
+              err.statusCode = 409; err.recipeName = rec.name; err.have = fg; err.need = qty; throw err;
             }
-            await deductRecipeFg(rec, qty, 'on_sale', 'recipe_fg');
-            continue;
+            const r = await engine.deductRecipeFg(c, req.shopId, req.userId, rec, qty, 'on_sale', 'recipe_fg', note);
+            results.push(r); continue;
           }
-          // make_to_order: ขยาย BOM ตาม options แล้วตัดสต๊อก
-          const { bom, subs } = await buildEffectiveBom(ln.ref_id, ln.chosen_options);
+          // make_to_order: expand BOM then deduct
+          const { bom, subs } = await engine.buildEffectiveBom(c, ln.ref_id, ln.chosen_options);
           for (const [matId, entry] of bom) {
             if (entry.amount * qty <= 0) continue;
-            await deductMaterial(matId, entry.amount * qty, 'recipe_use');
+            const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, matId, entry.amount * qty, 'recipe_use', note);
+            results.push(r);
           }
           for (const s of subs) {
             if (s.amount * qty <= 0) continue;
@@ -397,10 +237,10 @@ router.post('/pos/sell', async (req, res) => {
             if (!sub) {
               const globalCheck = (await c.query('select 1 from recipes where id=$1', [s.sub_recipe_id])).rowCount > 0;
               const err = new Error(globalCheck ? 'FORBIDDEN_SUB_RECIPE' : 'SUB_RECIPE_NOT_FOUND');
-              err.statusCode = globalCheck ? 403 : 404;
-              throw err;
+              err.statusCode = globalCheck ? 403 : 404; throw err;
             }
-            await deductRecipeFg(sub, s.amount * qty, 'recipe_use', 'sub_recipe');
+            const r = await engine.deductRecipeFg(c, req.shopId, req.userId, sub, s.amount * qty, 'recipe_use', 'sub_recipe', note);
+            results.push(r);
           }
         }
       }
@@ -408,12 +248,8 @@ router.post('/pos/sell', async (req, res) => {
     });
     res.json(out);
   } catch (e) {
-    if (e.statusCode === 409) {
-      return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
-    }
-    if (e.statusCode) {
-      return res.status(e.statusCode).json({ error: e.message });
-    }
+    if (e.statusCode === 409) return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
+    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
     res.status(500).json({ error: e.message });
   }
 });

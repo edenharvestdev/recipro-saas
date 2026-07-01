@@ -1,5 +1,5 @@
 // ทดสอบ end-to-end ของ API จริง (ต่อ Postgres จริง) — node test/integration.js
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const app = require('../src/app');
 const { pool, query } = require('../src/db');
 

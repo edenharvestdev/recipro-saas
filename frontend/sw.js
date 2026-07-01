@@ -1,7 +1,7 @@
 // Service worker — ทำให้ติดตั้งเป็นแอป (PWA) ได้ + ใช้ออฟไลน์ได้บางส่วน
 // กลยุทธ์: network-first สำหรับไฟล์ static (ได้ของใหม่เสมอ, ออฟไลน์ค่อย fallback cache)
 // ไม่แตะ /api /auth /webhooks (ข้อมูลสด — ให้วิ่ง network ตรง)
-const CACHE = 'recipro-v2'; // bumped: pos card layout fix
+const CACHE = 'recipro-v3'; // bumped: delivery MVP Release A wizard
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(

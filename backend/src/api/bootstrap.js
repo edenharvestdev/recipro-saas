@@ -3,6 +3,7 @@
 const express = require('express');
 const { query } = require('../db');
 const { computeBillingState, GRACE_DAYS } = require('../billing-state');
+const { isDeliveryEnabledForShop } = require('../delivery-feature');
 const router = express.Router();
 
 router.get('/bootstrap', async (req, res) => {
@@ -55,6 +56,7 @@ router.get('/bootstrap', async (req, res) => {
       server_now: new Date().toISOString(),
       role: req.role,
       isSuperadmin: req.isSuperadmin,
+      features: { deliveryEnabledForShop: isDeliveryEnabledForShop(shopId) },
       shop: shopRow,
       plan,
       billing: { state: bs.state, days_left: bs.daysLeft, grace_days: GRACE_DAYS, trial_ends_at: shopRow ? shopRow.trial_ends_at : null },

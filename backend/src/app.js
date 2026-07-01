@@ -78,6 +78,15 @@ api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recip
 api.post('/billing/checkout', checkoutLimiter);   // rate-limit เฉพาะ POST /billing/checkout
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout
 api.use(require('./api/logs'));        // GET  /api/logs
+// Delivery MVP Release A — default OFF. Set DELIVERY_ENABLED=1 to activate globally.
+// Per-shop allowlist enforcement is inside the delivery router (delivery-feature.js).
+const deliveryRouter = require('./api/delivery');
+api.use('/delivery', (req, res, next) => {
+  if (process.env.DELIVERY_ENABLED !== '1') {
+    return res.status(503).json({ error: 'DELIVERY_FEATURE_DISABLED' });
+  }
+  return deliveryRouter(req, res, next);
+});
 api.use('/admin', requireSuperadmin, require('./api/admin')); // /api/admin/*
 api.use('/admin', requireSuperadmin, require('./api/clone')); // /api/admin/{export-shop,import-shop,clone-shop2}
 app.use('/api', api);

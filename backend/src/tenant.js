@@ -38,7 +38,13 @@ async function tenant(req, res, next) {
 }
 
 // ค่าเริ่มต้นสิทธิ์พนักงาน (ปลอดภัย: ขาย+ลดได้ ที่เหลือปิด) — ต้องตรงกับ DEFAULT_STAFF_PERMS ฝั่ง frontend
-const STAFF_PERM_DEFAULTS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false };
+const STAFF_PERM_DEFAULTS = {
+  discount: true, void: false, stock_receive: false, waste: false,
+  edit_recipes: false, view_cost: false, petty_cash: false,
+  // Delivery Release A permissions (default: owner-only)
+  delivery_entry: false, delivery_settlement: false,
+  correct_bill: false, void_bill: false,
+};
 
 // middleware กันชั้น API: owner/superadmin ผ่านเสมอ · staff ต้องได้รับสิทธิ์ key นั้น
 function requirePerm(key) {
