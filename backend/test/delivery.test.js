@@ -1087,6 +1087,69 @@ async function countLinks(batchId, type) {
     const hd11 = await api('GET', '/api/delivery/bill/' + hdBillId, { token: ownerBToken, shop: shopB });
     check('HD11 Shop B cannot read Shop A historical bill (404)', hd11.status === 404, hd11.status);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // MANUAL STOCK-MODE TESTS (MS1–MS8)
+    // Owner-controlled per-item stock treatment for ambiguous historical coverage.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n=== Manual Stock-Mode Tests (MS1–MS8) ===\n');
+    const msMat = crypto.randomUUID();
+    await query("INSERT INTO materials(id,shop_id,name,unit,stock_unit,price,qty,conv_qty,stock,updated_at) VALUES($1,$2,'MS-Mat','pcs','pcs',10,1,1,500,now())", [msMat, shopA]);
+    const msStock = async () => Number((await query('SELECT stock FROM materials WHERE id=$1', [msMat])).rows[0].stock);
+    const msOpen = async (platform) => (await api('POST', '/api/delivery/bill/open', { token: ownerToken, shop: shopA, body: { platform, sales_date: HD_DATE } })).data.bill.id;
+
+    // ─── MS1: DEDUCT_FULL (default) deducts full quantity ─────────────────
+    const ms1Bill = await msOpen('MS-Full');
+    const ms1Before = await msStock();
+    const ms1 = await api('POST', '/api/delivery/bill/' + ms1Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 5, unit_price: 20, chosen_options: [] } });
+    check('MS1 DEDUCT_FULL default → 201', ms1.status === 201, ms1.data);
+    check('MS1 full qty deducted (−5)', ms1Before - (await msStock()) === 5, ms1Before);
+    const ms1I = (await query('SELECT stock_mode,covered_quantity,deduction_quantity FROM delivery_sales_items WHERE id=$1', [ms1.data.item.id])).rows[0];
+    check('MS1 mode=DEDUCT_FULL, covered=0, deduction=5', ms1I.stock_mode === 'DEDUCT_FULL' && Number(ms1I.covered_quantity) === 0 && Number(ms1I.deduction_quantity) === 5, ms1I);
+
+    // ─── MS2: DEDUCT_REMAINDER deducts only (qty − covered) ───────────────
+    const ms2Bill = await msOpen('MS-Remainder');
+    const ms2Before = await msStock();
+    const ms2 = await api('POST', '/api/delivery/bill/' + ms2Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 5, unit_price: 20, chosen_options: [], stock_mode: 'DEDUCT_REMAINDER', covered_quantity: 2, coverage_reason: 'POS already covered 2' } });
+    check('MS2 DEDUCT_REMAINDER → 201', ms2.status === 201, ms2.data);
+    check('MS2 deducts remainder only (−3, not −5)', ms2Before - (await msStock()) === 3, ms2Before);
+    const ms2I = (await query('SELECT delivery_quantity,covered_quantity,deduction_quantity FROM delivery_sales_items WHERE id=$1', [ms2.data.item.id])).rows[0];
+    check('MS2 invariant deduction = delivery − covered (3=5−2)', Number(ms2I.deduction_quantity) === Number(ms2I.delivery_quantity) - Number(ms2I.covered_quantity), ms2I);
+    const ms2Mov = (await query("SELECT count(*)::int n FROM delivery_batch_stock_movements WHERE batch_id=$1 AND item_id=$2 AND operation_type='deduct'", [ms2Bill, ms2.data.item.id])).rows[0].n;
+    check('MS2 exactly one movement (no double deduction)', ms2Mov === 1, ms2Mov);
+
+    // ─── MS3: ACCOUNTING_ONLY creates no stock movement ───────────────────
+    const ms3Bill = await msOpen('MS-AcctOnly');
+    const ms3Before = await msStock();
+    const ms3 = await api('POST', '/api/delivery/bill/' + ms3Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 4, unit_price: 20, chosen_options: [], stock_mode: 'ACCOUNTING_ONLY_ALREADY_DEDUCTED', coverage_reason: 'already deducted in POS', source_pos_bill_no: 'INV-123' } });
+    check('MS3 ACCOUNTING_ONLY → 201', ms3.status === 201, ms3.data);
+    check('MS3 NO stock deducted', (await msStock()) === ms3Before, ms3Before);
+    const ms3Mov = (await query("SELECT count(*)::int n FROM delivery_batch_stock_movements WHERE batch_id=$1 AND item_id=$2", [ms3Bill, ms3.data.item.id])).rows[0].n;
+    check('MS3 zero stock movements', ms3Mov === 0, ms3Mov);
+    const ms3I = (await query('SELECT covered_quantity,deduction_quantity,coverage_reason,source_pos_bill_no,cogs_amount FROM delivery_sales_items WHERE id=$1', [ms3.data.item.id])).rows[0];
+    check('MS3 covered=qty, deduction=0, reason+source+cogs=0 stored', Number(ms3I.covered_quantity) === 4 && Number(ms3I.deduction_quantity) === 0 && ms3I.coverage_reason === 'already deducted in POS' && ms3I.source_pos_bill_no === 'INV-123' && Number(ms3I.cogs_amount) === 0, ms3I);
+
+    // ─── MS4: HOLD_FOR_REVIEW posts no stock, stays pending ───────────────
+    const ms4Bill = await msOpen('MS-Hold');
+    const ms4Before = await msStock();
+    const ms4 = await api('POST', '/api/delivery/bill/' + ms4Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 3, unit_price: 20, chosen_options: [], stock_mode: 'HOLD_FOR_REVIEW', coverage_reason: 'source unclear' } });
+    check('MS4 HOLD_FOR_REVIEW → 201', ms4.status === 201, ms4.data);
+    check('MS4 no stock deducted (held)', (await msStock()) === ms4Before, ms4Before);
+    const ms4I = (await query('SELECT stock_mode,deduction_quantity FROM delivery_sales_items WHERE id=$1', [ms4.data.item.id])).rows[0];
+    check('MS4 mode=HOLD_FOR_REVIEW, deduction=0', ms4I.stock_mode === 'HOLD_FOR_REVIEW' && Number(ms4I.deduction_quantity) === 0, ms4I);
+
+    // ─── MS5: staff cannot choose a coverage mode → 403 ───────────────────
+    const ms5Bill = await msOpen('MS-StaffDeny');
+    const ms5 = await api('POST', '/api/delivery/bill/' + ms5Bill + '/item', { token: staffHDToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [], stock_mode: 'ACCOUNTING_ONLY_ALREADY_DEDUCTED', coverage_reason: 'x' } });
+    check('MS5 staff coverage mode → 403 STOCK_MODE_REQUIRES_OWNER', ms5.status === 403 && ms5.data?.error === 'STOCK_MODE_REQUIRES_OWNER', ms5.data);
+
+    // ─── MS6/7/8: validation ──────────────────────────────────────────────
+    const ms6 = await api('POST', '/api/delivery/bill/' + ms5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [], stock_mode: 'ACCOUNTING_ONLY_ALREADY_DEDUCTED' } });
+    check('MS6 missing coverage_reason → 400 COVERAGE_REASON_REQUIRED', ms6.status === 400 && ms6.data?.error === 'COVERAGE_REASON_REQUIRED', ms6.data);
+    const ms7 = await api('POST', '/api/delivery/bill/' + ms5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [], stock_mode: 'BOGUS' } });
+    check('MS7 invalid stock_mode → 400 INVALID_STOCK_MODE', ms7.status === 400 && ms7.data?.error === 'INVALID_STOCK_MODE', ms7.data);
+    const ms8 = await api('POST', '/api/delivery/bill/' + ms5Bill + '/item', { token: ownerToken, shop: shopA, body: { menu_type: 'material', material_id: msMat, menu_name: 'MS-Mat', quantity: 2, unit_price: 20, chosen_options: [], stock_mode: 'DEDUCT_REMAINDER', covered_quantity: 5, coverage_reason: 'x' } });
+    check('MS8 covered>qty → 400 INVALID_COVERED_QUANTITY', ms8.status === 400 && ms8.data?.error === 'INVALID_COVERED_QUANTITY', ms8.data);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;
