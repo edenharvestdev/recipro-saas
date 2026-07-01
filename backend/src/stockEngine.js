@@ -241,4 +241,46 @@ async function loadCats(c) {
   return cats;
 }
 
-module.exports = { TBL, logMove, validateOptionsForLine, buildEffectiveBom, deductMaterial, deductRecipeFg, reverseMovements, loadCats };
+// Compute cost per produced unit for a recipe: sum(BOM material costs) / batch_yield.
+// Shared canonical cost source used by Delivery COGS, future POS reports, P&L.
+// Uses current material prices — caller snapshots result into delivery_sales_items.cogs_amount.
+async function computeRecipeCostPerUnit(c, shopId, recipeId) {
+  const rec = (await c.query(
+    'SELECT batch_yield FROM recipes WHERE id=$1 AND shop_id=$2',
+    [recipeId, shopId]
+  )).rows[0];
+  const batchYield = Number(rec?.batch_yield) || 1;
+
+  const items = (await c.query(
+    'SELECT material_id, sub_recipe_id, amount FROM recipe_items WHERE recipe_id=$1',
+    [recipeId]
+  )).rows;
+
+  const matItems = items.filter(i => i.material_id);
+  let totalCost = 0;
+
+  if (matItems.length) {
+    const matIds = matItems.map(i => i.material_id);
+    const prices = (await c.query(
+      'SELECT id, price, qty, conv_qty FROM materials WHERE id=ANY($1::uuid[]) AND shop_id=$2',
+      [matIds, shopId]
+    )).rows;
+    const priceMap = Object.fromEntries(prices.map(p => {
+      const pQty = Number(p.qty) || 1;
+      const cQty = Number(p.conv_qty) || 1;
+      return [p.id, pQty > 0 ? Number(p.price) / (pQty * cQty) : 0];
+    }));
+    for (const it of matItems) {
+      totalCost += (priceMap[it.material_id] || 0) * Number(it.amount || 0);
+    }
+  }
+
+  for (const it of items.filter(i => i.sub_recipe_id)) {
+    const subCost = await computeRecipeCostPerUnit(c, shopId, it.sub_recipe_id);
+    totalCost += subCost * Number(it.amount || 0);
+  }
+
+  return batchYield > 0 ? totalCost / batchYield : 0;
+}
+
+module.exports = { TBL, logMove, validateOptionsForLine, buildEffectiveBom, deductMaterial, deductRecipeFg, reverseMovements, loadCats, computeRecipeCostPerUnit };

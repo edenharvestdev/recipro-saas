@@ -449,3 +449,8 @@ ALTER TABLE delivery_sales_batches
   ADD COLUMN IF NOT EXISTS platform_gross          NUMERIC DEFAULT 0,
   ADD COLUMN IF NOT EXISTS platform_gross_variance NUMERIC,
   ADD COLUMN IF NOT EXISTS platform_gross_reason   TEXT;
+
+-- Historical cost snapshot: immutable at item-add time, survives price/recipe edits
+ALTER TABLE delivery_sales_items
+  ADD COLUMN IF NOT EXISTS cost_breakdown    JSONB,
+  ADD COLUMN IF NOT EXISTS cost_calculated_at TIMESTAMPTZ;

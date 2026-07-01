@@ -8,6 +8,9 @@ const { requirePerm } = require('../tenant');
 const engine = require('../stockEngine');
 const router = express.Router();
 
+const legacyDeliveryWriteDisabled = (req, res) =>
+  res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isUUID(s) { return typeof s === 'string' && UUID_RE.test(s); }
 
@@ -16,9 +19,7 @@ function isUUID(s) { return typeof s === 'string' && UUID_RE.test(s); }
 // ─────────────────────────────────────────────────────────────────────────
 
 // POST /api/delivery/batch — LEGACY WRITE (disabled Release A+)
-router.post('/batch', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-});
+router.post('/batch', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
 // GET /api/delivery/batches — list batches for this shop
 router.get('/batches', async (req, res) => {
@@ -79,360 +80,26 @@ router.get('/batch/:id', async (req, res) => {
 });
 
 // PATCH /api/delivery/batch/:id — LEGACY WRITE (disabled Release A+)
-router.patch('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT status FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status !== 'draft') { const e = new Error('BATCH_NOT_DRAFT'); e.statusCode = 409; throw e; }
+router.patch('/batch/:id', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
-      const { gross_sales, order_count, variance_reason, variance_note, variance_amount } = req.body || {};
-      const sets = ['updated_at=now()'];
-      const vals = [req.params.id, req.shopId];
-      let p = 3;
-      if (gross_sales !== undefined) { sets.push(`gross_sales=$${p++}`); vals.push(Number(gross_sales)); }
-      if (order_count !== undefined) { sets.push(`order_count=$${p++}`); vals.push(Number(order_count)); }
-      if (variance_reason !== undefined) { sets.push(`variance_reason=$${p++}`); vals.push(variance_reason); }
-      if (variance_note !== undefined) { sets.push(`variance_note=$${p++}`); vals.push(variance_note); }
-      if (variance_amount !== undefined) { sets.push(`variance_amount=$${p++}`); vals.push(Number(variance_amount)); }
-
-      await c.query(
-        `UPDATE delivery_sales_batches SET ${sets.join(',')} WHERE id=$1 AND shop_id=$2`,
-        vals
-      );
-      return { ok: true };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// POST /api/delivery/batch/:id/confirm — confirm draft, deduct stock (stock_aware only)
 // POST /api/delivery/batch/:id/confirm — LEGACY WRITE (disabled Release A+)
-router.post('/batch/:id/confirm', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT * FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2 FOR UPDATE',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status !== 'draft') { const e = new Error('BATCH_NOT_DRAFT'); e.statusCode = 409; throw e; }
-
-      // Idempotency: stock_operation_ref — set atomically, unique constraint prevents double-confirm
-      const opRef = `batch:${req.params.id}:confirm`;
-      const refCheck = await c.query(
-        'SELECT 1 FROM delivery_sales_batches WHERE stock_operation_ref=$1', [opRef]
-      );
-      if (refCheck.rowCount) { const e = new Error('ALREADY_CONFIRMED'); e.statusCode = 409; throw e; }
-
-      const items = (await c.query(
-        'SELECT * FROM delivery_sales_items WHERE batch_id=$1', [req.params.id]
-      )).rows;
-
-      // Gross mismatch check (stock_aware only — financial_only has no item requirement)
-      const grossFromItems = items.reduce((s, it) => s + Number(it.gross_amount || 0), 0);
-      const headerGross = Number(batch.gross_sales) || 0;
-      const TOLERANCE = 0.01;
-      if (batch.mode === 'stock_aware') {
-        if (items.length === 0) {
-          const e = new Error('STOCK_AWARE_REQUIRES_ITEMS'); e.statusCode = 400; throw e;
-        }
-        if (headerGross > 0 && Math.abs(grossFromItems - headerGross) > TOLERANCE) {
-          if (!batch.variance_reason) {
-            const e = new Error('GROSS_MISMATCH_UNRESOLVED'); e.statusCode = 400;
-            e.gross_from_items = grossFromItems; e.header_gross = headerGross; throw e;
-          }
-          if (!batch.variance_approved_by) {
-            await c.query(
-              'UPDATE delivery_sales_batches SET variance_approved_by=$1 WHERE id=$2',
-              [req.userId, req.params.id]
-            );
-          }
-        }
-      }
-
-      const stockResults = [];
-      const movementLinks = [];
-
-      if (batch.mode === 'stock_aware') {
-        const shopRow = (await c.query('SELECT make_to_order FROM shop_settings WHERE shop_id=$1', [req.shopId])).rows[0];
-        const globalMTO = shopRow ? !!shopRow.make_to_order : false;
-        const cats = await engine.loadCats(c);
-        const note = `delivery batch:${req.params.id} ${batch.platform} ${batch.sales_date_from}`;
-
-        for (const it of items) {
-          await engine.validateOptionsForLine(c, it.menu_type, it.menu_type === 'recipe' ? it.recipe_id : it.material_id, it.chosen_options || []);
-
-          if (it.menu_type === 'material') {
-            const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, it.material_id, Number(it.quantity), 'on_sale', note);
-            if (r.mvId) movementLinks.push({ mvId: r.mvId, type: 'deduct' });
-            stockResults.push(r);
-          } else {
-            const rec = (await c.query(
-              'SELECT id,name,fg_stock,yield_unit,inventory_mode FROM recipes WHERE id=$1 AND shop_id=$2 FOR UPDATE',
-              [it.recipe_id, req.shopId]
-            )).rows[0];
-            if (!rec) {
-              const globalCheck = (await c.query('select 1 from recipes where id=$1', [it.recipe_id])).rowCount;
-              const e = new Error(globalCheck ? 'FORBIDDEN_RECIPE' : 'RECIPE_NOT_FOUND');
-              e.statusCode = globalCheck ? 403 : 404; throw e;
-            }
-
-            const invMode = rec.inventory_mode || 'inherit';
-            const effectiveMode = invMode === 'inherit' ? (globalMTO ? 'make_to_order' : 'finished_goods') : invMode;
-
-            if (effectiveMode === 'non_stock') {
-              stockResults.push({ type: 'non_stock', ref_id: rec.id }); continue;
-            }
-            if (effectiveMode === 'finished_goods') {
-              const fg = Number(rec.fg_stock) || 0;
-              if (fg < Number(it.quantity)) {
-                const e = new Error('FG_STOCK_INSUFFICIENT');
-                e.statusCode = 409; e.recipeName = rec.name; e.have = fg; e.need = Number(it.quantity); throw e;
-              }
-              const r = await engine.deductRecipeFg(c, req.shopId, req.userId, rec, Number(it.quantity), 'on_sale', 'recipe_fg', note);
-              if (r.mvId) movementLinks.push({ mvId: r.mvId, type: 'deduct' });
-              stockResults.push(r); continue;
-            }
-            // make_to_order
-            const { bom, subs } = await engine.buildEffectiveBom(c, it.recipe_id, it.chosen_options || []);
-            for (const [matId, entry] of bom) {
-              if (entry.amount * Number(it.quantity) <= 0) continue;
-              const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, matId, entry.amount * Number(it.quantity), 'recipe_use', note);
-              if (r.mvId) movementLinks.push({ mvId: r.mvId, type: 'deduct' });
-              stockResults.push(r);
-            }
-            for (const s of subs) {
-              if (s.amount * Number(it.quantity) <= 0) continue;
-              const sub = (await c.query('SELECT id,name,fg_stock,yield_unit FROM recipes WHERE id=$1 AND shop_id=$2 FOR UPDATE', [s.sub_recipe_id, req.shopId])).rows[0];
-              if (!sub) {
-                const gc = (await c.query('select 1 from recipes where id=$1', [s.sub_recipe_id])).rowCount;
-                const e = new Error(gc ? 'FORBIDDEN_SUB_RECIPE' : 'SUB_RECIPE_NOT_FOUND');
-                e.statusCode = gc ? 403 : 404; throw e;
-              }
-              const r = await engine.deductRecipeFg(c, req.shopId, req.userId, sub, s.amount * Number(it.quantity), 'recipe_use', 'sub_recipe', note);
-              if (r.mvId) movementLinks.push({ mvId: r.mvId, type: 'deduct' });
-              stockResults.push(r);
-            }
-          }
-
-          // Snapshot stock_impact on item
-          await c.query('UPDATE delivery_sales_items SET stock_impact=$1 WHERE id=$2',
-            [JSON.stringify(stockResults.slice(-1)), it.id]);
-        }
-
-        // Link all movements via structured relation (correction 1)
-        for (const lnk of movementLinks) {
-          await c.query(
-            'INSERT INTO delivery_batch_stock_movements (batch_id, stock_movement_id, operation_type) VALUES ($1,$2,$3)',
-            [req.params.id, lnk.mvId, lnk.type]
-          );
-        }
-      }
-
-      // Set idempotency key + update status (single atomic update)
-      await c.query(
-        `UPDATE delivery_sales_batches
-         SET status='confirmed', stock_deducted=$1, stock_operation_ref=$2,
-             confirmed_at=now(), confirmed_by=$3, version=version+1, updated_at=now()
-         WHERE id=$4 AND shop_id=$5`,
-        [batch.mode === 'stock_aware', opRef, req.userId, req.params.id, req.shopId]
-      );
-
-      // Audit log
-      await c.query(
-        `INSERT INTO bill_audit_log (shop_id, bill_id, action, actor_id, reason, snapshot)
-         SELECT $1, b.id, 'confirmed', $2, 'delivery batch confirmed', $3::jsonb
-         FROM bills b WHERE b.delivery_batch_id=$4`,
-        [req.shopId, req.userId, JSON.stringify({ batch_id: req.params.id, platform: batch.platform }), req.params.id]
-      );
-
-      return { batch_id: req.params.id, status: 'confirmed', mode: batch.mode, stock_results: stockResults };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode === 409) return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.post('/batch/:id/confirm', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
 // DELETE /api/delivery/batch/:id — LEGACY WRITE (disabled Release A+)
-router.delete('/batch/:id', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT status FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2 FOR UPDATE',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status !== 'draft') { const e = new Error('BATCH_NOT_DRAFT'); e.statusCode = 409; throw e; }
-
-      const mvLinks = (await c.query(
-        'SELECT 1 FROM delivery_batch_stock_movements WHERE batch_id=$1 LIMIT 1', [req.params.id]
-      )).rowCount;
-      if (mvLinks) { const e = new Error('BATCH_HAS_MOVEMENTS'); e.statusCode = 409; throw e; }
-
-      await c.query('DELETE FROM delivery_sales_items WHERE batch_id=$1', [req.params.id]);
-      await c.query('DELETE FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2', [req.params.id, req.shopId]);
-      return { deleted: true };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.delete('/batch/:id', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
 // POST /api/delivery/batch/:id/void — LEGACY WRITE (disabled Release A+)
-router.post('/batch/:id/void', requirePerm('void_bill'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  const { reason } = req.body || {};
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT * FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2 FOR UPDATE',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status === 'voided') { return { voided: true, already: true }; }
-      if (!['confirmed'].includes(batch.status)) {
-        const e = new Error('BATCH_NOT_VOIDABLE'); e.statusCode = 409; throw e;
-      }
-
-      // Idempotency: check reversal_ref
-      if (batch.reversal_ref) { return { voided: true, already: true }; }
-
-      let reversal = { results: [], alreadyVoided: false };
-      if (batch.stock_deducted) {
-        // Load movement IDs via structured relation (not by note)
-        const deductIds = (await c.query(
-          `SELECT stock_movement_id FROM delivery_batch_stock_movements
-           WHERE batch_id=$1 AND operation_type='deduct'`,
-          [req.params.id]
-        )).rows.map(r => r.stock_movement_id);
-
-        if (deductIds.length) {
-          const voidNote = `void delivery batch:${req.params.id}`;
-          reversal = await engine.reverseMovements(c, req.shopId, req.userId, deductIds, voidNote);
-
-          // Link reversal movements to structured relation
-          for (const r of reversal.results) {
-            if (r.mvId) {
-              await c.query(
-                'INSERT INTO delivery_batch_stock_movements (batch_id, stock_movement_id, operation_type) VALUES ($1,$2,$3)',
-                [req.params.id, r.mvId, 'reverse']
-              );
-            }
-          }
-        }
-      }
-
-      const reversalRef = `batch:${req.params.id}:void`;
-      await c.query(
-        `UPDATE delivery_sales_batches
-         SET status='voided', reversal_ref=$1, version=version+1, updated_at=now()
-         WHERE id=$2 AND shop_id=$3`,
-        [reversalRef, req.params.id, req.shopId]
-      );
-
-      return { voided: true, already: reversal.alreadyVoided, reversal_results: reversal.results };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.post('/batch/:id/void', requirePerm('void_bill'), legacyDeliveryWriteDisabled);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Batch Items
 // ─────────────────────────────────────────────────────────────────────────
 
 // POST /api/delivery/batch/:id/items — LEGACY WRITE (disabled Release A+)
-router.post('/batch/:id/items', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT status FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status !== 'draft') { const e = new Error('BATCH_NOT_DRAFT'); e.statusCode = 409; throw e; }
-
-      const { menu_type, recipe_id, material_id, menu_code, menu_name, quantity, unit_price, gross_amount, discount_amount, chosen_options, refund_flag } = req.body || {};
-      if (!['recipe', 'material'].includes(menu_type)) { const e = new Error('invalid menu_type'); e.statusCode = 400; throw e; }
-
-      const refId = menu_type === 'recipe' ? recipe_id : material_id;
-      const table = menu_type === 'recipe' ? 'recipes' : 'materials';
-      const check = await c.query(`SELECT 1 FROM ${table} WHERE id=$1 AND shop_id=$2`, [refId, req.shopId]);
-      if (!check.rowCount) {
-        const global = (await c.query(`SELECT 1 FROM ${table} WHERE id=$1`, [refId])).rowCount;
-        const e = new Error(global ? `FORBIDDEN_${menu_type.toUpperCase()}` : `${menu_type.toUpperCase()}_NOT_FOUND`);
-        e.statusCode = global ? 403 : 404; throw e;
-      }
-
-      const r = await c.query(
-        `INSERT INTO delivery_sales_items
-           (batch_id, shop_id, menu_type, recipe_id, material_id, menu_code, menu_name,
-            quantity, unit_price, gross_amount, discount_amount, chosen_options, refund_flag)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-        [req.params.id, req.shopId, menu_type,
-         menu_type === 'recipe' ? recipe_id : null, menu_type === 'material' ? material_id : null,
-         menu_code || null, menu_name, Number(quantity), Number(unit_price) || 0,
-         Number(gross_amount) || 0, Number(discount_amount) || 0,
-         JSON.stringify(chosen_options || []), !!refund_flag]
-      );
-
-      await c.query('UPDATE delivery_sales_batches SET item_count=item_count+1, updated_at=now() WHERE id=$1', [req.params.id]);
-      return { item_id: r.rows[0].id };
-    });
-    res.status(201).json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.post('/batch/:id/items', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
 // DELETE /api/delivery/batch/:id/items/:itemId — LEGACY WRITE (disabled Release A+)
-router.delete('/batch/:id/items/:itemId', requirePerm('delivery_entry'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id) || !isUUID(req.params.itemId)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const batch = (await c.query(
-        'SELECT status FROM delivery_sales_batches WHERE id=$1 AND shop_id=$2',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!batch) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (batch.status !== 'draft') { const e = new Error('BATCH_NOT_DRAFT'); e.statusCode = 409; throw e; }
-
-      const del = await c.query('DELETE FROM delivery_sales_items WHERE id=$1 AND batch_id=$2 RETURNING id', [req.params.itemId, req.params.id]);
-      if (!del.rowCount) { const e = new Error('item not found'); e.statusCode = 404; throw e; }
-      await c.query('UPDATE delivery_sales_batches SET item_count=GREATEST(0, item_count-1), updated_at=now() WHERE id=$1', [req.params.id]);
-      return { deleted: true };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.delete('/batch/:id/items/:itemId', requirePerm('delivery_entry'), legacyDeliveryWriteDisabled);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Settlement
@@ -477,117 +144,10 @@ async function validateAllocations(c, shopId, platform, settlementId, allocation
 }
 
 // POST /api/delivery/settlement — LEGACY WRITE (disabled Release A+)
-router.post('/settlement', requirePerm('delivery_settlement'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  const {
-    platform, settlement_date,
-    gross_sales, commission_rate, commission_amount,
-    discount_funding_source, merchant_discount_amount, platform_discount_amount,
-    promotion_fee, advertising_fee, vat_on_fee, refund_amount,
-    withholding_tax, other_deduction, other_adjustment,
-    actual_bank_deposit, bank_account, settlement_reference, note,
-    allocations, legacy_bills
-  } = req.body || {};
-
-  if (!platform) return res.status(400).json({ error: 'platform required' });
-
-  const funding = discount_funding_source || 'merchant';
-  if (!['merchant', 'platform', 'shared'].includes(funding)) {
-    return res.status(400).json({ error: 'invalid discount_funding_source' });
-  }
-
-  try {
-    const out = await tx(async (c) => {
-      // Validate allocations before insert
-      await validateAllocations(c, req.shopId, platform, null, allocations, legacy_bills);
-
-      const sR = await c.query(
-        `INSERT INTO delivery_settlements
-           (shop_id, platform, settlement_date,
-            gross_sales, commission_rate, commission_amount,
-            discount_funding_source, merchant_discount_amount, platform_discount_amount,
-            promotion_fee, advertising_fee, vat_on_fee, refund_amount,
-            withholding_tax, other_deduction, other_adjustment,
-            actual_bank_deposit, bank_account, settlement_reference, note,
-            created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-         RETURNING id, merchant_net, expected_bank_cash, variance`,
-        [req.shopId, platform, settlement_date || null,
-         Number(gross_sales) || 0, Number(commission_rate) || 0, Number(commission_amount) || 0,
-         funding, Number(merchant_discount_amount) || 0, Number(platform_discount_amount) || 0,
-         Number(promotion_fee) || 0, Number(advertising_fee) || 0, Number(vat_on_fee) || 0, Number(refund_amount) || 0,
-         Number(withholding_tax) || 0, Number(other_deduction) || 0, Number(other_adjustment) || 0,
-         Number(actual_bank_deposit) || 0, bank_account || null, settlement_reference || null, note || null,
-         req.userId]
-      );
-      const sRow = sR.rows[0];
-
-      // Batch allocations
-      for (const alloc of (allocations || [])) {
-        await c.query(
-          `INSERT INTO delivery_settlement_allocation
-             (settlement_id, batch_id, allocated_gross, allocated_fee, allocated_net)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [sRow.id, alloc.batch_id, Number(alloc.allocated_gross) || 0,
-           Number(alloc.allocated_fee) || 0, Number(alloc.allocated_net) || 0]
-        );
-        // Mark allocated batches as settled
-        await c.query(
-          `UPDATE delivery_sales_batches SET status='settled', updated_at=now() WHERE id=$1 AND shop_id=$2`,
-          [alloc.batch_id, req.shopId]
-        );
-      }
-
-      // Legacy bill allocations
-      for (const lb of (legacy_bills || [])) {
-        await c.query(
-          `INSERT INTO delivery_settlement_legacy_bills
-             (settlement_id, bill_id, allocated_gross, allocated_net)
-           VALUES ($1,$2,$3,$4)`,
-          [sRow.id, lb.bill_id, Number(lb.allocated_gross) || 0, Number(lb.allocated_net) || 0]
-        );
-      }
-
-      return {
-        settlement_id: sRow.id,
-        merchant_net: Number(sRow.merchant_net),
-        expected_bank_cash: Number(sRow.expected_bank_cash),
-        variance: Number(sRow.variance)
-      };
-    });
-    res.status(201).json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.post('/settlement', requirePerm('delivery_settlement'), legacyDeliveryWriteDisabled);
 
 // POST /api/delivery/settlement/:id/confirm — LEGACY WRITE (disabled Release A+)
-router.post('/settlement/:id/confirm', requirePerm('delivery_settlement'), async (req, res) => {
-  return res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
-  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
-  try {
-    const out = await tx(async (c) => {
-      const s = (await c.query(
-        'SELECT status FROM delivery_settlements WHERE id=$1 AND shop_id=$2 FOR UPDATE',
-        [req.params.id, req.shopId]
-      )).rows[0];
-      if (!s) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (s.status === 'locked') { const e = new Error('SETTLEMENT_LOCKED'); e.statusCode = 409; throw e; }
-      if (s.status === 'confirmed') { return { status: 'confirmed', already: true }; }
-
-      await c.query(
-        `UPDATE delivery_settlements SET status='confirmed', confirmed_by=$1, confirmed_at=now(), updated_at=now() WHERE id=$2`,
-        [req.userId, req.params.id]
-      );
-      return { status: 'confirmed' };
-    });
-    res.json(out);
-  } catch (e) {
-    if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
+router.post('/settlement/:id/confirm', requirePerm('delivery_settlement'), legacyDeliveryWriteDisabled);
 
 // GET /api/delivery/settlements
 router.get('/settlements', async (req, res) => {
@@ -1012,10 +572,14 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
       let itemCogs = 0;
 
       if (menu_type === 'material') {
-        const matRow = (await c.query('SELECT price FROM materials WHERE id=$1 AND shop_id=$2', [material_id, req.shopId])).rows[0];
+        const matRow = (await c.query('SELECT price, qty, conv_qty FROM materials WHERE id=$1 AND shop_id=$2', [material_id, req.shopId])).rows[0];
         const r = await engine.deductMaterial(c, req.shopId, req.userId, cats, material_id, qty, 'on_sale', note);
         if (r.mvId) movementLinks.push(r.mvId);
-        itemCogs = (matRow ? Number(matRow.price) : 0) * qty;
+        if (matRow) {
+          const pQty = Number(matRow.qty) || 1;
+          const cQty = Number(matRow.conv_qty) || 1;
+          itemCogs = pQty > 0 ? (Number(matRow.price) / (pQty * cQty)) * qty : 0;
+        }
       } else {
         const rec = (await c.query(
           'SELECT id,name,fg_stock,yield_unit,inventory_mode FROM recipes WHERE id=$1 AND shop_id=$2 FOR UPDATE',
@@ -1038,6 +602,8 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
             }
             const r = await engine.deductRecipeFg(c, req.shopId, req.userId, rec, qty, 'on_sale', 'recipe_fg', note);
             if (r.mvId) movementLinks.push(r.mvId);
+            const fgCostPerUnit = await engine.computeRecipeCostPerUnit(c, req.shopId, recipe_id);
+            itemCogs = fgCostPerUnit * qty;
           } else {
             // make_to_order — deduct BOM, accumulate COGS
             const { bom, subs } = await engine.buildEffectiveBom(c, recipe_id, chosen_options);
@@ -1069,23 +635,27 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
               if (!sub) continue;
               const r = await engine.deductRecipeFg(c, req.shopId, req.userId, sub, amt, 'recipe_use', 'sub_recipe', note);
               if (r.mvId) movementLinks.push(r.mvId);
+              const subCostPerUnit = await engine.computeRecipeCostPerUnit(c, req.shopId, s.sub_recipe_id);
+              itemCogs += subCostPerUnit * amt;
             }
           }
         }
       }
 
+      const costBreakdown = { type: menu_type, cogs: itemCogs };
       const itemRow = (await c.query(
         `INSERT INTO delivery_sales_items
            (batch_id, shop_id, menu_type, recipe_id, material_id, menu_code,
             menu_name, quantity, unit_price, gross_amount, discount_amount,
-            chosen_options, cogs_amount, order_no, staff_added_by, staff_added_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            chosen_options, cogs_amount, cost_breakdown, cost_calculated_at,
+            order_no, staff_added_by, staff_added_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15,$16,$17) RETURNING *`,
         [
           req.params.id, req.shopId, menu_type,
           menu_type === 'recipe'   ? recipe_id   : null,
           menu_type === 'material' ? material_id : null,
           menu_code || null, menu_name, qty, price, itemGross, disc,
-          JSON.stringify(chosen_options), itemCogs,
+          JSON.stringify(chosen_options), itemCogs, JSON.stringify(costBreakdown),
           order_no || null, req.userId, req.userName || null
         ]
       )).rows[0];

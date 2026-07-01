@@ -474,6 +474,12 @@ async function countLinks(batchId, type) {
     const cRecSub      = crypto.randomUUID();  // C9: sub-recipe FG component
     const cRecWithSub  = crypto.randomUUID();  // C9: MTO recipe using sub-recipe only
     const cRecBase     = crypto.randomUUID();  // C6/C7/C8: 50 g sugar base with options
+    const cRecWithSub2 = crypto.randomUUID();  // C16: cRecSub x2
+    const c18Recipe    = crypto.randomUUID();  // C18: material + sub-recipe
+    const c17SubA      = crypto.randomUUID();  // C17: sub recipe A (sugar-based, batch_yield=5)
+    const c17SubB      = crypto.randomUUID();  // C17: sub recipe B (oil-based, batch_yield=3)
+    const c17Parent    = crypto.randomUUID();  // C17: multiple sub-recipe parent
+    const c19Recipe    = crypto.randomUUID();  // C19: sub-recipe + ADD option
 
     await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-SugarDrink\',\'cup\',99,\'make_to_order\',now())', [cRecSugar50, shopA]);
     await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,50,NULL)', [cRecSugar50, cMatSugar]);
@@ -490,9 +496,11 @@ async function countLinks(batchId, type) {
     await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-MatchaDrink\',\'cup\',99,\'make_to_order\',now())', [cRecMatcha10, shopA]);
     await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,10,NULL)', [cRecMatcha10, cMatMatcha]);
 
-    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-FGItem\',\'pcs\',50,\'finished_goods\',now())', [cRecFG, shopA]);
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,batch_yield,inventory_mode,updated_at) VALUES($1,$2,\'C-FGItem\',\'pcs\',50,10,\'finished_goods\',now())', [cRecFG, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,3,NULL)', [cRecFG, cMatEgg]);
 
-    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-SubRec\',\'pcs\',50,\'finished_goods\',now())', [cRecSub, shopA]);
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,batch_yield,inventory_mode,updated_at) VALUES($1,$2,\'C-SubRec\',\'pcs\',50,5,\'finished_goods\',now())', [cRecSub, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,2,NULL)', [cRecSub, cMatEgg]);
     await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-WithSub\',\'cup\',99,\'make_to_order\',now())', [cRecWithSub, shopA]);
     await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,1)', [cRecWithSub, cRecSub]);
 
@@ -526,6 +534,32 @@ async function countLinks(batchId, type) {
     await query('INSERT INTO option_groups(id,shop_id,label,required,enabled) VALUES($1,$2,\'C-Size\',false,true)', [cGrpVariant, shopA]);
     await query('INSERT INTO option_choices(id,group_id,label,effect_type,variant_recipe_id,enabled) VALUES($1,$2,\'Large\',\'RECIPE_VARIANT\',$3,true)', [cChoiceVariant, cGrpVariant, cRecVariant]);
     await query('INSERT INTO recipe_option_groups(recipe_id,group_id) VALUES($1,$2)', [cRecBase, cGrpVariant]);
+
+    // C16: cRecWithSub2 — MTO, BOM = cRecSub x2
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C-WithSub2\',\'cup\',99,\'make_to_order\',now())', [cRecWithSub2, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,2)', [cRecWithSub2, cRecSub]);
+
+    // C17: sub recipes A and B with explicit batch_yield
+    // c17SubA: batch_yield=5, 50g sugar -> cost_per_unit = (50*0.09)/5 = 0.90
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,batch_yield,inventory_mode,updated_at) VALUES($1,$2,\'C17-SubA\',\'pcs\',99,5,\'make_to_order\',now())', [c17SubA, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,50,NULL)', [c17SubA, cMatSugar]);
+    // c17SubB: batch_yield=3, 30ml oil -> cost_per_unit = (30*0.12)/3 = 1.20
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,batch_yield,inventory_mode,updated_at) VALUES($1,$2,\'C17-SubB\',\'pcs\',99,3,\'make_to_order\',now())', [c17SubB, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,30,NULL)', [c17SubB, cMatOil]);
+    // c17Parent: MTO, BOM = c17SubA x1 + c17SubB x2 -> 0.90+2.40 = 3.30
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C17-Parent\',\'pcs\',99,\'make_to_order\',now())', [c17Parent, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,1)', [c17Parent, c17SubA]);
+    await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,2)', [c17Parent, c17SubB]);
+
+    // C18: c18Recipe — MTO, BOM = cMatEgg x3 + cRecSub x1 -> 15+2 = 17.00
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C18-Recipe\',\'pcs\',99,\'make_to_order\',now())', [c18Recipe, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,material_id,amount,role) VALUES($1,$2,3,NULL)', [c18Recipe, cMatEgg]);
+    await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,1)', [c18Recipe, cRecSub]);
+
+    // C19: c19Recipe — MTO, BOM = cRecSub x1 + cGrpAdd option -> 2.00+1.80 = 3.80
+    await query('INSERT INTO recipes(id,shop_id,name,yield_unit,fg_stock,inventory_mode,updated_at) VALUES($1,$2,\'C19-Recipe\',\'pcs\',99,\'make_to_order\',now())', [c19Recipe, shopA]);
+    await query('INSERT INTO recipe_items(recipe_id,sub_recipe_id,amount) VALUES($1,$2,1)', [c19Recipe, cRecSub]);
+    await query('INSERT INTO recipe_option_groups(recipe_id,group_id) VALUES($1,$2)', [c19Recipe, cGrpAdd]);
 
     // Open a dedicated bill for COGS tests
     const cBillOpen = await api('POST', '/api/delivery/bill/open', {
@@ -620,24 +654,25 @@ async function countLinks(batchId, type) {
 
     // â”€â”€â”€ C9: sub-recipe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // cRecWithSub has only a sub_recipe_id row (no direct materials).
-    // Sub-recipe fg_stock is deducted but contributes no material COGS â†’ itemCogs = 0
+    // Sub-recipe cogs now computed via computeRecipeCostPerUnit. cRecSub cost_per_unit = 2.00 â†’ itemCogs = 0
     const c9 = await api('POST', '/api/delivery/bill/' + cBillId + '/item', {
       token: ownerToken, shop: shopA,
       body: { menu_type: 'recipe', recipe_id: cRecWithSub, menu_name: 'WithSub', quantity: 1, unit_price: 100, chosen_options: [] }
     });
     check('C9 sub-recipe item added (201)', c9.status === 201, c9.data);
     const c9row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c9.data.item?.id])).rows[0];
-    check('C9 sub-recipe: cogs_amount = à¸¿0.00 (no BOM materials)', Math.abs(Number(c9row?.cogs_amount)) < 0.01, c9row?.cogs_amount);
+    // cRecSub: batch_yield=5, BOM=2 eggs x 5 = 10 -> cost_per_unit=2.00; cRecWithSub uses cRecSub x1 x qty=1 -> cogs=2.00
+    check('C9 sub-recipe: cogs_amount = à¸¿0.00 (computeRecipeCostPerUnit x 1)', Math.abs(Number(c9row?.cogs_amount) - 2.00) < 0.01, c9row?.cogs_amount);
 
     // â”€â”€â”€ C10: finished goods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // FG recipe deducts fg_stock; COGS path is not triggered â†’ itemCogs = 0
+    // FG recipe: computeRecipeCostPerUnit used. cRecFG batch_yield=10, BOM=3 eggs x 5 = 15 -> cost_per_unit=1.50 â†’ itemCogs = 0
     const c10 = await api('POST', '/api/delivery/bill/' + cBillId + '/item', {
       token: ownerToken, shop: shopA,
       body: { menu_type: 'recipe', recipe_id: cRecFG, menu_name: 'FG Item', quantity: 1, unit_price: 100, chosen_options: [] }
     });
     check('C10 FG item added (201)', c10.status === 201, c10.data);
     const c10row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c10.data.item?.id])).rows[0];
-    check('C10 finished goods: cogs_amount = à¸¿0.00 (FG deducts fg_stock, not BOM)', Math.abs(Number(c10row?.cogs_amount)) < 0.01, c10row?.cogs_amount);
+    check('C10 finished goods: cogs_amount = à¸¿0.00 (FG: cost_per_unit=(3x5)/10=1.50, qty=1)', Math.abs(Number(c10row?.cogs_amount) - 1.50) < 0.01, c10row?.cogs_amount);
 
     // â”€â”€â”€ C11: multiple item quantities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Sugar recipe qty=3: cogs = 50 g Ã— 3 Ã— 0.09 = à¸¿13.50
@@ -650,16 +685,165 @@ async function countLinks(batchId, type) {
     check('C11 qty=3: cogs_amount = à¸¿13.50  (50 g Ã— 3 Ã— 0.09)', Math.abs(Number(c11row?.cogs_amount) - 13.50) < 0.01, c11row?.cogs_amount);
 
     // â”€â”€â”€ C12: batch total COGS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // C1=4.50 C2=24.00 C3=10.00 C4=15.25 C5=5.00 C6=6.30 C7=24.00 C8=9.00 C9=0 C10=0 C11=13.50
-    // Total = 111.55
+    // C1=4.50 C2=24.00 C3=10.00 C4=15.25 C5=5.00 C6=6.30 C7=24.00 C8=9.00 C9=2.00 C10=1.50 C11=13.50
+    // Total = 115.05
     const c12bill = (await api('GET', '/api/delivery/bill/' + cBillId, { token: ownerToken, shop: shopA })).data.bill;
-    check('C12 batch cogs_total = à¸¿111.55', Math.abs(Number(c12bill?.cogs_total) - 111.55) < 0.01, c12bill?.cogs_total);
+    check('C12 batch cogs_total = à¸¿115.05', Math.abs(Number(c12bill?.cogs_total) - 115.05) < 0.01, c12bill?.cogs_total);
 
     // â”€â”€â”€ C13: gross profit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // 10 items Ã— qty=1 Ã— à¸¿100 + 1 item Ã— qty=3 Ã— à¸¿100 = à¸¿1300 gross (no discounts)
-    // gross_profit = à¸¿1300 âˆ’ à¸¿111.55 = à¸¿1188.45
-    check('C13 gross_profit = batch_item_net âˆ’ cogs_total = à¸¿1188.45',
-      Math.abs(Number(c12bill?.gross_profit) - 1188.45) < 0.01, c12bill?.gross_profit);
+    // gross_profit = à¸¿1300 âˆ’ à¸¿115.05 = à¸¿1184.95
+    check('C13 gross_profit = batch_item_net âˆ’ cogs_total = à¸¿1184.95',
+      Math.abs(Number(c12bill?.gross_profit) - 1184.95) < 0.01, c12bill?.gross_profit);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // COGS UNIT TESTS (C14-C26)
+    // Extended COGS correctness: FG, nested subs, direct-sale material, snapshot
+    // ═══════════════════════════════════════════════════════════════════════════
+    console.log('\n=== COGS Unit Tests (C14-C26) ===\n');
+
+    // Open a fresh bill for C14-C24 tests
+    const cBill2Open = await api('POST', '/api/delivery/bill/open', {
+      token: ownerToken, shop: shopA,
+      body: { platform: 'COGSTest2', sales_date: '2026-07-21' }
+    });
+    const c14BillId = cBill2Open.data.bill?.id;
+    check('C14-bill COGSTest2 bill opened', !!c14BillId, cBill2Open.data);
+
+    // --- C14: FG qty=2 -> cogs = 1.50 * 2 = 3.00 ----------------------------
+    // cRecFG: batch_yield=10, BOM=3 eggs x 5 = 15; cost_per_unit=1.50; qty=2 -> 3.00
+    const c14 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: cRecFG, menu_name: 'FG x2', quantity: 2, unit_price: 100, chosen_options: [] }
+    });
+    check('C14 FG qty=2 added (201)', c14.status === 201, c14.data);
+    const c14row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c14.data.item?.id])).rows[0];
+    check('C14 FG qty=2: cogs_amount = 3.00 (1.50 x 2)', Math.abs(Number(c14row?.cogs_amount) - 3.00) < 0.01, c14row?.cogs_amount);
+
+    // --- C15: FG cost_breakdown has type='recipe' ----------------------------
+    const c15row = (await query('SELECT cost_breakdown FROM delivery_sales_items WHERE id=$1', [c14.data.item?.id])).rows[0];
+    check('C15 cost_breakdown is non-null', c15row?.cost_breakdown !== null, c15row?.cost_breakdown);
+    check('C15 cost_breakdown.type = recipe', c15row?.cost_breakdown?.type === 'recipe', c15row?.cost_breakdown);
+
+    // --- C16: cRecWithSub2 (cRecSub x2), qty=1 -> cogs = 2.00 * 2 = 4.00 ---
+    const c16 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: cRecWithSub2, menu_name: 'WithSub2', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    check('C16 sub x2 added (201)', c16.status === 201, c16.data);
+    const c16row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c16.data.item?.id])).rows[0];
+    check('C16 sub x2: cogs_amount = 4.00 (2.00 x 2)', Math.abs(Number(c16row?.cogs_amount) - 4.00) < 0.01, c16row?.cogs_amount);
+
+    // --- C17: c17Parent (c17SubA x1 + c17SubB x2) -> 0.90+2.40 = 3.30 ------
+    // c17SubA: batch_yield=5, 50g sugar -> 0.90/unit
+    // c17SubB: batch_yield=3, 30ml oil  -> 1.20/unit
+    const c17 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: c17Parent, menu_name: 'C17Parent', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    check('C17 multi-sub added (201)', c17.status === 201, c17.data);
+    const c17row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c17.data.item?.id])).rows[0];
+    check('C17 multi-sub: cogs_amount = 3.30 (0.90x1 + 1.20x2)', Math.abs(Number(c17row?.cogs_amount) - 3.30) < 0.01, c17row?.cogs_amount);
+
+    // --- C18: c18Recipe (cMatEgg x3 + cRecSub x1), qty=1 -> 15+2 = 17.00 ---
+    const c18 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: c18Recipe, menu_name: 'C18Recipe', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    check('C18 mat+sub added (201)', c18.status === 201, c18.data);
+    const c18row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c18.data.item?.id])).rows[0];
+    check('C18 mat+sub: cogs_amount = 17.00 (3x5 + 2.00)', Math.abs(Number(c18row?.cogs_amount) - 17.00) < 0.01, c18row?.cogs_amount);
+
+    // --- C19: c19Recipe (cRecSub x1) + ADD 20g sugar, qty=1 -> 2.00+1.80 = 3.80 --
+    const c19 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: c19Recipe, menu_name: 'C19Recipe', quantity: 1, unit_price: 100,
+              chosen_options: [{ group_id: cGrpAdd, choice_id: cChoiceAdd }] }
+    });
+    check('C19 sub+ADD added (201)', c19.status === 201, c19.data);
+    const c19row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c19.data.item?.id])).rows[0];
+    check('C19 sub+ADD: cogs_amount = 3.80 (2.00 sub + 1.80 sugar ADD)', Math.abs(Number(c19row?.cogs_amount) - 3.80) < 0.01, c19row?.cogs_amount);
+
+    // --- C20: direct-sale material cMatEgg qty=4 -> 4 * (5/1) = 20.00 ------
+    const c20 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'material', material_id: cMatEgg, menu_name: 'Egg Direct', quantity: 4, unit_price: 25, chosen_options: [] }
+    });
+    check('C20 direct-sale mat added (201)', c20.status === 201, c20.data);
+    const c20row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c20.data.item?.id])).rows[0];
+    check('C20 direct-sale egg: cogs_amount = 20.00 (4 x 5)', Math.abs(Number(c20row?.cogs_amount) - 20.00) < 0.01, c20row?.cogs_amount);
+
+    // --- C21: direct-sale material cMatSugar qty=50 -> 50 * (90/1000) = 4.50 -
+    const c21 = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'material', material_id: cMatSugar, menu_name: 'Sugar Direct', quantity: 50, unit_price: 10, chosen_options: [] }
+    });
+    check('C21 direct-sale sugar added (201)', c21.status === 201, c21.data);
+    const c21row = (await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c21.data.item?.id])).rows[0];
+    check('C21 direct-sale sugar: cogs_amount = 4.50 (50 x 0.09)', Math.abs(Number(c21row?.cogs_amount) - 4.50) < 0.01, c21row?.cogs_amount);
+
+    // --- C22: cogs_amount snapshot is immutable after price update -----------
+    // Add a fresh cRecEgg2 item (2 eggs x 5 = 10), then change price to 999, re-read item
+    const c22add = await api('POST', '/api/delivery/bill/' + c14BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: cRecEgg2, menu_name: 'Egg Snap', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    const c22ItemId = c22add.data.item?.id;
+    const c22Before = Number((await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c22ItemId])).rows[0]?.cogs_amount);
+    await query('UPDATE materials SET price=999 WHERE id=$1', [cMatEgg]);
+    const c22After = Number((await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c22ItemId])).rows[0]?.cogs_amount);
+    check('C22 cogs_amount immutable after price update', Math.abs(c22Before - c22After) < 0.01, { before: c22Before, after: c22After });
+    await query('UPDATE materials SET price=5 WHERE id=$1', [cMatEgg]);  // reset
+
+    // --- C23: bill.cogs_total = SUM(delivery_sales_items.cogs_amount) --------
+    const c23SumRow = (await query('SELECT SUM(cogs_amount)::numeric as total FROM delivery_sales_items WHERE batch_id=$1', [c14BillId])).rows[0];
+    const c23BillData = (await api('GET', '/api/delivery/bill/' + c14BillId, { token: ownerToken, shop: shopA })).data.bill;
+    check('C23 cogs_total = SUM(items.cogs_amount)',
+      Math.abs(Number(c23SumRow.total) - Number(c23BillData?.cogs_total)) < 0.01,
+      { sum: c23SumRow.total, bill: c23BillData?.cogs_total });
+
+    // --- C24: gross_profit = batch_item_net - cogs_total ---------------------
+    check('C24 gross_profit = batch_item_net - cogs_total',
+      Math.abs(Number(c23BillData?.gross_profit) - (Number(c23BillData?.batch_item_net) - Number(c23BillData?.cogs_total))) < 0.01,
+      { gross_profit: c23BillData?.gross_profit, batch_item_net: c23BillData?.batch_item_net, cogs_total: c23BillData?.cogs_total });
+
+    // --- C25: Void preserves item.cogs_amount and bill.cogs_total ------------
+    const c25Open = await api('POST', '/api/delivery/bill/open', {
+      token: ownerToken, shop: shopA, body: { platform: 'C25VoidTest', sales_date: '2026-07-22' }
+    });
+    const c25BillId = c25Open.data.bill?.id;
+    const c25add = await api('POST', '/api/delivery/bill/' + c25BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: cRecEgg2, menu_name: 'Egg VoidTest', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    const c25ItemCogsBefore = Number((await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c25add.data.item?.id])).rows[0]?.cogs_amount);
+    const c25BillCogsBefore = Number((await api('GET', '/api/delivery/bill/' + c25BillId, { token: ownerToken, shop: shopA })).data.bill?.cogs_total);
+    await api('POST', '/api/delivery/bill/' + c25BillId + '/void', { token: ownerToken, shop: shopA, body: { reason: 'C25 test' } });
+    const c25ItemCogsAfter = Number((await query('SELECT cogs_amount FROM delivery_sales_items WHERE id=$1', [c25add.data.item?.id])).rows[0]?.cogs_amount);
+    const c25BillCogsAfter = Number((await api('GET', '/api/delivery/bill/' + c25BillId, { token: ownerToken, shop: shopA })).data.bill?.cogs_total);
+    check('C25 item.cogs_amount preserved after void', Math.abs(c25ItemCogsBefore - c25ItemCogsAfter) < 0.01, { before: c25ItemCogsBefore, after: c25ItemCogsAfter });
+    check('C25 bill.cogs_total preserved after void', Math.abs(c25BillCogsBefore - c25BillCogsAfter) < 0.01, { before: c25BillCogsBefore, after: c25BillCogsAfter });
+
+    // --- C26: Reconciled bill cogs_total unchanged after material price edit --
+    const c26Open = await api('POST', '/api/delivery/bill/open', {
+      token: ownerToken, shop: shopA, body: { platform: 'C26RecTest', sales_date: '2026-07-23' }
+    });
+    const c26BillId = c26Open.data.bill?.id;
+    await api('POST', '/api/delivery/bill/' + c26BillId + '/item', {
+      token: ownerToken, shop: shopA,
+      body: { menu_type: 'recipe', recipe_id: cRecSugar50, menu_name: 'Sugar Reconcile', quantity: 1, unit_price: 100, chosen_options: [] }
+    });
+    // cRecSugar50: 50g x 0.09 = 4.50 cogs
+    await api('POST', '/api/delivery/bill/' + c26BillId + '/close', { token: ownerToken, shop: shopA });
+    const c26Settle = await api('PATCH', '/api/delivery/bill/' + c26BillId + '/settle', {
+      token: ownerToken, shop: shopA,
+      body: { commission_amount: 0, actual_bank_deposit: 100 }
+    });
+    check('C26 bill reconciled', c26Settle.data?.status === 'reconciled', c26Settle.data?.status);
+    const c26CogsBefore = Number((await api('GET', '/api/delivery/bill/' + c26BillId, { token: ownerToken, shop: shopA })).data.bill?.cogs_total);
+    await query('UPDATE materials SET price=999 WHERE id=$1', [cMatSugar]);
+    const c26CogsAfter = Number((await api('GET', '/api/delivery/bill/' + c26BillId, { token: ownerToken, shop: shopA })).data.bill?.cogs_total);
+    check('C26 reconciled bill.cogs_total unchanged after price edit', Math.abs(c26CogsBefore - c26CogsAfter) < 0.01, { before: c26CogsBefore, after: c26CogsAfter });
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
