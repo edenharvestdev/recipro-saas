@@ -17,6 +17,60 @@ const legacyDeliveryWriteDisabled = (req, res) =>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isUUID(s) { return typeof s === 'string' && UUID_RE.test(s); }
 
+// Historical-entry safety: predict which stock items an item-add would drive below zero,
+// mirroring the exact deduction paths (direct material / FG recipe / make-to-order BOM+subs).
+// Returns [] when nothing goes negative. Read-only — performs no writes.
+async function assessShortfalls(c, shopId, { menu_type, recipe_id, material_id, qty, chosen_options }, cats, globalMTO) {
+  const short = [];
+  const push = (ref_type, r, current, deduct) =>
+    short.push({ ref_type, ref_id: r.id, name: r.name, unit: r.unit || r.yield_unit || null,
+                 current, deduct, resulting: current - deduct });
+
+  if (menu_type === 'material') {
+    const m = (await c.query('SELECT id,name,unit,stock,item_type FROM materials WHERE id=$1 AND shop_id=$2', [material_id, shopId])).rows[0];
+    if (m) {
+      const cat = m.item_type ? cats[m.item_type] : null;
+      const deducted = !(cat && cat.deducted === false && !(m.item_type === 'SALE')); // 'on_sale' direct-sale path
+      const cur = Number(m.stock) || 0;
+      if (deducted && cur < qty) push('material', m, cur, qty);
+    }
+    return short;
+  }
+
+  const rec = (await c.query('SELECT id,name,fg_stock,yield_unit,inventory_mode FROM recipes WHERE id=$1 AND shop_id=$2', [recipe_id, shopId])).rows[0];
+  if (!rec) return short;
+  const invMode = rec.inventory_mode || 'inherit';
+  const eff = invMode === 'inherit' ? (globalMTO ? 'make_to_order' : 'finished_goods') : invMode;
+  if (eff === 'non_stock') return short;
+
+  if (eff === 'finished_goods') {
+    const cur = Number(rec.fg_stock) || 0;
+    if (cur < qty) push('recipe', rec, cur, qty);
+    return short;
+  }
+
+  // make_to_order — same effective BOM the deduction will use
+  const { bom, subs } = await engine.buildEffectiveBom(c, recipe_id, chosen_options);
+  const matIds = [...bom.keys()];
+  const mats = matIds.length
+    ? (await c.query('SELECT id,name,unit,stock,item_type FROM materials WHERE id=ANY($1::uuid[]) AND shop_id=$2', [matIds, shopId])).rows
+    : [];
+  for (const [matId, entry] of bom) {
+    const m = mats.find(x => x.id === matId); if (!m) continue;
+    const cat = m.item_type ? cats[m.item_type] : null;
+    if (cat && cat.deducted === false) continue;
+    const need = entry.amount * qty; const cur = Number(m.stock) || 0;
+    if (need > 0 && cur < need) push('material', m, cur, need);
+  }
+  for (const s of subs) {
+    const sub = (await c.query('SELECT id,name,fg_stock,yield_unit FROM recipes WHERE id=$1 AND shop_id=$2', [s.sub_recipe_id, shopId])).rows[0];
+    if (!sub) continue;
+    const need = s.amount * qty; const cur = Number(sub.fg_stock) || 0;
+    if (need > 0 && cur < need) push('recipe', sub, cur, need);
+  }
+  return short;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Batch CRUD
 // ─────────────────────────────────────────────────────────────────────────
@@ -569,7 +623,35 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
       const shopRow = (await c.query('SELECT make_to_order FROM shop_settings WHERE shop_id=$1', [req.shopId])).rows[0];
       const globalMTO = shopRow ? !!shopRow.make_to_order : false;
       const cats = await engine.loadCats(c);
-      const note = `delivery bill:${req.params.id} item-add ${bill.platform} ${bill.sales_date || bill.sales_date_from}`;
+
+      // Negative-stock safety — applies to HISTORICAL backfill only (sales_date in the past),
+      // where a past sale may legitimately exceed today's stock. Same-day entries keep the
+      // original behaviour (materials clamp at 0, FG hard-blocks) so live POS/Delivery is unchanged.
+      // On a historical shortfall: warn + require Owner confirmation. Normal staff can never
+      // override; only owner/superadmin with an explicit reason.
+      const isHistorical = (await c.query(
+        'SELECT (sales_date IS NOT NULL AND sales_date < CURRENT_DATE) AS h FROM delivery_sales_batches WHERE id=$1',
+        [req.params.id]
+      )).rows[0]?.h === true;
+      const isOwner = req.role === 'owner' || req.isSuperadmin === true;
+      const allowNegative = req.body.allow_negative === true;
+      const negativeReason = String(req.body.negative_reason || '').trim();
+      let overridden = false;
+      if (isHistorical) {
+        const shortfalls = await assessShortfalls(
+          c, req.shopId, { menu_type, recipe_id, material_id, qty, chosen_options }, cats, globalMTO
+        );
+        overridden = shortfalls.length > 0 && isOwner && allowNegative && negativeReason.length > 0;
+        if (shortfalls.length > 0 && !overridden) {
+          const e = new Error('NEGATIVE_STOCK_WARNING');
+          e.statusCode = 409; e.shortfalls = shortfalls; e.requiresOwner = true;
+          e.canOverride = isOwner;   // false → staff must ask an owner
+          throw e;
+        }
+      }
+
+      const note = `delivery bill:${req.params.id} item-add ${bill.platform} ${bill.sales_date || bill.sales_date_from}`
+        + (overridden ? ` [neg-override: ${negativeReason}]` : '');
 
       const movementLinks = [];
       let itemCogs = 0;
@@ -599,7 +681,7 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
         if (effectiveMode !== 'non_stock') {
           if (effectiveMode === 'finished_goods') {
             const fg = Number(rec.fg_stock) || 0;
-            if (fg < qty) {
+            if (fg < qty && !overridden) {
               const e = new Error('FG_STOCK_INSUFFICIENT');
               e.statusCode = 409; e.recipeName = rec.name; e.have = fg; e.need = qty; throw e;
             }
@@ -666,9 +748,15 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
       for (const mvId of movementLinks) {
         await c.query(
           `INSERT INTO delivery_batch_stock_movements
-             (batch_id, stock_movement_id, operation_type, item_id)
-           VALUES ($1,$2,'deduct',$3) ON CONFLICT (batch_id, stock_movement_id) DO NOTHING`,
-          [req.params.id, mvId, itemRow.id]
+             (batch_id, stock_movement_id, operation_type, item_id,
+              business_date, entry_reason, negative_reason)
+           VALUES ($1,$2,'deduct',$3,
+             (SELECT sales_date FROM delivery_sales_batches WHERE id=$1),
+             CASE WHEN (SELECT sales_date FROM delivery_sales_batches WHERE id=$1) < CURRENT_DATE
+                  THEN 'historical_backfill' ELSE 'same_day' END,
+             $4)
+           ON CONFLICT (batch_id, stock_movement_id) DO NOTHING`,
+          [req.params.id, mvId, itemRow.id, overridden ? negativeReason : null]
         );
       }
 
@@ -687,7 +775,10 @@ router.post('/bill/:id/item', requirePerm('delivery_entry'), async (req, res) =>
     });
     res.status(201).json(out);
   } catch (e) {
-    if (e.statusCode === 409) return res.status(409).json({ error: e.message, recipeName: e.recipeName, have: e.have, need: e.need });
+    if (e.statusCode === 409) return res.status(409).json({
+      error: e.message, recipeName: e.recipeName, have: e.have, need: e.need,
+      shortfalls: e.shortfalls, requiresOwner: e.requiresOwner, canOverride: e.canOverride
+    });
     if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
     res.status(500).json({ error: e.message });
   }
