@@ -712,6 +712,16 @@ body.theme-dark .brand-logo-area img { filter: drop-shadow(0 0 2px rgba(244,122,
    14. GRIDS & STAT CARDS
    ---------------------------------------------------------------------------- */
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+
+/* Stock / Production page (P1 responsive fix): the two stock sections each carry a
+   table plus inline inputs (รับเข้า / ปรับค่า / quantity). Below ~1440px two columns
+   cram the right-side controls, forcing users to zoom to 80%. Stack them until the
+   viewport is genuinely wide enough. Scoped to .stock-sections so the shared .grid-2
+   utility (used across other pages) is unchanged. */
+.grid-2.stock-sections { grid-template-columns: 1fr; }
+@media (min-width: 1440px) {
+  .grid-2.stock-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 
