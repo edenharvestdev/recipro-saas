@@ -11188,6 +11188,13 @@ function dlvOpenBillForSelected(platform) {
   const today = new Date().toISOString().slice(0, 10);
   dlvOpenBill(platform, _dlvSelectedDate || today);
 }
+// Toggle covered-qty / reason inputs based on the chosen stock mode.
+function dlvStockModeChange() {
+  const m = (($('dlvStockMode') || {}).value) || 'DEDUCT_FULL';
+  const cov = $('dlvCoveredWrap'), rea = $('dlvCoverWrap');
+  if (cov) cov.style.display = (m === 'DEDUCT_REMAINDER') ? 'inline-flex' : 'none';
+  if (rea) rea.style.display = (m !== 'DEDUCT_FULL') ? 'inline-flex' : 'none';
+}
 
 // ── open or return existing active bill ───────────────────────────────────
 async function dlvOpenBill(platform, dateStr) {
@@ -11330,6 +11337,26 @@ function dlvBillHtml(b, items, movements) {
       + '<label style="font-size:11px;color:var(--color-text-muted);">เลขออเดอร์</label>'
       + '<input type="text" id="dlvAddOrderNo" placeholder="ไม่บังคับ" style="width:90px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
       + '</div>'
+      + (function(){
+          // Owner-only stock-mode selector — only for HISTORICAL bills (coverage decisions).
+          const isHist = dlvDateOnly(b.sales_date || b.sales_date_from) < dlvDateOnly(new Date());
+          const isOwn = (typeof USER_ROLE !== 'undefined') && USER_ROLE !== 'staff';
+          if (!(isHist && isOwn)) return '';
+          return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;">'
+            + '<label style="font-size:11px;font-weight:700;color:#b45309;">โหมดสต๊อก (ย้อนหลัง)</label>'
+            + '<select id="dlvStockMode" onchange="dlvStockModeChange()" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-soft);">'
+            +   '<option value="DEDUCT_FULL">ตัดสต๊อกเต็มจำนวน</option>'
+            +   '<option value="DEDUCT_REMAINDER">ตัดเฉพาะส่วนที่เหลือ</option>'
+            +   '<option value="ACCOUNTING_ONLY_ALREADY_DEDUCTED">บันทึกบัญชีอย่างเดียว (POS ตัดแล้ว)</option>'
+            +   '<option value="HOLD_FOR_REVIEW">พักไว้ตรวจสอบ</option>'
+            + '</select>'
+            + '<span id="dlvCoveredWrap" style="display:none;align-items:center;gap:4px;"><label style="font-size:11px;color:#b45309;">POS ตัดไปแล้ว</label>'
+            +   '<input type="number" id="dlvCoveredQty" min="0" value="0" style="width:56px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;text-align:center;"></span>'
+            + '<span id="dlvCoverWrap" style="display:none;align-items:center;gap:4px;flex-wrap:wrap;">'
+            +   '<input type="text" id="dlvCoverageReason" placeholder="เหตุผล (จำเป็น)" style="width:150px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
+            +   '<input type="text" id="dlvSourcePosBill" placeholder="เลขบิล POS (ถ้ามี)" style="width:110px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;"></span>'
+            + '</div>';
+        })()
       + '<button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvAddItem()" ' + (!_dlvSelectedMenu ? 'disabled' : '') + '>'
       + icon('plus') + ' เพิ่ม' + (_dlvSelectedMenu ? ' ' + esc(_dlvSelectedMenu.name) : ' (เลือกเมนูก่อน)') + '</button>'
       + '</div>';
@@ -11399,6 +11426,15 @@ async function dlvAddItem(override) {
   if (_dlvSelectedMenu.refType === 'recipe') body.recipe_id = _dlvSelectedMenu.id;
   else body.material_id = _dlvSelectedMenu.id;
   if (override && override.allow_negative) { body.allow_negative = true; body.negative_reason = override.negative_reason; }
+  // Owner-controlled stock mode (historical coverage) — only present for owners on historical bills.
+  const modeEl = $('dlvStockMode');
+  if (modeEl && modeEl.value && modeEl.value !== 'DEDUCT_FULL') {
+    body.stock_mode = modeEl.value;
+    body.coverage_reason = (($('dlvCoverageReason') || {}).value || '').trim();
+    const src = (($('dlvSourcePosBill') || {}).value || '').trim();
+    if (src) body.source_pos_bill_no = src;
+    if (modeEl.value === 'DEDUCT_REMAINDER') body.covered_quantity = parseFloat(($('dlvCoveredQty') || {}).value) || 0;
+  }
   try {
     await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/item', body);
     _dlvSelectedMenu = null; _dlvChosenOptions = {};
@@ -11410,6 +11446,9 @@ async function dlvAddItem(override) {
     const msg = (e && e.message) || '';
     if (msg.includes('DUPLICATE_ORDER_NO')) ui.toast('เลขออเดอร์นี้ถูกกรอกแล้ว — ป้องกันการบันทึกซ้ำ', 'warning');
     else if (msg.includes('FG_STOCK_INSUFFICIENT')) ui.toast('สต็อกไม่พอสำหรับบิลวันนี้: ' + msg, 'warning');
+    else if (msg.includes('STOCK_MODE_REQUIRES_OWNER')) ui.toast('โหมดสต๊อกนี้ต้องให้เจ้าของร้านยืนยัน', 'warning');
+    else if (msg.includes('COVERAGE_REASON_REQUIRED')) ui.toast('กรุณาระบุเหตุผลของโหมดสต๊อก', 'warning');
+    else if (msg.includes('INVALID_COVERED_QUANTITY')) ui.toast('จำนวนที่ POS ตัดไปแล้วต้องอยู่ระหว่าง 0 ถึงจำนวนรวม', 'warning');
     else ui.toast('เพิ่มไม่ได้: ' + msg, 'error');
   }
 }
