@@ -34,6 +34,11 @@ async function countLinks(batchId, type) {
 }
 
 (async () => {
+  // Feature-flag defaults: globally enabled, all shops allowed.
+  // Individual FF* tests override and restore these values.
+  process.env.DELIVERY_ENABLED = '1';
+  process.env.DELIVERY_ALLOWED_SHOP_IDS = '*';
+
   const server = app.listen(0);
   await new Promise(r => server.once('listening', r));
   base = 'http://127.0.0.1:' + server.address().port;
@@ -844,6 +849,98 @@ async function countLinks(batchId, type) {
     await query('UPDATE materials SET price=999 WHERE id=$1', [cMatSugar]);
     const c26CogsAfter = Number((await api('GET', '/api/delivery/bill/' + c26BillId, { token: ownerToken, shop: shopA })).data.bill?.cogs_total);
     check('C26 reconciled bill.cogs_total unchanged after price edit', Math.abs(c26CogsBefore - c26CogsAfter) < 0.01, { before: c26CogsBefore, after: c26CogsAfter });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FEATURE-FLAG / ALLOWLIST TESTS (FF1–FF13)
+    // All checks read process.env at request time — no app restart needed.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n=== Feature-Flag & Allowlist Tests (FF1–FF13) ===\n');
+    const ffSavedEnabled = process.env.DELIVERY_ENABLED;
+    const ffSavedAllowed = process.env.DELIVERY_ALLOWED_SHOP_IDS;
+
+    // --- FF1: DELIVERY_ENABLED unset → 503 DELIVERY_FEATURE_DISABLED ---
+    delete process.env.DELIVERY_ENABLED;
+    const ff1 = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF1 DELIVERY_ENABLED unset → 503', ff1.status === 503, ff1.data);
+    check('FF1 error = DELIVERY_FEATURE_DISABLED', ff1.data?.error === 'DELIVERY_FEATURE_DISABLED', ff1.data?.error);
+
+    // --- FF2: DELIVERY_ENABLED=0 → 503 ---
+    process.env.DELIVERY_ENABLED = '0';
+    const ff2 = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF2 DELIVERY_ENABLED=0 → 503', ff2.status === 503, ff2.data);
+    check('FF2 error = DELIVERY_FEATURE_DISABLED', ff2.data?.error === 'DELIVERY_FEATURE_DISABLED', ff2.data?.error);
+
+    // --- FF3: DELIVERY_ENABLED=1 + empty allowlist → 403 ---
+    process.env.DELIVERY_ENABLED = '1';
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = '';
+    const ff3 = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF3 DELIVERY_ENABLED=1 + empty allowlist → 403', ff3.status === 403, ff3.data);
+    check('FF3 error = DELIVERY_NOT_ENABLED_FOR_SHOP', ff3.data?.error === 'DELIVERY_NOT_ENABLED_FOR_SHOP', ff3.data?.error);
+
+    // --- FF4: DELIVERY_ENABLED=1 + shopA not in allowlist → 403 ---
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = crypto.randomUUID();
+    const ff4 = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF4 DELIVERY_ENABLED=1 + shopA not in allowlist → 403', ff4.status === 403, ff4.data);
+
+    // --- FF5: DELIVERY_ENABLED=1 + shopA in allowlist → Daily Bill opens ---
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = shopA;
+    const ff5 = await api('POST', '/api/delivery/bill/open', { token: ownerToken, shop: shopA, body: { platform: 'FF5Test', sales_date: '2026-07-25' } });
+    check('FF5 DELIVERY_ENABLED=1 + shopA in allowlist → bill opens (200/201)', ff5.status === 200 || ff5.status === 201, ff5.data);
+
+    // --- FF6: allowed shop + legacy write route → 410 ---
+    const ff6 = await api('POST', '/api/delivery/batch', { token: ownerToken, shop: shopA, body: { platform: 'FF6', sales_date_from: '2026-07-25', mode: 'financial_only', gross_sales: 100, items: [] } });
+    check('FF6 Allowed shop + legacy write → 410', ff6.status === 410, ff6.data);
+    check('FF6 error = LEGACY_DELIVERY_WRITE_DISABLED', ff6.data?.error === 'LEGACY_DELIVERY_WRITE_DISABLED', ff6.data?.error);
+
+    // --- FF7: non-allowed shop + any delivery route → 403, not 410 ---
+    // shopA is in allowlist; shopB is not.
+    const ff7 = await api('POST', '/api/delivery/batch', { token: ownerBToken, shop: shopB, body: { platform: 'FF7', sales_date_from: '2026-07-25', mode: 'financial_only', gross_sales: 100, items: [] } });
+    check('FF7 Non-allowed shop + legacy write → 403 not 410', ff7.status === 403, ff7.status);
+    check('FF7 error = DELIVERY_NOT_ENABLED_FOR_SHOP', ff7.data?.error === 'DELIVERY_NOT_ENABLED_FOR_SHOP', ff7.data?.error);
+
+    // --- FF8: bootstrap.features.deliveryEnabledForShop=false for denied shop ---
+    const ff8 = await api('GET', '/api/bootstrap', { token: ownerBToken, shop: shopB });
+    check('FF8 Bootstrap deliveryEnabledForShop=false for denied shop', ff8.data?.features?.deliveryEnabledForShop === false, ff8.data?.features);
+
+    // --- FF9: bootstrap.features.deliveryEnabledForShop=true for allowed shop ---
+    const ff9 = await api('GET', '/api/bootstrap', { token: ownerToken, shop: shopA });
+    check('FF9 Bootstrap deliveryEnabledForShop=true for allowed shop', ff9.data?.features?.deliveryEnabledForShop === true, ff9.data?.features);
+
+    // --- FF10: bootstrap=false when globally disabled ---
+    process.env.DELIVERY_ENABLED = '0';
+    const ff10 = await api('GET', '/api/bootstrap', { token: ownerToken, shop: shopA });
+    check('FF10 Bootstrap deliveryEnabledForShop=false when globally disabled', ff10.data?.features?.deliveryEnabledForShop === false, ff10.data?.features);
+    process.env.DELIVERY_ENABLED = '1';
+
+    // --- FF11: POS /pos/sell unaffected when delivery disabled ---
+    process.env.DELIVERY_ENABLED = '0';
+    const ff11 = await api('POST', '/api/pos/sell', { token: ownerToken, shop: shopA, body: { items: [], billId: null } });
+    check('FF11 POS /pos/sell unaffected when delivery disabled (not 503)', ff11.status !== 503, ff11.status);
+    process.env.DELIVERY_ENABLED = '1';
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = shopA;
+
+    // --- FF12: tenant cannot spoof allowed shop via request body ---
+    // ownerBToken + X-Shop-Id=shopB (not allowed) + body shop_id=shopA (allowed) → must get 403
+    const ff12 = await api('POST', '/api/delivery/bill/open', {
+      token: ownerBToken, shop: shopB,
+      body: { platform: 'FF12Spoof', sales_date: '2026-07-25', shop_id: shopA }
+    });
+    check('FF12 Tenant cannot spoof allowed shop via body → 403', ff12.status === 403, ff12.data);
+    check('FF12 error = DELIVERY_NOT_ENABLED_FOR_SHOP not 401', ff12.data?.error === 'DELIVERY_NOT_ENABLED_FOR_SHOP', ff12.data?.error);
+
+    // --- FF13: allowlist parser handles extra spaces and rejects invalid IDs ---
+    // spaces around valid UUID → accepted
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = ` ${shopA} , not-a-uuid , ${crypto.randomUUID()} `;
+    const ff13a = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF13 Allowlist: extra spaces around valid UUID → 200', ff13a.status === 200, ff13a.status);
+    // invalid-only allowlist → 403 (no valid UUIDs, shopA not matched)
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = 'not-a-uuid,also-bad,12345';
+    const ff13b = await api('GET', '/api/delivery/bill/queue', { token: ownerToken, shop: shopA });
+    check('FF13 Allowlist: only invalid IDs → 403', ff13b.status === 403, ff13b.status);
+
+    // Restore env to original test defaults.
+    process.env.DELIVERY_ENABLED = ffSavedEnabled;
+    process.env.DELIVERY_ALLOWED_SHOP_IDS = ffSavedAllowed;
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);

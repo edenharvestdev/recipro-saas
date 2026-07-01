@@ -2603,6 +2603,7 @@ let settings = {
   logoData: '', theme: 'recipro', categories: DEFAULT_CATEGORIES.slice(),
   makeToOrder: false
 };
+let serverFeatures = { deliveryEnabledForShop: false };
 
 // ตัวแปรเก็บข้อมูลร้านสำหรับโหมดจำลอง (Mock database)
 let mockShops = [];
@@ -3744,6 +3745,7 @@ function applyBootstrapData(data) {
       menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top' }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
+    serverFeatures = data.features || { deliveryEnabledForShop: false };
     applyTerminology();
     applyPermissionGates();   // S4: ตั้ง perm-no-cost / perm-no-recipes ตามสิทธิ์พนักงาน
     orders = (data.orders || []).map(o => ({
@@ -7180,12 +7182,12 @@ function switchPosTab(tab) {
   if (isQuick) renderPosGrid();
   if (isLog)   renderSalesLog();
   if (isOnline   && typeof renderOnlineMenu === 'function') renderOnlineMenu();
-  if (isDelivery && settings.useDelivery) dlvRefresh();
+  if (isDelivery && serverFeatures.deliveryEnabledForShop && settings.useDelivery) dlvRefresh();
 }
 
 function dlvUpdatePosTabVisibility() {
   const btn = $('posTabDelivery');
-  if (btn) btn.style.display = (settings && settings.useDelivery) ? '' : 'none';
+  if (btn) btn.style.display = (settings && settings.useDelivery && serverFeatures.deliveryEnabledForShop) ? '' : 'none';
 }
 
 // แสดงจำนวนออเดอร์ออนไลน์ใหม่บนปุ่ม sub-tab "ออนไลน์ (QR)" (เห็นแม้อยู่แท็บอื่น)
@@ -11089,6 +11091,7 @@ function dlvDateTime(ts) {
 async function dlvRefresh() {
   const el = $('deliverySection');
   if (!el) return;
+  if (!serverFeatures.deliveryEnabledForShop) { el.innerHTML = ''; return; }
   if (!settings.useDelivery) {
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="flex:1;min-width:160px;font-size:13px;color:var(--color-text-muted);">' + icon('truck') + ' ขายผ่าน Delivery (Grab/LINE MAN...)? เปิดเพื่อกระทบยอด + ตัดสต็อก</span><button class="btn btn-primary btn-sm" onclick="toggleDelivery(true)">' + icon('truck') + ' เปิดใช้</button></div>';
     renderIcons(el); return;

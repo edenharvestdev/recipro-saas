@@ -46,6 +46,7 @@ app.use('/auth', require('./auth/routes'));
 app.use('/webhooks', require('./webhooks/stripe'));   // POST /webhooks/stripe (raw body)
 app.use('/webhooks', require('./webhooks/omise'));
 app.use('/public', require('./api/public'));          // M3: เมนู/ออเดอร์สาธารณะ (ไม่ต้อง login)
+app.use('/public/academy', require('./learning-engine/quiz-public'));  // GracePoint Learning Engine: candidate pre-test (token-based, no login)
 app.post('/webhooks/omise-charge', require('./api/pay').omiseWebhook);  // S8: Omise charge webhook (POS) → mark paid + เด้งจอ
 
 // /api/* — ต้องล็อกอิน + ผูกร้าน (tenant) ก่อนเสมอ
@@ -78,14 +79,18 @@ api.use(require('./api/resources'));   // DELETE /api/{suppliers|materials|recip
 api.post('/billing/checkout', checkoutLimiter);   // rate-limit เฉพาะ POST /billing/checkout
 api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/checkout
 api.use(require('./api/logs'));        // GET  /api/logs
-// Delivery MVP Release A — disabled globally by setting DELIVERY_ENABLED=0 env var
-if (process.env.DELIVERY_ENABLED !== '0') {
-  api.use('/delivery', require('./api/delivery'));
-} else {
-  api.use('/delivery', (req, res) => res.status(503).json({ error: 'delivery feature disabled' }));
-}
+// Delivery MVP Release A — default OFF. Set DELIVERY_ENABLED=1 to activate globally.
+// Per-shop allowlist enforcement is inside the delivery router (delivery-feature.js).
+const deliveryRouter = require('./api/delivery');
+api.use('/delivery', (req, res, next) => {
+  if (process.env.DELIVERY_ENABLED !== '1') {
+    return res.status(503).json({ error: 'DELIVERY_FEATURE_DISABLED' });
+  }
+  return deliveryRouter(req, res, next);
+});
 api.use('/admin', requireSuperadmin, require('./api/admin')); // /api/admin/*
 api.use('/admin', requireSuperadmin, require('./api/clone')); // /api/admin/{export-shop,import-shop,clone-shop2}
+api.use('/admin/academy', requireSuperadmin, require('./learning-engine/quiz-admin')); // GracePoint Learning Engine admin: /api/admin/academy/*
 app.use('/api', api);
 
 // เสิร์ฟ frontend เป็น static + fallback
@@ -93,6 +98,11 @@ const frontendDir = path.join(__dirname, '..', '..', 'frontend');
 app.use(express.static(frontendDir));
 // M3: หน้าเมนูสาธารณะสำหรับลูกค้า (เปิดจาก QR) — เสิร์ฟไฟล์แยก ไม่ใช่แอปหลัก
 app.get('/menu/:token', (req, res) => res.sendFile(path.join(frontendDir, 'menu.html')));
+// GracePoint Learning Engine — candidate pre-test (public, token-based) + platform admin panel.
+// Standalone pages, isolated from the main shop SPA (frontend/index.html).
+app.get('/academy/pretest/:token', (req, res) => res.sendFile(path.join(frontendDir, 'academy-pretest.html')));
+app.get('/academy/pretest/:token/result', (req, res) => res.sendFile(path.join(frontendDir, 'academy-pretest.html')));
+app.get('/admin/academy*', (req, res) => res.sendFile(path.join(frontendDir, 'admin-academy.html')));
 app.get('*', (req, res, next) => {
   if (/^\/(api|auth|webhooks|public)\b/.test(req.path)) return next();
   res.sendFile(path.join(frontendDir, 'index.html'));

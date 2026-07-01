@@ -6,7 +6,10 @@ const express = require('express');
 const { tx, query } = require('../db');
 const { requirePerm } = require('../tenant');
 const engine = require('../stockEngine');
+const { requireDeliveryAllowed } = require('../delivery-feature');
 const router = express.Router();
+
+router.use(requireDeliveryAllowed);
 
 const legacyDeliveryWriteDisabled = (req, res) =>
   res.status(410).json({ error: 'LEGACY_DELIVERY_WRITE_DISABLED' });
