@@ -52,6 +52,19 @@ router.get('/bootstrap', async (req, res) => {
     }
     const bs = shopRow ? computeBillingState(shopRow.status, subRow, shopRow.trial_ends_at) : { state: 'trial', daysLeft: null };
 
+    // A1 cost redaction: a user without any cost-view permission must not receive cost data through
+    // ANY nested object. material.price is the purchase cost (COGS source); selling prices are kept.
+    // Redacting to null (not omitting) keeps the offline client shape intact; the sync guard + upsert
+    // COALESCE ensure a redacted null never wipes or blocks the stored cost on write-back.
+    if (typeof req.canViewCost === 'function' && !req.canViewCost()) {
+      const strip = (rows, fields) => (rows || []).map((r) => { const o = { ...r }; for (const f of fields) if (f in o) o[f] = null; return o; });
+      materials.rows = strip(materials.rows, ['price']);
+      prodLogs.rows = strip(prodLogs.rows, ['cost', 'unit_cost', 'total_cost']);
+      smRows.rows = strip(smRows.rows, ['unit_cost', 'cost']);
+      stockReceives.rows = strip(stockReceives.rows, ['unit_cost', 'cost', 'total_cost']);
+      bills.rows = strip(bills.rows, ['cogs_total']);
+    }
+
     res.json({
       server_now: new Date().toISOString(),
       role: req.role,

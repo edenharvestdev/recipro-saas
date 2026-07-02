@@ -169,4 +169,11 @@ const PRESETS = {
   custom: {},
 };
 
-module.exports = { GROUPS, ALL_KEYS, LEGACY_ALIASES, LEGACY_DEFAULTS, STAFF_DEFAULTS, PRESETS, hasPerm };
+// May the caller see cost/COGS data anywhere? Any cost-view permission (or owner/superadmin) qualifies.
+const COST_VIEW_KEYS = ['recipe_view_cost', 'stock_view_cost', 'pos_view_cost', 'report_view_cost', 'production_view_cost'];
+function canViewCost(perms, role, isSuperadmin) {
+  if (isSuperadmin === true || role === 'owner') return true;
+  return COST_VIEW_KEYS.some((k) => hasPerm(perms, role, isSuperadmin, k));
+}
+
+module.exports = { GROUPS, ALL_KEYS, LEGACY_ALIASES, LEGACY_DEFAULTS, STAFF_DEFAULTS, PRESETS, COST_VIEW_KEYS, hasPerm, canViewCost };

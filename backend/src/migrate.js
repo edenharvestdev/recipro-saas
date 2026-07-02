@@ -55,6 +55,7 @@ const files = [
   '../db/schema-delivery-cogs-model.sql',
   '../db/schema-bill-correction.sql',
   '../db/schema-coupon-redemption.sql',
+  '../db/schema-permissions.sql',
   '../db/seed.sql',
 ];
 

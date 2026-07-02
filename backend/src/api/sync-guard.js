@@ -102,18 +102,20 @@ async function checkSyncPermissions(client, req, b) {
     const dbById = Object.fromEntries(dbRows.map((m) => [m.id, m]));
     for (const m of b.materials) {
       const db = dbById[m.id];
-      if (rowChanged(m, db, ['name', 'unit', 'stock_unit', 'item_type']) && !has('recipe_edit')) throw deny('RECIPE_READ_ONLY', 'materials');
-      if (rowChanged(m, db, ['price', 'qty', 'conv_qty']) && !has('recipe_edit_cost')) throw deny('RECIPE_COST_READ_ONLY', 'materials.cost');
+      // definition/packaging change → recipe_edit
+      if (rowChanged(m, db, ['name', 'unit', 'stock_unit', 'item_type', 'qty', 'conv_qty']) && !has('recipe_edit')) throw deny('RECIPE_READ_ONLY', 'materials');
+      // money cost = price. A null price is a no-cost user's redacted value being preserved (COALESCE) — not a change.
+      if (m.price != null && rowChanged({ price: m.price }, db, ['price']) && !has('recipe_edit_cost')) throw deny('RECIPE_COST_READ_ONLY', 'materials.cost');
     }
   }
 
   // 6) prod_logs — recording/executing production needs the production permission.
   if (Array.isArray(b.prod_logs) && b.prod_logs.length) {
     const ids = b.prod_logs.map((p) => p.id).filter(Boolean);
-    const dbRows = ids.length ? (await client.query('select id, qty from prod_logs where shop_id=$1 and id = any($2::uuid[])', [shopId, ids])).rows : [];
+    const dbRows = ids.length ? (await client.query('select id, made, rounds, recipe_id from prod_logs where shop_id=$1 and id = any($2::uuid[])', [shopId, ids])).rows : [];
     const dbById = Object.fromEntries(dbRows.map((p) => [p.id, p]));
     for (const p of b.prod_logs) {
-      if (rowChanged(p, dbById[p.id], ['qty']) && !(has('production_execute') || has('production_record_actual'))) {
+      if (rowChanged(p, dbById[p.id], ['made', 'rounds', 'recipe_id']) && !(has('production_execute') || has('production_record_actual'))) {
         throw deny('PRODUCTION_READ_ONLY', 'prod_logs');
       }
     }

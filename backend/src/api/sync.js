@@ -8,12 +8,14 @@ const { checkSyncPermissions } = require('./sync-guard'); // A0: บังคั
 const router = express.Router();
 
 // upsert ช่วย: ระบุ table, คอลัมน์, แถว, และคีย์ conflict
-async function upsertRows(client, table, cols, rows, conflict, touchUpdatedAt) {
+// coalesceCols: คอลัมน์ที่ถ้า client ส่ง null มา ให้คงค่าเดิมใน DB ไว้ (กัน redacted cost ถูกล้างทับ)
+async function upsertRows(client, table, cols, rows, conflict, touchUpdatedAt, coalesceCols) {
+  const coalesce = new Set(coalesceCols || []);
   for (const row of rows) {
     const values = cols.map((c) => row[c]);
     const ph = cols.map((_, i) => `$${i + 1}`).join(', ');
     let updates = cols.filter((c) => c !== conflict)
-      .map((c) => `${c} = excluded.${c}`).join(', ');
+      .map((c) => (coalesce.has(c) ? `${c} = coalesce(excluded.${c}, ${table}.${c})` : `${c} = excluded.${c}`)).join(', ');
     if (touchUpdatedAt) updates += ', updated_at = now()'; // R2: ให้ /changes ตรวจจับการแก้ไขได้
     await client.query(
       `insert into ${table} (${cols.join(', ')}) values (${ph})
@@ -51,7 +53,7 @@ router.post('/sync', async (req, res) => {
 
       await upsertRows(client, 'materials',
         ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type', 'img_data'],
-        withShop(b.materials), 'id', true);
+        withShop(b.materials), 'id', true, ['price']);   // A1: null price (redacted for no-cost users) preserves the stored cost
 
       await upsertRows(client, 'recipes',
         ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link', 'inventory_mode'],
