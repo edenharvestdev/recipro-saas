@@ -2446,6 +2446,7 @@ const STAFF_PERM_LABELS = { discount: 'ให้ส่วนลด (ตามเ
 // shop-level object. Backend remains the authority — this only hides/disables unusable controls.
 let MY_PERMS = null;
 let CAN_VIEW_COST = true;
+let PRINTERS = [];   // Track B: printer registry (from bootstrap)
 function can(key) {
   if (USER_ROLE !== 'staff') return true;
   if (MY_PERMS && Object.prototype.hasOwnProperty.call(MY_PERMS, key)) return !!MY_PERMS[key];
@@ -3671,6 +3672,7 @@ function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
   MY_PERMS = data.my_permissions || null;   // A1: per-user effective permissions
   CAN_VIEW_COST = data.can_view_cost !== false;
+  PRINTERS = Array.isArray(data.printers) ? data.printers : [];   // Track B: printer registry for live routing
   BILLING = data.billing || { state: 'trial', days_left: null, grace_days: 5 };
   SHOP_PLAN = data.plan || null;
   document.body.classList.toggle('role-staff', USER_ROLE === 'staff');
@@ -8468,6 +8470,7 @@ async function openPrinterSetup() {
   try {
     const [caps, list] = await Promise.all([API.get('/api/printers/capabilities'), API.get('/api/printers')]);
     _pr = { caps: caps.capabilities, printers: list.printers, bridges: detectPrinterBridges(), draft: null };
+    PRINTERS = list.printers;   // keep live-print resolver in sync with the freshly loaded list
     prRender();
   } catch (e) { ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">โหลดไม่ได้: ' + esc((e && e.message) || '') + ' (ต้องมีสิทธิ์ printer_view)</div><div class="bmm-foot" style="text-align:right;"><button class="btn btn-ghost" onclick="prClose()">ปิด</button></div></div>'; }
 }
@@ -8492,9 +8495,22 @@ function prRenderList() {
       + '<div style="font-size:11px;color:var(--color-text-muted);margin:3px 0;">' + esc(lastTest) + '</div>'
       + '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">' + acts + '</div></div>';
   }).join('') || '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีเครื่องพิมพ์ — เพิ่มเครื่องแรก</p>';
+  // Live-routing confirmation: make it explicit that these defaults drive REAL bill/kitchen printing now.
+  const defR = _pr.printers.find(p => p.is_default_receipt);
+  const defK = _pr.printers.find(p => p.is_default_kitchen);
+  const liveLine = (role, p) => p
+    ? esc(p.name) + ' · ' + p.paper_width + 'mm · ' + p.copies + ' ใบ'
+    : '<span style="color:var(--color-text-muted);">ยังไม่ตั้งค่า — ใช้การพิมพ์ผ่านระบบของเครื่อง (' + role + ')</span>';
+  const banner = _pr.printers.length
+    ? '<div style="border:1px solid #16a34a55;background:#16a34a11;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;">'
+      + '<div style="font-weight:700;color:#15803d;margin-bottom:4px;">✅ การตั้งค่านี้ใช้กับการพิมพ์จริงแล้ว</div>'
+      + '<div>🧾 ใบเสร็จ: ' + liveLine('ใบเสร็จ', defR) + '</div>'
+      + '<div style="margin-top:2px;">🍳 ครัว/ออเดอร์: ' + liveLine('ครัว', defK) + '</div>'
+      + '<div style="margin-top:4px;color:var(--color-text-muted);">กว้างกระดาษและจำนวนสำเนาด้านบนถูกใช้กับหน้าต่างพิมพ์จริงทันที</div></div>'
+    : '';
   ov.innerHTML = '<div class="bmm-shell">'
     + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🖨 จัดการเครื่องพิมพ์</h2><div style="display:flex;gap:6px;">' + (can('printer_add') ? '<button class="btn btn-primary btn-sm" onclick="prNew()">+ เพิ่มเครื่องพิมพ์</button>' : '') + '<button class="btn btn-ghost btn-sm" onclick="prClose()">ปิด</button></div></div>'
-    + '<div class="bmm-scroll">' + rows + '</div></div>';
+    + '<div class="bmm-scroll">' + banner + rows + '</div></div>';
 }
 function prNew() { _pr.draft = { id: null, step: 1, capability_type: 'BROWSER_SYSTEM', name: '', purpose: 'RECEIPT', paper_width: 80, copies: 1 }; prRender(); }
 function prEditStart(id) { const p = _pr.printers.find(x => x.id === id); if (!p) return; _pr.draft = { id: p.id, step: 2, capability_type: p.capability_type, name: p.name, purpose: p.purpose, paper_width: p.paper_width, copies: p.copies }; prRender(); }
@@ -8532,7 +8548,7 @@ async function prSaveWizard() {
     const body = { name: d.name.trim(), capability_type: d.capability_type, purpose: d.purpose, paper_width: d.paper_width, copies: d.copies };
     const r = d.id ? await API.patch('/api/printers/' + d.id, body) : await API.post('/api/printers', body);
     ui.toast('บันทึกเครื่องพิมพ์แล้ว');
-    const list = await API.get('/api/printers'); _pr.printers = list.printers;
+    const list = await API.get('/api/printers'); _pr.printers = list.printers; PRINTERS = list.printers;   /* keep live-print resolver in sync */
     _pr.draft = d.id ? null : { ...d, id: r.printer.id, step: 5 };   // stay on wizard (step 5 test) for new; back to list for edit
     prRender();
   } catch (e) { const c = (e && e.data && e.data.code) || (e && e.message); ui.toast('บันทึกไม่ได้: ' + c, e && e.status === 403 ? 'warning' : 'error'); if (btn) { btn.disabled = false; btn.textContent = 'บันทึก & ตั้งค่า'; } }
@@ -8548,7 +8564,7 @@ async function prTest(id) {
       const msg = { SUNMI_PRINTER_NOT_AVAILABLE: 'ยังเชื่อมต่อเครื่องพิมพ์ SUNMI ไม่ได้ (ต้องมี Bridge)', PRINTER_BRIDGE_NOT_AVAILABLE: 'ยังไม่มี Printer Bridge — ใช้ "พิมพ์ผ่านระบบ" แทน' }[r.status] || r.status;
       ui.toast(msg, 'warning');
     }
-    if (_pr) { const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender(); }
+    if (_pr) { const list = await API.get('/api/printers'); _pr.printers = list.printers; PRINTERS = list.printers;   /* keep live-print resolver in sync */ prRender(); }
   } catch (e) { ui.toast('ทดสอบไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
   finally { setTimeout(() => { _prTesting = false; }, 800); }
 }
@@ -8559,7 +8575,7 @@ function prOpenTestReceipt(w) {
   win.document.close();
 }
 async function prSetDefault(id, role) {
-  try { await API.post('/api/printers/' + id + '/set-default', { role }); ui.toast('ตั้งค่าเริ่มต้นแล้ว (' + (role === 'receipt' ? 'ใบเสร็จ' : 'ครัว') + ')'); const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender(); }
+  try { await API.post('/api/printers/' + id + '/set-default', { role }); ui.toast('ตั้งค่าเริ่มต้นแล้ว (' + (role === 'receipt' ? 'ใบเสร็จ' : 'ครัว') + ')'); const list = await API.get('/api/printers'); _pr.printers = list.printers; PRINTERS = list.printers;   /* keep live-print resolver in sync */ prRender(); }
   catch (e) { ui.toast('ตั้งไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
 }
 async function prDelete(id) {
@@ -8567,7 +8583,7 @@ async function prDelete(id) {
   if (!(await ui.confirm(isDef ? 'เครื่องนี้เป็นค่าเริ่มต้น — ลบแล้วต้องตั้งเครื่องอื่นเป็นค่าเริ่มต้นแทน ยืนยันลบ?' : 'ลบเครื่องพิมพ์นี้?', { okText: 'ลบ', danger: true }))) return;
   try {
     await API.del('/api/printers/' + id + (isDef ? '?confirm=true' : ''));
-    ui.toast('ลบแล้ว'); const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender();
+    ui.toast('ลบแล้ว'); const list = await API.get('/api/printers'); _pr.printers = list.printers; PRINTERS = list.printers;   /* keep live-print resolver in sync */ prRender();
   } catch (e) { ui.toast('ลบไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
 }
 function posBillReceiptHtml(b, total) {
@@ -8605,21 +8621,52 @@ function posBillReceiptHtml(b, total) {
     <div class="foot">ขอบคุณที่ใช้บริการ</div>
   </div>`;
 }
-function printPosBillWindow(b, total, copies) {
-  copies = Math.max(1, Math.min(3, Number(copies) || 1));
+// ── Track B: central print-config resolver — the single source of truth for live printing ──
+// Resolution order: default registry printer for the purpose (a BOTH printer set as default counts)
+// → legacy shop settings → browser fallback. Never duplicated across print functions.
+function capCopies(n) { return Math.max(1, Math.min(5, Number(n) || 1)); }   // min 1, safe cap 5
+function resolvePrintConfiguration(purpose) {
+  const p = purpose === 'KITCHEN' ? 'KITCHEN' : 'RECEIPT';
+  const defCol = p === 'KITCHEN' ? 'is_default_kitchen' : 'is_default_receipt';
+  const reg = (PRINTERS || []).find((x) => x[defCol] === true);   // covers RECEIPT/KITCHEN/BOTH defaults
+  if (reg) return { printer_id: reg.id, capability_type: reg.capability_type, purpose: p, paper_width: (reg.paper_width === 58 ? 58 : 80), copies: capCopies(reg.copies), status: reg.status, source: 'PRINTER_REGISTRY' };
+  const legacyCopies = p === 'KITCHEN' ? posKitchenCopies() : posBillCopies();
+  return { printer_id: null, capability_type: 'BROWSER_SYSTEM', purpose: p, paper_width: 80, copies: capCopies(legacyCopies), status: 'AVAILABLE', source: (PRINTERS && PRINTERS.length) ? 'LEGACY_SETTINGS' : 'BROWSER_FALLBACK' };
+}
+// A configured direct printer with no runtime bridge cannot print directly — warn once, keep browser path.
+function printDirectWarn(cfg) {
+  if (cfg.capability_type === 'BROWSER_SYSTEM') return;
+  const avail = detectPrinterBridges();
+  if (!avail.has(cfg.capability_type)) {
+    const msg = cfg.capability_type === 'SUNMI_NATIVE' ? 'เครื่องพิมพ์ SUNMI ยังไม่พร้อม (ต้องมี Bridge) — พิมพ์ผ่านระบบของเครื่องแทน' : 'เครื่องพิมพ์ตรงยังไม่พร้อม (ต้องมี Bridge) — พิมพ์ผ่านระบบของเครื่องแทน';
+    if (ui && ui.toast) ui.toast(msg, 'warning');
+  }
+}
+// Duplicate-print protection keyed per document type: blocks rapid double-clicks / rerender / retry of
+// the SAME document, but a receipt and a kitchen ticket from one confirm are different keys and both run.
+const _printLocks = {};
+function printLocked(key) { if (_printLocks[key]) return true; _printLocks[key] = true; setTimeout(() => { _printLocks[key] = false; }, 1200); return false; }
+
+function printPosBillWindow(b, total, copiesArg) {
+  if (printLocked('RECEIPT')) return;   // prevent accidental duplicate receipt jobs
+  const cfg = resolvePrintConfiguration('RECEIPT');
+  printDirectWarn(cfg);
+  const copies = cfg.source === 'PRINTER_REGISTRY' ? cfg.copies : capCopies(copiesArg != null ? copiesArg : cfg.copies);
+  const paper = cfg.paper_width === 58 ? 58 : 80;
+  const rcptW = paper === 58 ? '50mm' : '72mm';
   const one = posBillReceiptHtml(b, total);
   const body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + one).join('');
   const css = 'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
     + 'body{font-family:Tahoma,\'TH Sarabun New\',sans-serif;margin:0;padding:0;color:#111;}'
-    + '.rcpt{width:72mm;margin:0 auto;padding:4mm 2mm;font-size:12px;}'
-    + '.shop{text-align:center;font-size:16px;font-weight:800;}'
-    + '.sub{text-align:center;font-size:11px;color:#333;}'
+    + '.rcpt{width:' + rcptW + ';margin:0 auto;padding:' + (paper === 58 ? '3mm 1.5mm' : '4mm 2mm') + ';font-size:' + (paper === 58 ? 11 : 12) + 'px;word-break:break-word;}'
+    + '.shop{text-align:center;font-size:' + (paper === 58 ? 14 : 16) + 'px;font-weight:800;}'
+    + '.sub{text-align:center;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#333;}'
     + '.hr{border-top:1px dashed #999;margin:6px 0;}'
-    + 'table{width:100%;border-collapse:collapse;}td{padding:2px 0;font-size:12px;vertical-align:top;}'
-    + '.total{display:flex;justify-content:space-between;font-weight:800;font-size:15px;margin:4px 0;}'
-    + '.foot{text-align:center;margin-top:8px;font-size:11px;color:#555;}'
+    + 'table{width:100%;border-collapse:collapse;table-layout:fixed;}td{padding:2px 0;font-size:' + (paper === 58 ? 11 : 12) + 'px;vertical-align:top;word-break:break-word;}'
+    + '.total{display:flex;justify-content:space-between;font-weight:800;font-size:' + (paper === 58 ? 13 : 15) + 'px;margin:4px 0;}'
+    + '.foot{text-align:center;margin-top:8px;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#555;}'
     + '.copybreak{page-break-before:always;}'
-    + '@page{size:80mm auto;margin:0;}';
+    + '@page{size:' + paper + 'mm auto;margin:0;}';
   const w = window.open('', '_blank', 'width=380,height=640');
   if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
   w.document.write('<html><head><meta charset="utf-8"><title>บิล ' + esc(b.billNo || '') + '</title><style>' + css + '</style></head><body>'
@@ -8703,24 +8750,32 @@ async function voidBill(billId) {
   if (ui.toast) ui.toast('ยกเลิกบิลแล้ว · คืนสต๊อก/แต้มเรียบร้อย');
 }
 
-// ใบส่งงานหลังร้าน — รองรับ 2 แบบตาม settings.kitchenTicketMode: 'receipt' (ใบรวม 80mm) | 'sticker' (สติกเกอร์ต่อแก้ว 50×40)
-function printBackOfHouse(metaText, items, copies) {
-  copies = Math.max(1, Math.min(5, Number(copies) || 1));
+// ใบส่งงานหลังร้าน — รองรับ 2 แบบตาม settings.kitchenTicketMode: 'receipt' (ใบรวม 58/80mm) | 'sticker' (สติกเกอร์ต่อแก้ว 50×40)
+// Track B: routes through resolvePrintConfiguration('KITCHEN') — a default KITCHEN/BOTH registry printer
+// drives copy count + paper width for the receipt-style ticket. No kitchen default → legacy behavior kept.
+function printBackOfHouse(metaText, items, copiesArg) {
+  if (printLocked('KITCHEN')) return;   // duplicate-print protection (rapid clicks / rerender / retry)
+  const cfg = resolvePrintConfiguration('KITCHEN');
+  printDirectWarn(cfg);
+  const copies = cfg.source === 'PRINTER_REGISTRY' ? cfg.copies : capCopies(copiesArg != null ? copiesArg : 1);
+  const paper = cfg.paper_width === 58 ? 58 : 80;
   const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const mode = settings.kitchenTicketMode || 'receipt';
   let css, body;
   if (mode === 'sticker') {
+    // sticker labels are a fixed 50×40mm physical die-cut format — not affected by 58/80 receipt width.
     const labels = []; items.forEach(it => { for (let k = 0; k < (it.qty || 1); k++) labels.push(it); });
     css = '@page{size:50mm 40mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{margin:0}'
       + '.lb{width:50mm;height:40mm;padding:2.5mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;overflow:hidden}'
-      + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0}.lo{font-size:11px;line-height:1.2}';
+      + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0;word-break:break-word}.lo{font-size:11px;line-height:1.2;word-break:break-word}';
     const oneSet = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
     body = Array(copies).fill(oneSet).join('');
   } else {
-    css = '@page{size:80mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
-      + 'body{width:80mm;padding:4mm 3mm}.kh{text-align:center;font-size:17px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
-      + '.km{font-size:12px;margin-bottom:7px;line-height:1.5}.kit{display:flex;gap:7px;padding:6px 0;border-bottom:1px dotted #999}'
-      + '.kq{font-size:19px;font-weight:800;min-width:34px}.kn{font-size:16px;font-weight:700;flex:1}.ko{font-size:13px;font-weight:400;margin-top:2px}'
+    const narrow = paper === 58;
+    css = '@page{size:' + paper + 'mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+      + 'body{width:' + paper + 'mm;padding:' + (narrow ? '3mm 2mm' : '4mm 3mm') + '}.kh{text-align:center;font-size:' + (narrow ? 15 : 17) + 'px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
+      + '.km{font-size:' + (narrow ? 11 : 12) + 'px;margin-bottom:7px;line-height:1.5;word-break:break-word}.kit{display:flex;gap:' + (narrow ? 5 : 7) + 'px;padding:6px 0;border-bottom:1px dotted #999}'
+      + '.kq{font-size:' + (narrow ? 16 : 19) + 'px;font-weight:800;min-width:' + (narrow ? 28 : 34) + 'px}.kn{font-size:' + (narrow ? 14 : 16) + 'px;font-weight:700;flex:1;word-break:break-word}.ko{font-size:' + (narrow ? 12 : 13) + 'px;font-weight:400;margin-top:2px;word-break:break-word}'
       + '.copybreak{page-break-before:always}';
     const rows = items.map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name) + (it.opts ? '<div class="ko">' + e(it.opts) + '</div>' : '') + '</div></div>').join('');
     const oneSet = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;

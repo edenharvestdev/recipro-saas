@@ -53,6 +53,9 @@ router.get('/bootstrap', async (req, res) => {
     }
     const bs = shopRow ? computeBillingState(shopRow.status, subRow, shopRow.trial_ends_at) : { state: 'trial', daysLeft: null };
 
+    // Track B: printer registry (config only, no secrets) for live print routing.
+    const printers = (await query('select * from printers where shop_id = $1 order by created_at', [shopId])).rows;
+
     // A1 cost redaction: a user without any cost-view permission must not receive cost data through
     // ANY nested object. material.price is the purchase cost (COGS source); selling prices are kept.
     // Redacting to null (not omitting) keeps the offline client shape intact; the sync guard + upsert
@@ -74,6 +77,7 @@ router.get('/bootstrap', async (req, res) => {
       // remains the authority; this is only to hide/disable controls the user cannot use.
       my_permissions: (() => { const o = {}; for (const k of catalog.ALL_KEYS) o[k] = catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, k); return o; })(),
       can_view_cost: (typeof req.canViewCost === 'function') ? req.canViewCost() : true,
+      printers,
       features: { deliveryEnabledForShop: isDeliveryEnabledForShop(shopId) },
       shop: shopRow,
       plan,
