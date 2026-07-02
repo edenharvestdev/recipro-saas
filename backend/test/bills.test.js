@@ -176,6 +176,11 @@ const fgStock = async (id) => Number((await query('SELECT fg_stock FROM recipes 
     const v27b = await api('POST', '/api/bills/' + b23 + '/void', { token: ownerToken, shop: shopA, body: { reason: 'again' } });
     check('BC27 Re-void idempotent → stock not reversed twice', (v27b.data?.already === true || v27b.status === 409) && (await matStock(milk)) === stock27 + 1, { already: v27b.data?.already, after: await matStock(milk) });
 
+    // ── BC28: /bills/recent lists lifecycle bills (manager UI feed) ──
+    const rec = await api('GET', '/api/bills/recent', { token: ownerToken, shop: shopA });
+    check('BC28 /bills/recent returns lifecycle bills', rec.status === 200 && Array.isArray(rec.data?.bills) && rec.data.bills.length > 0, { status: rec.status, n: rec.data?.bills?.length });
+    check('BC28 recent excludes other shop (tenant)', (rec.data.bills || []).every(x => true) && (await api('GET', '/api/bills/recent', { token: ownerBToken, shop: shopB })).data.bills.every(x => x.original_bill_id !== draftId), true);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;

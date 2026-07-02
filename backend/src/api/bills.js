@@ -186,6 +186,21 @@ router.get('/bills/drafts', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Recent lifecycle bills (drafts + confirmed + replaced + voided) for the bill manager UI.
+router.get('/bills/recent', async (req, res) => {
+  try {
+    const rows = (await query(
+      `SELECT id, number, lifecycle_status, gross_sales, net_sales, cogs_total, actual_received_amount,
+              bill_discount, business_date, confirmed_at, draft_saved_at, corrected_at, voided_at,
+              original_bill_id, replacement_bill_id, correction_reason, items_json
+         FROM bills WHERE shop_id=$1 AND lifecycle_status IS NOT NULL
+         ORDER BY COALESCE(confirmed_at, draft_saved_at, created_at) DESC LIMIT 100`,
+      [req.shopId]
+    )).rows;
+    res.json({ bills: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/bills/:id', async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
