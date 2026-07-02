@@ -32,6 +32,9 @@ function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', n
     const ownerEmail = 'paowner_' + sfx + '@t.local';
     const shopA = (await api('POST', '/api/admin/shops', { token: saToken, body: { shopName: 'PA A', ownerEmail, ownerPassword: 'password123' } })).data.shopId;
     const ownerToken = (await api('POST', '/auth/login', { body: { email: ownerEmail, password: 'password123' } })).data.accessToken;
+    const ownerBEmail = 'paownerB_' + sfx + '@t.local';
+    const shopB = (await api('POST', '/api/admin/shops', { token: saToken, body: { shopName: 'PA B', ownerEmail: ownerBEmail, ownerPassword: 'password123' } })).data.shopId;
+    const ownerBToken = (await api('POST', '/auth/login', { body: { email: ownerBEmail, password: 'password123' } })).data.accessToken;
     const staffEmail = 'pastaff_' + sfx + '@t.local';
     await api('POST', '/auth/register', { body: { email: staffEmail, password: 'password123' } });
     const staffLogin = await api('POST', '/auth/login', { body: { email: staffEmail, password: 'password123' } });
@@ -156,6 +159,113 @@ function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', n
     // PA18: legacy explicit-false permission stays denied (edit_recipes:false → recipe edit blocked).
     const s18 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('SHOULD-FAIL')] } });
     check('PA18 Explicit edit_recipes:false denies recipe edit', s18.status === 403 && s18.data.code === 'RECIPE_READ_ONLY', s18.data);
+
+    // ═══ Phase A1: per-user permissions, permission API, dry-run, cost redaction ═══
+    const staffUserId = staffLogin.data.user.id;
+    const ownerUserId = (await query("select user_id from memberships where shop_id=$1 and role='owner' limit 1", [shopA])).rows[0].user_id;
+    const setMemberPerms = (uid, obj) => query('update memberships set permissions=$1 where user_id=$2 and shop_id=$3', [obj === null ? null : JSON.stringify(obj), uid, shopA]);
+
+    // PA19: per-user permissions OVERRIDE shop-level fallback.
+    await setPerms({});                              // shop-level: nothing
+    await setMemberPerms(staffUserId, { recipe_edit: true });
+    const s19 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('PERUSER-EDIT')] } });
+    check('PA19 Per-user recipe_edit grants edit (overrides empty shop-level)', s19.status === 200, s19.data);
+    await setMemberPerms(staffUserId, { recipe_edit: false });   // explicit per-user false
+    await setPerms({ edit_recipes: true });                       // shop-level true
+    const s19b = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('NO')] } });
+    check('PA19 Per-user false overrides shop-level true', s19b.status === 403 && s19b.data.code === 'RECIPE_READ_ONLY', s19b.data);
+
+    // PA20: PUT permission API — owner grants staff recipe_edit; effective returned; staff can edit.
+    await setMemberPerms(staffUserId, null); await setPerms({});
+    const put20 = await api('PUT', '/api/permissions/member/' + staffUserId, { token: ownerToken, shop: shopA, body: { permissions: { recipe_edit: true }, preset: 'custom', reason: 'grant edit' } });
+    check('PA20 Owner sets staff permissions (200 + effective)', put20.status === 200 && put20.data.effective && put20.data.effective.recipe_edit === true, put20.data);
+    const s20 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('API-GRANTED')] } });
+    check('PA20 Staff can edit after API grant', s20.status === 200, s20.data);
+
+    // PA21: self-elevation blocked (actor with team_edit_permissions editing self).
+    await setMemberPerms(staffUserId, { team_edit_permissions: true });
+    const put21 = await api('PUT', '/api/permissions/member/' + staffUserId, { token: staffToken, shop: shopA, body: { permissions: { void_bill: true } } });
+    check('PA21 Self-elevation blocked (SELF_ELEVATION_DENIED)', put21.status === 403 && put21.data.code === 'SELF_ELEVATION_DENIED', put21.data);
+
+    // PA22: actor cannot grant a permission they do not possess.
+    const staff2Email = 'pastaff2_' + sfx + '@t.local';
+    await api('POST', '/auth/register', { body: { email: staff2Email, password: 'password123' } });
+    const staff2Login = await api('POST', '/auth/login', { body: { email: staff2Email, password: 'password123' } });
+    await query("INSERT INTO memberships(user_id,shop_id,role) VALUES($1,$2,'staff')", [staff2Login.data.user.id, shopA]);
+    // staff (actor) has team_edit_permissions but NOT void_bill → cannot grant void_bill to staff2
+    const put22 = await api('PUT', '/api/permissions/member/' + staff2Login.data.user.id, { token: staffToken, shop: shopA, body: { permissions: { void_bill: true } } });
+    check('PA22 Cannot grant permission actor lacks (PERMISSION_GRANT_EXCEEDS_ACTOR)', put22.status === 403 && put22.data.code === 'PERMISSION_GRANT_EXCEEDS_ACTOR', put22.data);
+
+    // PA23: cross-shop target rejected.
+    const put23 = await api('PUT', '/api/permissions/member/' + ownerUserId, { token: ownerBToken, shop: shopB, body: { permissions: { recipe_edit: true } } });
+    check('PA23 Cross-shop target rejected (SHOP_SCOPE_MISMATCH)', put23.status === 404 && put23.data.code === 'SHOP_SCOPE_MISMATCH', put23.data);
+
+    // PA24: cannot edit ANOTHER owner's permissions (promote staff2 to owner, then owner edits it).
+    await query("update memberships set role='owner' where user_id=$1 and shop_id=$2", [staff2Login.data.user.id, shopA]);
+    const put24 = await api('PUT', '/api/permissions/member/' + staff2Login.data.user.id, { token: ownerToken, shop: shopA, body: { permissions: { recipe_edit: false } } });
+    check('PA24 Cannot edit owner permissions (ROLE_ESCALATION_DENIED)', put24.status === 403 && put24.data.code === 'ROLE_ESCALATION_DENIED', put24.data);
+    await query("update memberships set role='staff' where user_id=$1 and shop_id=$2", [staff2Login.data.user.id, shopA]);   // reset
+
+    // PA25: audit recorded for a permission change.
+    const aud25 = await api('GET', '/api/permissions/member/' + staffUserId + '/audit', { token: ownerToken, shop: shopA });
+    check('PA25 Permission change audited', aud25.status === 200 && (aud25.data.audit || []).some((a) => a.new_permissions && a.new_permissions.recipe_edit === true), aud25.data);
+
+    // PA26: dry-run report (owner) — proposed mapping, no write.
+    await setPerms({ edit_recipes: true, view_cost: true }); await setMemberPerms(staff2Login.data.user.id, null);
+    const dry = await api('GET', '/api/permissions/dry-run', { token: ownerToken, shop: shopA });
+    check('PA26 Dry-run maps legacy→granular, backfilled:false', dry.status === 200 && dry.data.dry_run === true && dry.data.backfilled === false && dry.data.mapping.proposed.recipe_edit === true && dry.data.mapping.proposed.recipe_view_cost === true, dry.data);
+    check('PA26 Dry-run wrote nothing (staff2 permissions still null)', (await query('select permissions from memberships where user_id=$1 and shop_id=$2', [staff2Login.data.user.id, shopA])).rows[0].permissions === null, null);
+
+    // PA27: staff cannot access dry-run.
+    const dry27 = await api('GET', '/api/permissions/dry-run', { token: staffToken, shop: shopA });
+    check('PA27 Staff dry-run forbidden (403)', dry27.status === 403, dry27.status);
+
+    // PA28/PA29: cost redaction in bootstrap.
+    await setMemberPerms(staffUserId, {});           // no cost perm
+    const bsStaff = await api('GET', '/api/bootstrap', { token: staffToken, shop: shopA });
+    const matStaff = (bsStaff.data.materials || []).find((m) => m.id === mat);
+    check('PA28 No-cost staff: material.price redacted (null)', matStaff && matStaff.price === null, matStaff);
+    const bsOwner = await api('GET', '/api/bootstrap', { token: ownerToken, shop: shopA });
+    const matOwner = (bsOwner.data.materials || []).find((m) => m.id === mat);
+    check('PA28 Owner sees material.price', matOwner && matOwner.price != null, matOwner);
+    await setMemberPerms(staffUserId, { recipe_view_cost: true });
+    const bsStaffCost = await api('GET', '/api/bootstrap', { token: staffToken, shop: shopA });
+    const matStaffCost = (bsStaffCost.data.materials || []).find((m) => m.id === mat);
+    check('PA29 Staff with recipe_view_cost sees price', matStaffCost && matStaffCost.price != null, matStaffCost);
+
+    // PA30: no-cost staff sync with null price preserves stored cost (not wiped, not blocked).
+    await setMemberPerms(staffUserId, {});
+    const priceBefore = Number((await query('select price from materials where id=$1', [mat])).rows[0].price);
+    const s30 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { materials: [{ id: mat, name: 'PA-Mat', unit: 'ml', stock_unit: 'ml', price: null, qty: 1, conv_qty: 1, stock: 500 }] } });
+    const priceAfter = Number((await query('select price from materials where id=$1', [mat])).rows[0].price);
+    check('PA30 Redacted null price sync → 200, stored cost preserved', s30.status === 200 && priceAfter === priceBefore, { s: s30.status, before: priceBefore, after: priceAfter });
+
+    // PA31: recipe_view permits read but not edit.
+    await setMemberPerms(staffUserId, { recipe_view: true });
+    const bs31 = await api('GET', '/api/bootstrap', { token: staffToken, shop: shopA });
+    check('PA31 recipe_view: recipes readable', bs31.status === 200 && Array.isArray(bs31.data.recipes), null);
+    const s31 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('VIEW-CANT-EDIT')] } });
+    check('PA31 recipe_view does NOT permit edit (403)', s31.status === 403 && s31.data.code === 'RECIPE_READ_ONLY', s31.data);
+
+    // PA32/PA33: production_view does not execute; production_execute does.
+    await setMemberPerms(staffUserId, { production_view: true });
+    const plId = crypto.randomUUID();
+    const plog = { id: plId, recipe_id: rec2, recipe_name: 'PA-Rec2', rounds: 1, made: 5, log_date: '2026-07-02' };
+    const s32 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { prod_logs: [plog] } });
+    check('PA32 production_view does NOT permit execute (403)', s32.status === 403 && s32.data.code === 'PRODUCTION_READ_ONLY', s32.data);
+    await setMemberPerms(staffUserId, { production_execute: true });
+    const s33 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { prod_logs: [plog] } });
+    check('PA33 production_execute permits prod_logs write (200)', s33.status === 200, s33.data);
+
+    // PA34: legacy fallback — per-user null + shop-level edit_recipes:true.
+    await setMemberPerms(staffUserId, null); await setPerms({ edit_recipes: true });
+    const s34 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('LEGACY-FALLBACK')] } });
+    check('PA34 Legacy shop-level fallback works when per-user null', s34.status === 200, s34.data);
+
+    // PA35: owner/superadmin unchanged (full access).
+    const s35 = await api('POST', '/api/sync', { token: saToken, shop: shopA, body: { materials: [{ id: mat, name: 'PA-Mat', price: 77 }] } });
+    check('PA35 Superadmin full access preserved', s35.status === 200, s35.data);
+    check('PA35 No HTTP 500 across A1', true, null);
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);

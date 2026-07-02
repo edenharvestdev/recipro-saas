@@ -70,6 +70,7 @@
     get: (p) => raw('GET', p),
     post: (p, b) => raw('POST', p, b),
     patch: (p, b) => raw('PATCH', p, b),
+    put: (p, b) => raw('PUT', p, b),
     del: (p) => raw('DELETE', p),
     setTokens, clearTokens, getAccess, getRefresh,
     async login(email, password) {

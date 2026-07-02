@@ -6,7 +6,7 @@ const catalog = require('./permissions/catalog');
 async function tenant(req, res, next) {
   try {
     const { rows } = await query(
-      'select shop_id, role from memberships where user_id = $1 order by role = $2 desc',
+      'select shop_id, role, permissions from memberships where user_id = $1 order by role = $2 desc',
       [req.userId, 'superadmin']
     );
     req.memberships = rows;
@@ -22,18 +22,27 @@ async function tenant(req, res, next) {
     req.shopId = current ? current.shop_id : null;
     req.role = current ? current.role : null;
 
-    // S4: โหลดสิทธิ์ย่อยของพนักงานสำหรับร้านปัจจุบัน (ใช้บังคับสิทธิ์ใน endpoint สำคัญ)
+    // Permission resolution (A1): per-user memberships.permissions overrides the legacy shop-level
+    // staff_permissions fallback. If the per-user object is NULL, we fall back to the shop-level object
+    // (backward compatible). Conservative defaults are applied in catalog.hasPerm.
     req.staffPerms = {};
     if (req.shopId) {
       try {
-        const sp = await query('select staff_permissions from shop_settings where shop_id = $1', [req.shopId]);
-        let p = sp.rows[0] && sp.rows[0].staff_permissions;
-        if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } }
-        req.staffPerms = p || {};
+        let userPerms = current && Object.prototype.hasOwnProperty.call(current, 'permissions') ? current.permissions : null;
+        if (typeof userPerms === 'string') { try { userPerms = JSON.parse(userPerms); } catch (e) { userPerms = null; } }
+        if (userPerms && typeof userPerms === 'object') {
+          req.staffPerms = userPerms;                 // per-user explicit permissions
+        } else {
+          const sp = await query('select staff_permissions from shop_settings where shop_id = $1', [req.shopId]);
+          let p = sp.rows[0] && sp.rows[0].staff_permissions;
+          if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } }
+          req.staffPerms = p || {};                   // legacy shop-level fallback
+        }
       } catch (e) { req.staffPerms = {}; }
     }
-    // Single authority helper for all downstream code (routers, sync-guard, redaction).
+    // Single authority helpers for all downstream code (routers, sync-guard, redaction).
     req.hasPerm = (key) => catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, key);
+    req.canViewCost = () => catalog.canViewCost(req.staffPerms, req.role, req.isSuperadmin);
     next();
   } catch (e) {
     res.status(500).json({ error: e.message });

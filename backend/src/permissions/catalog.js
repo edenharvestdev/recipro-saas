@@ -168,5 +168,18 @@ const PRESETS = {
   },
   custom: {},
 };
+// Manager preset: broad operational access, but NO owner creation / role changes / permission
+// delegation / system administration (no privilege-escalation surface).
+const MANAGER_EXCLUDE = new Set(['team_edit_role', 'team_edit_permissions', 'team_invite', 'team_remove', 'system_admin_view', 'system_admin_manage']);
+PRESETS.manager = ALL_KEYS.reduce((m, k) => { if (!MANAGER_EXCLUDE.has(k)) m[k] = true; return m; }, {});
 
-module.exports = { GROUPS, ALL_KEYS, LEGACY_ALIASES, LEGACY_DEFAULTS, STAFF_DEFAULTS, PRESETS, hasPerm };
+const PRESET_LABELS = { manager: 'ผู้จัดการ', front_store: 'พนักงานหน้าร้าน', production_staff: 'ฝ่ายผลิต', read_only: 'ดูอย่างเดียว', custom: 'กำหนดเอง' };
+
+// May the caller see cost/COGS data anywhere? Any cost-view permission (or owner/superadmin) qualifies.
+const COST_VIEW_KEYS = ['recipe_view_cost', 'stock_view_cost', 'pos_view_cost', 'report_view_cost', 'production_view_cost'];
+function canViewCost(perms, role, isSuperadmin) {
+  if (isSuperadmin === true || role === 'owner') return true;
+  return COST_VIEW_KEYS.some((k) => hasPerm(perms, role, isSuperadmin, k));
+}
+
+module.exports = { GROUPS, ALL_KEYS, LEGACY_ALIASES, LEGACY_DEFAULTS, STAFF_DEFAULTS, PRESETS, PRESET_LABELS, COST_VIEW_KEYS, hasPerm, canViewCost };
