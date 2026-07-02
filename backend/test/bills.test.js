@@ -58,7 +58,7 @@ const fgStock = async (id) => Number((await query('SELECT fg_stock FROM recipes 
 
     const mItem = (qty, price, disc) => ({ key: 'k' + Math.random().toString(36).slice(2, 6), menu_type: 'material', ref_id: milk, menu_name: 'BC-Milk', qty, unit_price: price, discount: disc || 0 });
 
-    console.log('\n=== Bill Lifecycle Tests (BC1-BC27) ===\n');
+    console.log('\n=== Bill Lifecycle Tests (BC1-BC35) ===\n');
 
     // ── BC1: Draft saves without stock deduction ──
     const s0 = await matStock(milk);
@@ -195,6 +195,56 @@ const fgStock = async (id) => Number((await query('SELECT fg_stock FROM recipes 
     check('BC29 correction changes payment_method (→transfer)', corr29.data.replacement?.payment_method === 'transfer', corr29.data.replacement?.payment_method);
     check('BC29 payment-method change makes no NET stock change (reverse+rededuct same qty)', (await matStock(milk)) === stk29 + 2 - 2, { before: stk29, after: await matStock(milk) });
     check('BC29 Gross/Net unchanged by payment method (100/100)', Number(corr29.data.replacement?.gross_sales) === 100 && Number(corr29.data.replacement?.net_sales) === 100, corr29.data.replacement);
+
+    // ── BC30 (V1): Void reason is mandatory ──
+    const d30 = await api('POST', '/api/bills/draft', { token: ownerToken, shop: shopA, body: { items: [mItem(1, 20)] } });
+    const b30 = d30.data.bill.id;
+    await api('POST', '/api/bills/' + b30 + '/confirm', { token: ownerToken, shop: shopA, body: {} });
+    const v30no = await api('POST', '/api/bills/' + b30 + '/void', { token: ownerToken, shop: shopA, body: { reason: '   ' } });
+    check('BC30 Void without reason → 400 VOID_REASON_REQUIRED', v30no.status === 400 && v30no.data?.error === 'VOID_REASON_REQUIRED', v30no.data);
+    const st30 = await matStock(milk);
+    const v30ok = await api('POST', '/api/bills/' + b30 + '/void', { token: ownerToken, shop: shopA, body: { reason: 'มีเหตุผล' } });
+    check('BC30 Void with reason → ok, stock reversed once', v30ok.status === 200 && v30ok.data?.reversed >= 1 && (await matStock(milk)) === st30 + 1, { v: v30ok.data, after: await matStock(milk) });
+
+    // ── BC31 (V1): Draft may be DELETED with no stock reversal ──
+    const stk31 = await matStock(milk);
+    const d31 = await api('POST', '/api/bills/draft', { token: ownerToken, shop: shopA, body: { items: [mItem(3, 20)] } });
+    const b31 = d31.data.bill.id;
+    const del31 = await api('DELETE', '/api/bills/' + b31, { token: ownerToken, shop: shopA });
+    const gone31 = await api('GET', '/api/bills/' + b31, { token: ownerToken, shop: shopA });
+    check('BC31 Draft delete → ok, no stock change, bill gone', del31.data?.ok === true && (await matStock(milk)) === stk31 && gone31.status === 404, { del: del31.data, stock: await matStock(milk), get: gone31.status });
+
+    // ── BC32 (V1): CONFIRMED bill CANNOT be deleted ──
+    const d32 = await api('POST', '/api/bills/draft', { token: ownerToken, shop: shopA, body: { items: [mItem(1, 20)] } });
+    const b32 = d32.data.bill.id;
+    await api('POST', '/api/bills/' + b32 + '/confirm', { token: ownerToken, shop: shopA, body: {} });
+    const del32 = await api('DELETE', '/api/bills/' + b32, { token: ownerToken, shop: shopA });
+    const still32 = await api('GET', '/api/bills/' + b32, { token: ownerToken, shop: shopA });
+    check('BC32 Confirmed delete → 409 CONFIRMED_BILL_NOT_DELETABLE, bill preserved', del32.status === 409 && del32.data?.error === 'CONFIRMED_BILL_NOT_DELETABLE' && still32.status === 200, { del: del32.data, get: still32.status });
+
+    // ── BC33 (V1): Void audit records actor + time + reason; original preserved ──
+    await api('POST', '/api/bills/' + b32 + '/void', { token: ownerToken, shop: shopA, body: { reason: 'ตรวจสอบ audit' } });
+    const g33 = await api('GET', '/api/bills/' + b32, { token: ownerToken, shop: shopA });
+    const voidedEntry = (g33.data.audit || []).find(a => a.action === 'voided');
+    check('BC33 Original preserved as VOIDED', g33.data.bill?.lifecycle_status === 'VOIDED' && !!g33.data.bill?.voided_at && !!g33.data.bill?.voided_by, g33.data.bill);
+    check('BC33 Void audit has actor + reason + time', !!voidedEntry && !!voidedEntry.actor_name && voidedEntry.reason === 'ตรวจสอบ audit' && !!voidedEntry.created_at, voidedEntry);
+
+    // ── BC34 (V1): VOIDED bill cannot be corrected again ──
+    const corr34 = await api('POST', '/api/bills/' + b32 + '/correct', { token: ownerToken, shop: shopA, body: { reason: 'x', items: [mItem(1, 20)] } });
+    check('BC34 Correct on VOIDED bill → 409', corr34.status === 409, corr34.data);
+
+    // ── BC35 (V1): Legacy bill (no strong stock linkage) is NOT auto-reversed ──
+    const legacyId = (await query(
+      `INSERT INTO bills(shop_id, doc_type, lifecycle_status, status, stock_deducted, gross_sales, net_sales, number, items_json, business_date, created_by, confirmed_at)
+       VALUES($1,'sale','CONFIRMED','paid',true,100,100,'BC-LEGACY-' || $2,'[]'::jsonb,CURRENT_DATE,(SELECT user_id FROM memberships WHERE shop_id=$1 AND role='owner' LIMIT 1),now()) RETURNING id`,
+      [shopA, sfx]
+    )).rows[0].id;
+    const stkLegacy = await matStock(milk);
+    const vLegacyBlocked = await api('POST', '/api/bills/' + legacyId + '/void', { token: ownerToken, shop: shopA, body: { reason: 'legacy void' } });
+    check('BC35 Legacy void blocked → 409 LEGACY_STOCK_LINK_REVIEW_REQUIRED', vLegacyBlocked.status === 409 && vLegacyBlocked.data?.error === 'LEGACY_STOCK_LINK_REVIEW_REQUIRED', vLegacyBlocked.data);
+    check('BC35 Legacy still CONFIRMED (not voided), stock untouched', (await api('GET', '/api/bills/' + legacyId, { token: ownerToken, shop: shopA })).data.bill?.lifecycle_status === 'CONFIRMED' && (await matStock(milk)) === stkLegacy, { after: await matStock(milk) });
+    const vLegacyAck = await api('POST', '/api/bills/' + legacyId + '/void', { token: ownerToken, shop: shopA, body: { reason: 'legacy void', acknowledge_legacy: true } });
+    check('BC35 Legacy void with ack → VOIDED, reversed 0, NO unrelated stock reversal', vLegacyAck.status === 200 && vLegacyAck.data?.reversed === 0 && vLegacyAck.data?.legacy === true && (await matStock(milk)) === stkLegacy, { v: vLegacyAck.data, after: await matStock(milk) });
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);

@@ -1823,6 +1823,31 @@ table.bd tfoot td.r { text-align: right; }
   }
 }
 
+/* ── Bill Manager modal — viewport-bounded, pinned header/footer, scroll body ──
+   The manager is a flex column capped to the viewport. Header (title/actions) and
+   footer (totals + Save/Confirm/Void) stay pinned; only the middle (bill list on the
+   list view, item rows + fields on the editor) scrolls. min-height:0 lets the scroll
+   region shrink. Mobile → full-screen sheet with the same internal scroll. */
+#billMgrModal .bmm-shell {
+  background: var(--surface-1);
+  border-radius: 16px;
+  width: 96%;
+  max-width: 960px;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.3);
+}
+#billMgrModal .bmm-head { flex: 0 0 auto; padding: 16px 20px 10px; border-bottom: 1px solid var(--border-soft); }
+#billMgrModal .bmm-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 20px; scrollbar-width: thin; }
+#billMgrModal .bmm-foot { flex: 0 0 auto; padding: 12px 20px; border-top: 1px solid var(--border-soft); background: var(--surface-1); }
+#billMgrModal .bmm-foot:empty { display: none; padding: 0; border-top: 0; }
+@media (max-width: 767px) {
+  #billMgrModal { align-items: stretch !important; padding: 0 !important; }
+  #billMgrModal .bmm-shell { width: 100%; max-width: none; max-height: 100dvh; height: 100dvh; border-radius: 0; }
+}
+
 /* ── Sub-tab bar ─────────────────────────────────────────────────────────── */
 .pos-subtab-bar {
   display: flex;

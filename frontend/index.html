@@ -7094,11 +7094,19 @@ function openBill(id) {
 }
 
 async function delBill(id) {
-  if (!(await ui.confirm('ยืนยันเพื่อลบบิลประวัตินี้?', { okText: 'ลบ', danger: true }))) return;
-  bills = bills.filter(b => b.id !== id);
+  if (!(await ui.confirm('ยืนยันเพื่อลบบิลประวัตินี้? (บิลที่ยืนยันแล้วต้องใช้ Void ในเมนู "ร่าง/แก้ไขบิล")', { okText: 'ลบ', danger: true }))) return;
   if (!isMockMode) {
-    await API.del('/api/bills/' + id);
+    // Backend blocks deletion of CONFIRMED/VOIDED/REPLACED lifecycle bills — do not optimistically
+    // remove from the list; only drop it locally after the server actually deletes it.
+    try { await API.del('/api/bills/' + id); }
+    catch (e) {
+      const d = (e && e.data) || {};
+      if (d.error === 'CONFIRMED_BILL_NOT_DELETABLE') ui.toast('บิลที่ยืนยันแล้วลบไม่ได้ — ใช้ Void ในเมนู "ร่าง/แก้ไขบิล"', 'warning');
+      else ui.toast('ลบไม่ได้: ' + (e && e.message || ''), 'error');
+      return;
+    }
   }
+  bills = bills.filter(b => b.id !== id);
   saveAll();
   render();
 }
@@ -11025,21 +11033,61 @@ async function openBillMgr() {
   _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', paymentMethod: '', reason: null };
   await bmRender();
 }
+// Build the viewport-bounded shell (pinned head + scroll body + pinned foot).
+function bmShell(head, body, foot) {
+  const ov = $('billMgrModal'); if (!ov) return;
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-head">' + head + '</div>'
+    + '<div class="bmm-scroll" id="bmBody">' + body + '</div>'
+    + '<div class="bmm-foot">' + (foot || '') + '</div></div>';
+  if (window.renderIcons) renderIcons(ov);
+}
+function bmBadge(s) {
+  const c = { DRAFT: '#f59e0b', CONFIRMED: '#16a34a', REPLACED: '#6366f1', VOIDED: '#dc2626', CORRECTION_PENDING: '#2563eb' }[s] || '#888';
+  return '<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';font-weight:700;">' + esc(s || '-') + '</span>';
+}
 async function bmRender() {
   const ov = $('billMgrModal'); if (!ov) return;
-  ov.innerHTML = '<div style="background:var(--surface-1);border-radius:16px;max-width:820px;width:96%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 16px 60px rgba(0,0,0,.3);"><div id="bmBody">กำลังโหลด...</div></div>';
   if (_bm.editing !== null || _bm.correctOf) { bmRenderEditor(); return; }
+  bmShell('<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><h2 style="margin:0;font-size:16px;">🧾 ร่าง / แก้ไขบิล</h2><div style="display:flex;gap:6px;"><button class="btn btn-primary btn-sm" onclick="bmNew()">+ บิลใหม่</button><button class="btn btn-ghost btn-sm" onclick="bmClose()">ปิด</button></div></div>', 'กำลังโหลด...', '');
   let bills = []; try { bills = (await API.get('/api/bills/recent')).bills || []; } catch (e) {}
-  const badge = s => { const c = { DRAFT: '#f59e0b', CONFIRMED: '#16a34a', REPLACED: '#6366f1', VOIDED: '#dc2626', CORRECTION_PENDING: '#2563eb' }[s] || '#888'; return '<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';">' + s + '</span>'; };
-  const row = b => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;">'
-    + '<div style="flex:1;min-width:150px;"><div style="font-size:13px;font-weight:600;">' + (b.number ? esc(b.number) : '(ร่าง)') + ' ' + badge(b.lifecycle_status) + '</div>'
-    + '<div style="font-size:11px;color:var(--color-text-muted);">' + (b.business_date ? dlvDateOnly(b.business_date) : '') + ' · สุทธิ ' + dlvFmt(b.net_sales) + (b.actual_received_amount != null ? ' · รับจริง ' + dlvFmt(b.actual_received_amount) : '') + (b.payment_method ? ' · ' + esc(PAY_METHOD_LABELS[b.payment_method] || b.payment_method) : '') + (b.replacement_bill_id ? ' · มีบิลใหม่แทน' : '') + (b.original_bill_id ? ' · แก้จากบิลเดิม' : '') + '</div></div>'
-    + (b.lifecycle_status === 'DRAFT' ? '<button class="btn btn-ghost btn-sm" onclick="bmReopen(\'' + b.id + '\')">เปิด/แก้</button><button class="btn btn-primary btn-sm" onclick="bmConfirm(\'' + b.id + '\')">ยืนยัน</button>' : '')
-    + (b.lifecycle_status === 'CONFIRMED' ? '<button class="btn btn-ghost btn-sm" onclick="bmStartCorrect(\'' + b.id + '\')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="bmVoid(\'' + b.id + '\')">ยกเลิก</button><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">พิมพ์</button>' : '')
-    + ((b.lifecycle_status === 'REPLACED' || b.lifecycle_status === 'VOIDED') ? '<span style="font-size:11px;color:#dc2626;font-weight:700;">' + (b.lifecycle_status === 'VOIDED' ? 'ยกเลิกแล้ว' : 'ออกบิลใหม่แทนแล้ว') + '</span><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>' : '')
-    + '</div>';
-  $('bmBody').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><h2 style="margin:0;font-size:16px;">🧾 ร่าง / แก้ไขบิล</h2><div style="display:flex;gap:6px;"><button class="btn btn-primary btn-sm" onclick="bmNew()">+ บิลใหม่</button><button class="btn btn-ghost btn-sm" onclick="bmClose()">ปิด</button></div></div>'
-    + (bills.length ? bills.map(row).join('') : '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีบิล</p>');
+  const canVoid = can('void');   // owner/superadmin always; staff needs the void permission
+  const row = b => {
+    const st = b.lifecycle_status;
+    const meta = (b.business_date ? dlvDateOnly(b.business_date) : '') + ' · สุทธิ ' + dlvFmt(b.net_sales)
+      + (b.actual_received_amount != null ? ' · รับจริง ' + dlvFmt(b.actual_received_amount) : '')
+      + (b.payment_method ? ' · ' + esc(PAY_METHOD_LABELS[b.payment_method] || b.payment_method) : '');
+    let actions = '';
+    if (st === 'DRAFT') {
+      // Draft: reopen/confirm; safe "Delete Draft" (no stock/financial reversal — a draft never deducted).
+      actions = '<button class="btn btn-ghost btn-sm" onclick="bmReopen(\'' + b.id + '\')">เปิด/แก้</button>'
+        + '<button class="btn btn-primary btn-sm" onclick="bmConfirm(\'' + b.id + '\')">ยืนยัน</button>'
+        + '<button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="bmDeleteDraft(\'' + b.id + '\')">ลบร่าง</button>';
+    } else if (st === 'CONFIRMED') {
+      // Confirmed/Paid: never destructive delete — correct (replace) or Void (permission-gated).
+      actions = '<button class="btn btn-ghost btn-sm" onclick="bmStartCorrect(\'' + b.id + '\')">แก้ไข</button>'
+        + (canVoid ? '<button class="btn btn-ghost btn-sm" style="color:#dc2626;font-weight:700;" onclick="bmVoid(\'' + b.id + '\')">Void บิล</button>' : '')
+        + '<button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">พิมพ์</button>';
+    } else if (st === 'REPLACED') {
+      // Replaced: original retained, clearly reference the replacement; no delete, no re-correct.
+      actions = '<span style="font-size:11px;color:#6366f1;font-weight:700;">ออกบิลใหม่แทนแล้ว</span>'
+        + '<button class="btn btn-ghost btn-sm" onclick="bmShowAudit(\'' + b.id + '\')">ℹ️ รายละเอียด</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>';
+    } else if (st === 'VOIDED') {
+      // Voided: retained + View/Print; audit (who/when/why) via details. No second void.
+      actions = '<span style="font-size:11px;color:#dc2626;font-weight:800;">VOIDED · ยกเลิกแล้ว</span>'
+        + '<button class="btn btn-ghost btn-sm" onclick="bmShowAudit(\'' + b.id + '\')">ℹ️ ใคร/เมื่อ/ทำไม</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>';
+    } else {
+      actions = '<button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>';
+    }
+    const border = st === 'VOIDED' ? 'border-left:3px solid #dc2626;' : (st === 'REPLACED' ? 'border-left:3px solid #6366f1;' : 'border-left:3px solid transparent;');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 8px 8px 10px;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;' + border + '">'
+      + '<div style="flex:1;min-width:150px;"><div style="font-size:13px;font-weight:600;' + (st === 'VOIDED' ? 'text-decoration:line-through;color:var(--color-text-muted);' : '') + '">' + (b.number ? esc(b.number) : '(ร่าง)') + ' ' + bmBadge(st) + '</div>'
+      + '<div style="font-size:11px;color:var(--color-text-muted);">' + meta
+      + (b.replacement_bill_id ? ' · มีบิลใหม่แทน' : '') + (b.original_bill_id ? ' · แก้จากบิลเดิม' : '') + '</div></div>'
+      + actions + '</div>';
+  };
+  $('bmBody').innerHTML = (bills.length ? bills.map(row).join('') : '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีบิล</p>');
   if (window.renderIcons) renderIcons(ov);
 }
 function bmNew() { _bm.editing = {}; _bm.correctOf = null; _bm.lines = []; _bm.billDiscount = 0; _bm.actualReceived = ''; _bm.businessDate = ''; _bm.paymentMethod = ''; _bm.reason = null; bmRenderEditor(); }
@@ -11056,21 +11104,21 @@ function bmRenderEditor() {
     + '<td style="text-align:right;">' + dlvFmt((+l.qty || 0) * (+l.unit_price || 0) - (+l.discount || 0)) + '</td>'
     + '<td><button class="btn btn-ghost btn-sm" style="color:#dc2626;padding:1px 5px;" onclick="bmDelLine(' + i + ')">✕</button></td></tr>').join('');
   const today = new Date().toISOString().slice(0, 10);
-  $('bmBody').innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><h2 style="margin:0;font-size:15px;">' + (isCorrect ? ('✏️ แก้ไขบิล ' + esc(_bm.correctOf.number || '') + ' → ออกบิลใหม่แทน') : '🧾 บิลร่าง') + '</h2><button class="btn btn-ghost btn-sm" onclick="bmRender()">← กลับ</button></div>'
-    + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><select id="bmAddSel" style="flex:1;min-width:180px;padding:5px;">' + opts + '</select><button class="btn btn-primary btn-sm" onclick="bmAddLine()">+ เพิ่มรายการ</button></div>'
+  const head = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><h2 style="margin:0;font-size:15px;">' + (isCorrect ? ('✏️ แก้ไขบิล ' + esc(_bm.correctOf.number || '') + ' → ออกบิลใหม่แทน') : '🧾 บิลร่าง') + '</h2><button class="btn btn-ghost btn-sm" onclick="bmRender()">← กลับ</button></div>';
+  const body = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><select id="bmAddSel" style="flex:1;min-width:180px;padding:5px;">' + opts + '</select><button class="btn btn-primary btn-sm" onclick="bmAddLine()">+ เพิ่มรายการ</button></div>'
     + (_bm.lines.length ? '<table style="width:100%;font-size:12px;border-collapse:collapse;"><tr style="color:var(--color-text-muted);font-size:11px;"><th style="text-align:left;">เมนู</th><th>จำนวน</th><th>ราคา</th><th>ส่วนลด</th><th style="text-align:right;">รวม</th><th></th></tr>' + lineRows + '</table>' : '<p style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีรายการ</p>')
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">'
     + '<label style="font-size:12px;">ส่วนลดท้ายบิล<input type="number" value="' + (_bm.billDiscount || 0) + '" onchange="_bm.billDiscount=+this.value;bmRenderEditor();" style="width:100%;padding:5px;"></label>'
     + '<label style="font-size:12px;">รับเงินจริง (แยกจากสุทธิ)<input type="number" value="' + _bm.actualReceived + '" onchange="_bm.actualReceived=this.value;" style="width:100%;padding:5px;"></label>'
     + '<label style="font-size:12px;">วันที่ขาย (ย้อนหลังได้)<input type="date" value="' + (_bm.businessDate || '') + '" max="' + today + '" onchange="_bm.businessDate=this.value;" style="width:100%;padding:5px;"></label>'
     + '<label style="font-size:12px;">วิธีชำระเงิน<select onchange="_bm.paymentMethod=this.value;" style="width:100%;padding:5px;"><option value="">— เลือกวิธีชำระ —</option>' + Object.keys(PAY_METHOD_LABELS).map(function (k) { return '<option value="' + k + '"' + (_bm.paymentMethod === k ? ' selected' : '') + '>' + esc(PAY_METHOD_LABELS[k]) + '</option>'; }).join('') + '</select></label>'
-    + (isCorrect ? '<label style="font-size:12px;">เหตุผลการแก้ไข (จำเป็น)<input type="text" id="bmReason" value="' + esc(_bm.reason || '') + '" style="width:100%;padding:5px;"></label>' : '<div></div>')
-    + '</div>'
-    + '<div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:8px;font-size:13px;">ยอดรวม ' + dlvFmt(m.gross) + ' · ส่วนลดรวม ' + dlvFmt(m.disc) + ' · <b>สุทธิ ' + dlvFmt(m.net) + '</b></div>'
-    + '<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">'
+    + (isCorrect ? '<label style="font-size:12px;grid-column:1/-1;">เหตุผลการแก้ไข (จำเป็น)<input type="text" id="bmReason" value="' + esc(_bm.reason || '') + '" style="width:100%;padding:5px;"></label>' : '')
+    + '</div>';
+  const foot = '<div style="margin-bottom:10px;padding:10px;background:var(--surface-2);border-radius:8px;font-size:13px;">ยอดรวม ' + dlvFmt(m.gross) + ' · ส่วนลดรวม ' + dlvFmt(m.disc) + ' · <b>สุทธิ ' + dlvFmt(m.net) + '</b></div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'
     + (isCorrect ? '<button class="btn btn-primary" onclick="bmSubmitCorrect()">ยืนยันแก้ไข (ออกบิลใหม่)</button>' : '<button class="btn btn-ghost" onclick="bmSaveDraft(false)">บันทึกร่าง</button><button class="btn btn-primary" onclick="bmSaveDraft(true)">บันทึก + ยืนยัน</button>')
     + '</div>';
+  bmShell(head, body, foot);
 }
 function bmSetLine(i, f, v) { if (_bm.lines[i]) { _bm.lines[i][f] = f === 'qty' ? (parseInt(v) || 1) : (parseFloat(v) || 0); bmRenderEditor(); } }
 function bmDelLine(i) { _bm.lines.splice(i, 1); bmRenderEditor(); }
@@ -11084,11 +11132,94 @@ async function bmConfirm(id) {
   try { const r = await API.post('/api/bills/' + id + '/confirm', {}); ui.toast(r.already ? 'บิลนี้ยืนยันแล้ว' : 'ยืนยันบิล ' + (r.number || '') + ' — ตัดสต๊อกแล้ว'); _bm.editing = null; await bmRender(); }
   catch (e) { const d = e && e.data || {}; if (d.error === 'FG_STOCK_INSUFFICIENT') ui.toast('สต๊อกไม่พอ: ' + (d.recipeName || ''), 'warning'); else ui.toast('ยืนยันไม่ได้: ' + (e && e.message || ''), 'error'); }
 }
+// Delete a DRAFT only. A draft never deducted stock and has no financial posting, so this is safe.
+// The backend blocks deletion of CONFIRMED/VOIDED/REPLACED bills (409) — those use Void instead.
+async function bmDeleteDraft(id) {
+  if (!(await ui.confirm('ลบร่างนี้? (ร่างยังไม่ตัดสต๊อกและไม่มีผลทางการเงิน — ลบได้ปลอดภัย)', { okText: 'ลบร่าง', danger: true }))) return;
+  try { await API.del('/api/bills/' + id); ui.toast('ลบร่างแล้ว'); await bmRender(); }
+  catch (e) { const d = (e && e.data) || {}; if (d.error === 'CONFIRMED_BILL_NOT_DELETABLE') ui.toast('บิลที่ยืนยันแล้วลบไม่ได้ — ใช้ Void แทน', 'warning'); else ui.toast('ลบไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+// Void confirmation modal: shows the full bill summary + expected stock reversal, mandatory reason,
+// legacy-linkage guard, and a warning that the original is retained. Confirm is single-submit.
 async function bmVoid(id) {
-  if (!(await ui.confirm('ยกเลิกบิลนี้? สต๊อกจะถูกคืน (บิลถูกเก็บไว้และทำเครื่องหมายยกเลิก)', { okText: 'ยกเลิกบิล', danger: true }))) return;
-  const reason = prompt('เหตุผลการยกเลิก?') || '';
-  try { await API.post('/api/bills/' + id + '/void', { reason }); ui.toast('ยกเลิกบิลแล้ว'); await bmRender(); }
-  catch (e) { if (e.status === 403) ui.toast('ต้องเป็นเจ้าของร้านจึงยกเลิกได้', 'warning'); else ui.toast('ยกเลิกไม่ได้: ' + (e && e.message || ''), 'error'); }
+  let data;
+  try { data = await API.get('/api/bills/' + id); }
+  catch (e) { ui.toast('โหลดบิลไม่ได้: ' + (e && e.message || ''), 'error'); return; }
+  const b = data.bill || {};
+  if (b.lifecycle_status !== 'CONFIRMED') { ui.toast('บิลนี้ Void ไม่ได้ (สถานะ ' + (b.lifecycle_status || '-') + ')', 'warning'); return; }
+  const links = data.stock_links || [];
+  const dedLinks = links.filter(l => l.movement_role === 'ORIGINAL_DEDUCTION' || l.movement_role === 'REPLACEMENT_DEDUCTION');
+  const reversedOf = new Set(links.filter(l => l.movement_role === 'REVERSAL').map(l => l.reversal_of_link_id));
+  const pendingReversal = dedLinks.filter(l => !reversedOf.has(l.id)).length;
+  const isLegacy = !!b.stock_deducted && dedLinks.length === 0;
+  const items = Array.isArray(b.items_json) ? b.items_json : [];
+  const itemCount = items.reduce((s, it) => s + (+it.qty || 0), 0);
+  const gross = +b.gross_sales || 0, net = +b.net_sales || 0;
+  let ov = $('bmVoidModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'bmVoidModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(20,15,5,.55);display:flex;align-items:center;justify-content:center;padding:16px;'; document.body.appendChild(ov); }
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const kv = (k, v) => '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:13px;"><span style="color:var(--color-text-muted);">' + k + '</span><span style="font-weight:600;">' + v + '</span></div>';
+  const legacyBlock = isLegacy
+    ? '<div style="margin:10px 0;padding:10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:12px;"><b>LEGACY_STOCK_LINK_REVIEW_REQUIRED</b><br>บิลนี้ไม่มีการเชื่อมโยงสต๊อกที่ชัดเจน (บิลเก่า) ระบบจะไม่คืนสต๊อกอัตโนมัติเพื่อกันคืนผิดตัว — ต้องให้เจ้าของตรวจสอบและปรับสต๊อกเอง<br><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:700;"><input type="checkbox" id="bmVoidAckLegacy"> รับทราบ — Void โดยไม่คืนสต๊อกอัตโนมัติ</label></div>'
+    : '';
+  ov.innerHTML = '<div class="bmm-shell" style="max-width:460px;">'
+    + '<div class="bmm-head"><h2 style="margin:0;font-size:16px;color:#dc2626;">⚠️ ยืนยัน Void บิล</h2></div>'
+    + '<div class="bmm-scroll">'
+    + kv('เลขที่บิล', esc(b.number || '-')) + kv('วันที่', b.business_date ? dlvDateOnly(b.business_date) : '-')
+    + kv('ยอดรวม (Gross)', dlvFmt(gross)) + kv('ส่วนลด', dlvFmt(gross - net)) + kv('สุทธิ (Net)', dlvFmt(net))
+    + kv('รับจริง', b.actual_received_amount != null ? dlvFmt(b.actual_received_amount) : '-')
+    + kv('วิธีชำระ', b.payment_method ? esc(PAY_METHOD_LABELS[b.payment_method] || b.payment_method) : '-')
+    + kv('จำนวนรายการ', itemCount)
+    + kv('สต๊อกที่จะคืน', isLegacy ? '⚠️ ต้องตรวจสอบ' : (pendingReversal + ' รายการเคลื่อนไหว'))
+    + legacyBlock
+    + '<label style="display:block;font-size:12px;margin-top:10px;">เหตุผลการ Void (จำเป็น)<input type="text" id="bmVoidReason" placeholder="ระบุเหตุผล" style="width:100%;padding:7px;margin-top:3px;"></label>'
+    + '<div style="margin-top:10px;padding:8px;background:var(--surface-2);border-radius:8px;font-size:12px;color:var(--color-text-muted);">บิลต้นฉบับจะถูกเก็บไว้ในประวัติเสมอ (ทำเครื่องหมาย VOIDED) พร้อมบันทึกผู้ทำ เวลา และเหตุผล</div>'
+    + '<div id="bmVoidErr" style="color:#dc2626;font-size:12px;margin-top:8px;"></div>'
+    + '</div>'
+    + '<div class="bmm-foot" style="display:flex;gap:8px;justify-content:flex-end;">'
+    + '<button class="btn btn-ghost" onclick="var o=document.getElementById(\'bmVoidModal\');if(o)o.remove();">ยกเลิก</button>'
+    + '<button class="btn btn-danger" id="bmVoidConfirmBtn" onclick="bmDoVoid(\'' + id + '\')">ยืนยัน Void บิล</button>'
+    + '</div></div>';
+  if (window.renderIcons) renderIcons(ov);
+  setTimeout(() => { const r = $('bmVoidReason'); if (r) r.focus(); }, 30);
+}
+async function bmDoVoid(id) {
+  const btn = $('bmVoidConfirmBtn'), errEl = $('bmVoidErr');
+  const reason = (($('bmVoidReason') || {}).value || '').trim();
+  if (errEl) errEl.textContent = '';
+  if (!reason) { if (errEl) errEl.textContent = 'ต้องระบุเหตุผลการ Void'; return; }
+  const ackEl = $('bmVoidAckLegacy'); const ack = ackEl ? ackEl.checked : false;
+  if (ackEl && !ack) { if (errEl) errEl.textContent = 'ต้องยืนยันรับทราบกรณีบิลสต๊อกเก่าก่อน'; return; }
+  if (btn) { if (btn.dataset.busy === '1') return; btn.dataset.busy = '1'; btn.disabled = true; btn.textContent = 'กำลัง Void...'; }   // prevent double submit
+  try {
+    const r = await API.post('/api/bills/' + id + '/void', { reason, acknowledge_legacy: ack });
+    const ov = $('bmVoidModal'); if (ov) ov.remove();
+    ui.toast('Void บิลแล้ว' + (r && r.reversed ? ' — คืนสต๊อก ' + r.reversed + ' รายการ' : (r && r.legacy ? ' (บิลเก่า: ปรับสต๊อกเอง)' : '')));
+    await bmRender();
+  } catch (e) {
+    const d = (e && e.data) || {}; const code = d.error || (e && e.message) || 'error';
+    if (e && e.status === 403) { if (errEl) errEl.textContent = 'ต้องมีสิทธิ์ (เจ้าของ / void_bill) จึง Void ได้'; }
+    else if (code === 'LEGACY_STOCK_LINK_REVIEW_REQUIRED') { if (errEl) errEl.textContent = 'บิลสต๊อกเก่า — ต้องยืนยันรับทราบก่อน'; }
+    else if (code === 'VOID_REASON_REQUIRED') { if (errEl) errEl.textContent = 'ต้องระบุเหตุผลการ Void'; }
+    else if (errEl) errEl.textContent = 'Void ไม่ได้: ' + code;
+    if (btn) { btn.dataset.busy = ''; btn.disabled = false; btn.textContent = 'ยืนยัน Void บิล'; }   // page state preserved
+  }
+}
+// Audit / reference viewer for VOIDED (who/when/why) and REPLACED (replacement reference).
+async function bmShowAudit(id) {
+  let data; try { data = await API.get('/api/bills/' + id); } catch (e) { ui.toast('โหลดไม่ได้', 'error'); return; }
+  const b = data.bill || {}; const audit = data.audit || [];
+  let repNo = '';
+  if (b.replacement_bill_id) { try { repNo = (await API.get('/api/bills/' + b.replacement_bill_id)).bill.number || ''; } catch (e) {} }
+  let ov = $('bmAuditModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'bmAuditModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(20,15,5,.55);display:flex;align-items:center;justify-content:center;padding:16px;'; document.body.appendChild(ov); }
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const actionTh = { created: 'สร้าง', confirmed: 'ยืนยัน', voided: 'Void / ยกเลิก', corrected: 'แก้ไข (ออกบิลใหม่)' };
+  const lines = audit.map(a => '<div style="padding:6px 0;border-bottom:1px solid var(--border-soft);font-size:12px;"><b>' + (actionTh[a.action] || esc(a.action)) + '</b> · ' + esc(a.actor_name || '-') + ' · ' + (a.created_at ? new Date(a.created_at).toLocaleString('th-TH') : '') + (a.reason ? '<br><span style="color:var(--color-text-muted);">เหตุผล: ' + esc(a.reason) + '</span>' : '') + '</div>').join('') || '<p style="font-size:12px;color:var(--color-text-muted);">ไม่มีประวัติ</p>';
+  ov.innerHTML = '<div class="bmm-shell" style="max-width:440px;"><div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><h2 style="margin:0;font-size:15px;">ประวัติบิล ' + esc(b.number || '') + ' ' + bmBadge(b.lifecycle_status) + '</h2><button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'bmAuditModal\');if(o)o.remove();">ปิด</button></div><div class="bmm-scroll">'
+    + (b.replacement_bill_id ? '<div style="font-size:12px;color:#6366f1;margin-bottom:8px;padding:8px;background:#eef2ff;border-radius:8px;">→ ออกบิลใหม่แทน: <b>' + (repNo ? esc(repNo) : esc(b.replacement_bill_id)) + '</b></div>' : '')
+    + (b.original_bill_id ? '<div style="font-size:12px;color:#6366f1;margin-bottom:8px;">← บิลนี้แก้จากบิลเดิม</div>' : '')
+    + lines + '</div></div>';
 }
 async function bmSubmitCorrect() {
   const reason = (($('bmReason') || {}).value || '').trim();

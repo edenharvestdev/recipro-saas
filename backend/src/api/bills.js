@@ -207,7 +207,14 @@ router.get('/bills/:id', async (req, res) => {
     const bill = (await query('SELECT * FROM bills WHERE id=$1 AND shop_id=$2', [req.params.id, req.shopId])).rows[0];
     if (!bill) return res.status(404).json({ error: 'not found' });
     const links = (await query('SELECT * FROM bill_stock_movements WHERE bill_id=$1 ORDER BY created_at', [req.params.id])).rows;
-    const audit = (await query('SELECT action, actor_name, reason, created_at FROM bill_audit_log WHERE bill_id=$1 ORDER BY created_at', [req.params.id])).rows;
+    // Resolve the actor's display name at read time (audit stores actor_id; actor_name may be null) —
+    // so VOIDED bills reliably show WHO voided them.
+    const audit = (await query(
+      `SELECT bal.action, COALESCE(bal.actor_name, u.email) AS actor_name, bal.reason, bal.created_at
+         FROM bill_audit_log bal LEFT JOIN users u ON u.id = bal.actor_id
+        WHERE bal.bill_id=$1 ORDER BY bal.created_at`,
+      [req.params.id]
+    )).rows;
     res.json({ bill, stock_links: links, audit });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -257,12 +264,26 @@ router.post('/bills/:id/void', requirePerm('void_bill'), async (req, res) => {
     const out = await tx(async (c) => {
       const bill = (await c.query('SELECT * FROM bills WHERE id=$1 AND shop_id=$2 FOR UPDATE', [req.params.id, req.shopId])).rows[0];
       if (!bill) { const e = new Error('not found'); e.statusCode = 404; throw e; }
-      if (bill.lifecycle_status === 'VOIDED' || bill.lifecycle_status === 'REPLACED') return { bill, already: true };
+      if (bill.lifecycle_status === 'VOIDED' || bill.lifecycle_status === 'REPLACED') return { bill, already: true };  // idempotent, no second void
       if (bill.lifecycle_status !== 'CONFIRMED') { const e = new Error('BILL_NOT_CONFIRMED'); e.statusCode = 409; throw e; }
+      // Reason is mandatory for a confirmed-bill void (audit requirement).
+      if (!reason) { const e = new Error('VOID_REASON_REQUIRED'); e.statusCode = 400; throw e; }
+      // Legacy-linkage guard: a confirmed bill that deducted stock but has NO strong
+      // bill_stock_movements linkage is a pre-lifecycle "legacy" bill. We must NOT guess
+      // which stock movements to reverse (date/amount/note are unsafe) — block and require
+      // an explicit Owner acknowledgement so no unrelated stock is touched.
+      const linkCount = (await c.query(
+        `SELECT count(*)::int c FROM bill_stock_movements WHERE bill_id=$1 AND movement_role IN ('ORIGINAL_DEDUCTION','REPLACEMENT_DEDUCTION')`,
+        [req.params.id]
+      )).rows[0].c;
+      const isLegacy = !!bill.stock_deducted && linkCount === 0;
+      if (isLegacy && (req.body && req.body.acknowledge_legacy) !== true) {
+        const e = new Error('LEGACY_STOCK_LINK_REVIEW_REQUIRED'); e.statusCode = 409; throw e;
+      }
       const rev = await reverseBillLinks(c, req.shopId, req.userId, req.params.id, 'ยกเลิก ' + (bill.number || req.params.id));
       await c.query('UPDATE bills SET lifecycle_status=\'VOIDED\', status=\'voided\', voided_by=$1, voided_at=now() WHERE id=$2', [req.userId, req.params.id]);
-      await auditLog(c, req.shopId, req.userId, req.userName, req.params.id, 'voided', reason || null, { reversed: rev.reversed });
-      return { bill: (await c.query('SELECT * FROM bills WHERE id=$1', [req.params.id])).rows[0], reversed: rev.reversed };
+      await auditLog(c, req.shopId, req.userId, req.userName, req.params.id, 'voided', reason, { reversed: rev.reversed, legacy: isLegacy });
+      return { bill: (await c.query('SELECT * FROM bills WHERE id=$1', [req.params.id])).rows[0], reversed: rev.reversed, legacy: isLegacy };
     });
     res.json(out);
   } catch (e) {
