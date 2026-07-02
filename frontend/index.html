@@ -6979,10 +6979,30 @@ function blankBill() {
   };
 }
 
+// Track A: at ≥768px the document-bill editor (left card) and history (right card) each own their own
+// vertical scroll inside the bounded #posBillingPanel. When a bill is opened or a new bill is started we
+// return ONLY the left editor card to the TOP, so the upper document fields (bill no / date / customer /
+// issuer / status / doc type) are visible instead of opening around the item section. The right history
+// card is left untouched (its scroll position is preserved by openBill). No window.scrollTo / no page
+// reset. Reset runs after layout (rAF) with a second rAF guarding against a late reflow restoring scroll.
+function billEditorCard() { const r = document.getElementById('billRows'); return r ? r.closest('.glass-card') : null; }
+function billHistoryCard() { const l = document.getElementById('billList'); return l ? l.closest('.glass-card') : null; }
+function resetBillEditorScroll() {
+  const card = billEditorCard();
+  const panel = document.getElementById('posBillingPanel');
+  const toTop = () => {
+    if (card) card.scrollTop = 0;   // the editor card is the scroll owner ≥768px; no-op (harmless) on mobile
+    if (panel) panel.scrollTop = 0; // fallback if the shell ever scrolls instead of the card
+  };
+  toTop();                                                   // immediate (DOM already mutated by render)
+  requestAnimationFrame(() => { toTop(); requestAnimationFrame(toTop); });   // post-layout + late-reflow guard
+}
+
 function newBill() {
   currentBill = blankBill();
   fillForm();
   render();
+  resetBillEditorScroll();   // new bill opens at top
 }
 
 function fillForm() {
@@ -7098,9 +7118,13 @@ function saveBill() {
 function openBill(id) {
   const b = bills.find(x => x.id === id);
   if (!b) return;
+  const hist = billHistoryCard();          // right history card is its own scroll owner
+  const histTop = hist ? hist.scrollTop : 0;
   currentBill = { ...b, items: b.items.map(it => ({ ...it })) };
   fillForm();
   render();
+  if (hist) hist.scrollTop = histTop;   // A2.1: preserve the history-list position across the re-render
+  resetBillEditorScroll();              // A2.5: return only the left editor scroll owner to the top
 }
 
 async function delBill(id) {
@@ -7143,7 +7167,8 @@ function renderBillList() {
   $('billList').innerHTML = bills.map(b => {
     const { grand } = calcBill(b);
     const [lbl, cls] = ST_LABEL[b.status] || ['รอส่ง', 'status-trial'];
-    return `<tr>
+    const sel = (currentBill && b.id && b.id === currentBill.id) ? ' style="background:var(--primary-softer);"' : '';
+    return `<tr${sel}>
       <td><b>${b.billNo}</b></td>
       <td>${b.cust || '-'}</td>
       <td class="r"><b>${money(grand)}</b></td>
