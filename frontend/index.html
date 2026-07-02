@@ -792,6 +792,7 @@
         <button id="posTabLog" class="btn btn-ghost" onclick="switchPosTab('log')"><span class="ico" data-icon="history"></span> ประวัติ</button>
         <button id="posTabOnline" class="btn btn-ghost" onclick="switchPosTab('online')"><span class="ico" data-icon="qr-code"></span> ออนไลน์ (QR) <span id="posOnlineBadge" style="display:none;background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;margin-left:4px;"></span></button>
         <button id="posTabDelivery" class="btn btn-ghost" onclick="switchPosTab('delivery')" style="display:none;"><span class="ico" data-icon="truck"></span> Delivery</button>
+        <button id="posTabBillMgr" class="btn btn-ghost" onclick="openBillMgr()"><span class="ico" data-icon="receipt-text"></span> ร่าง/แก้ไขบิล</button>
       </div>
 
       <!-- ===== QUICK SELL PANEL ===== -->
@@ -11012,6 +11013,101 @@ function deliverySellable() {
   (materials || []).forEach(m => { if (m.saleType === 'SELLABLE' || m.itemType === 'SALE') out.push({ refType: 'material', id: m.id, name: m.name, price: Number(m.sellPrice || m.price) || 0 }); });
   return out;
 }
+
+// ═══ Front-store Bill Manager (Draft / Confirm / Void / Correct via replacement) ═══
+// Self-contained modal on /api/bills. Does NOT touch the existing quick-sell cart flow.
+let _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', reason: null };
+function bmMoney() { let g = 0, d = 0; _bm.lines.forEach(l => { g += (+l.qty || 0) * (+l.unit_price || 0); d += (+l.discount || 0); }); const bd = +_bm.billDiscount || 0; return { gross: g, disc: d + bd, net: g - (d + bd) }; }
+function bmClose() { const ov = $('billMgrModal'); if (ov) ov.remove(); }
+async function openBillMgr() {
+  let ov = $('billMgrModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'billMgrModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) bmClose(); }; document.body.appendChild(ov); }
+  _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', reason: null };
+  await bmRender();
+}
+async function bmRender() {
+  const ov = $('billMgrModal'); if (!ov) return;
+  ov.innerHTML = '<div style="background:var(--surface-1);border-radius:16px;max-width:820px;width:96%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 16px 60px rgba(0,0,0,.3);"><div id="bmBody">กำลังโหลด...</div></div>';
+  if (_bm.editing !== null || _bm.correctOf) { bmRenderEditor(); return; }
+  let bills = []; try { bills = (await API.get('/api/bills/recent')).bills || []; } catch (e) {}
+  const badge = s => { const c = { DRAFT: '#f59e0b', CONFIRMED: '#16a34a', REPLACED: '#6366f1', VOIDED: '#dc2626', CORRECTION_PENDING: '#2563eb' }[s] || '#888'; return '<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';">' + s + '</span>'; };
+  const row = b => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;">'
+    + '<div style="flex:1;min-width:150px;"><div style="font-size:13px;font-weight:600;">' + (b.number ? esc(b.number) : '(ร่าง)') + ' ' + badge(b.lifecycle_status) + '</div>'
+    + '<div style="font-size:11px;color:var(--color-text-muted);">' + (b.business_date ? dlvDateOnly(b.business_date) : '') + ' · สุทธิ ' + dlvFmt(b.net_sales) + (b.actual_received_amount != null ? ' · รับจริง ' + dlvFmt(b.actual_received_amount) : '') + (b.replacement_bill_id ? ' · มีบิลใหม่แทน' : '') + (b.original_bill_id ? ' · แก้จากบิลเดิม' : '') + '</div></div>'
+    + (b.lifecycle_status === 'DRAFT' ? '<button class="btn btn-ghost btn-sm" onclick="bmReopen(\'' + b.id + '\')">เปิด/แก้</button><button class="btn btn-primary btn-sm" onclick="bmConfirm(\'' + b.id + '\')">ยืนยัน</button>' : '')
+    + (b.lifecycle_status === 'CONFIRMED' ? '<button class="btn btn-ghost btn-sm" onclick="bmStartCorrect(\'' + b.id + '\')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="bmVoid(\'' + b.id + '\')">ยกเลิก</button><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">พิมพ์</button>' : '')
+    + ((b.lifecycle_status === 'REPLACED' || b.lifecycle_status === 'VOIDED') ? '<span style="font-size:11px;color:#dc2626;font-weight:700;">' + (b.lifecycle_status === 'VOIDED' ? 'ยกเลิกแล้ว' : 'ออกบิลใหม่แทนแล้ว') + '</span><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>' : '')
+    + '</div>';
+  $('bmBody').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><h2 style="margin:0;font-size:16px;">🧾 ร่าง / แก้ไขบิล</h2><div style="display:flex;gap:6px;"><button class="btn btn-primary btn-sm" onclick="bmNew()">+ บิลใหม่</button><button class="btn btn-ghost btn-sm" onclick="bmClose()">ปิด</button></div></div>'
+    + (bills.length ? bills.map(row).join('') : '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีบิล</p>');
+  if (window.renderIcons) renderIcons(ov);
+}
+function bmNew() { _bm.editing = {}; _bm.correctOf = null; _bm.lines = []; _bm.billDiscount = 0; _bm.actualReceived = ''; _bm.businessDate = ''; _bm.reason = null; bmRenderEditor(); }
+async function bmReopen(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = { id: b.id }; _bm.correctOf = null; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.reason = null; bmRenderEditor(); } catch (e) { ui.toast('เปิดไม่ได้: ' + (e && e.message || ''), 'error'); } }
+async function bmStartCorrect(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = null; _bm.correctOf = { id: b.id, number: b.number }; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.reason = ''; bmRenderEditor(); } catch (e) { ui.toast('โหลดไม่ได้: ' + (e && e.message || ''), 'error'); } }
+function bmRenderEditor() {
+  const ov = $('billMgrModal'); if (!ov) return;
+  const sellable = deliverySellable(); const m = bmMoney(); const isCorrect = !!_bm.correctOf;
+  const opts = '<option value="">— เลือกเมนู —</option>' + sellable.map(s => '<option value="' + s.id + '|' + s.refType + '|' + esc(s.name) + '|' + (s.price || 0) + '">' + esc(s.name) + ' (' + dlvFmt(s.price) + ')</option>').join('');
+  const lineRows = _bm.lines.map((l, i) => '<tr><td style="padding:3px 4px;">' + esc(l.menu_name) + '</td>'
+    + '<td><input type="number" min="1" value="' + l.qty + '" onchange="bmSetLine(' + i + ',\'qty\',this.value)" style="width:50px;text-align:center;"></td>'
+    + '<td><input type="number" value="' + l.unit_price + '" onchange="bmSetLine(' + i + ',\'unit_price\',this.value)" style="width:68px;text-align:right;"></td>'
+    + '<td><input type="number" value="' + (l.discount || 0) + '" onchange="bmSetLine(' + i + ',\'discount\',this.value)" style="width:56px;text-align:right;"></td>'
+    + '<td style="text-align:right;">' + dlvFmt((+l.qty || 0) * (+l.unit_price || 0) - (+l.discount || 0)) + '</td>'
+    + '<td><button class="btn btn-ghost btn-sm" style="color:#dc2626;padding:1px 5px;" onclick="bmDelLine(' + i + ')">✕</button></td></tr>').join('');
+  const today = new Date().toISOString().slice(0, 10);
+  $('bmBody').innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><h2 style="margin:0;font-size:15px;">' + (isCorrect ? ('✏️ แก้ไขบิล ' + esc(_bm.correctOf.number || '') + ' → ออกบิลใหม่แทน') : '🧾 บิลร่าง') + '</h2><button class="btn btn-ghost btn-sm" onclick="bmRender()">← กลับ</button></div>'
+    + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><select id="bmAddSel" style="flex:1;min-width:180px;padding:5px;">' + opts + '</select><button class="btn btn-primary btn-sm" onclick="bmAddLine()">+ เพิ่มรายการ</button></div>'
+    + (_bm.lines.length ? '<table style="width:100%;font-size:12px;border-collapse:collapse;"><tr style="color:var(--color-text-muted);font-size:11px;"><th style="text-align:left;">เมนู</th><th>จำนวน</th><th>ราคา</th><th>ส่วนลด</th><th style="text-align:right;">รวม</th><th></th></tr>' + lineRows + '</table>' : '<p style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีรายการ</p>')
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">'
+    + '<label style="font-size:12px;">ส่วนลดท้ายบิล<input type="number" value="' + (_bm.billDiscount || 0) + '" onchange="_bm.billDiscount=+this.value;bmRenderEditor();" style="width:100%;padding:5px;"></label>'
+    + '<label style="font-size:12px;">รับเงินจริง (แยกจากสุทธิ)<input type="number" value="' + _bm.actualReceived + '" onchange="_bm.actualReceived=this.value;" style="width:100%;padding:5px;"></label>'
+    + '<label style="font-size:12px;">วันที่ขาย (ย้อนหลังได้)<input type="date" value="' + (_bm.businessDate || '') + '" max="' + today + '" onchange="_bm.businessDate=this.value;" style="width:100%;padding:5px;"></label>'
+    + (isCorrect ? '<label style="font-size:12px;">เหตุผลการแก้ไข (จำเป็น)<input type="text" id="bmReason" value="' + esc(_bm.reason || '') + '" style="width:100%;padding:5px;"></label>' : '<div></div>')
+    + '</div>'
+    + '<div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:8px;font-size:13px;">ยอดรวม ' + dlvFmt(m.gross) + ' · ส่วนลดรวม ' + dlvFmt(m.disc) + ' · <b>สุทธิ ' + dlvFmt(m.net) + '</b></div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">'
+    + (isCorrect ? '<button class="btn btn-primary" onclick="bmSubmitCorrect()">ยืนยันแก้ไข (ออกบิลใหม่)</button>' : '<button class="btn btn-ghost" onclick="bmSaveDraft(false)">บันทึกร่าง</button><button class="btn btn-primary" onclick="bmSaveDraft(true)">บันทึก + ยืนยัน</button>')
+    + '</div>';
+}
+function bmSetLine(i, f, v) { if (_bm.lines[i]) { _bm.lines[i][f] = f === 'qty' ? (parseInt(v) || 1) : (parseFloat(v) || 0); bmRenderEditor(); } }
+function bmDelLine(i) { _bm.lines.splice(i, 1); bmRenderEditor(); }
+function bmAddLine() { const sel = $('bmAddSel'); if (!sel || !sel.value) return; const p = sel.value.split('|'); _bm.lines.push({ key: Math.random().toString(36).slice(2, 6), menu_type: p[1] === 'material' ? 'material' : 'recipe', ref_id: p[0], menu_name: p[2], qty: 1, unit_price: +p[3] || 0, discount: 0 }); bmRenderEditor(); }
+function bmPayload() { return { items: _bm.lines, bill_discount: _bm.billDiscount || 0, actual_received_amount: _bm.actualReceived === '' ? null : +_bm.actualReceived, business_date: _bm.businessDate || null }; }
+async function bmSaveDraft(confirmAfter) {
+  try { const body = bmPayload(); if (_bm.editing && _bm.editing.id) body.id = _bm.editing.id; const r = await API.post('/api/bills/draft', body); if (confirmAfter) { await bmConfirm(r.bill.id); } else { ui.toast('บันทึกร่างแล้ว'); _bm.editing = null; await bmRender(); } }
+  catch (e) { ui.toast('บันทึกไม่ได้ (คงข้อมูลไว้): ' + (e && e.message || ''), 'error'); }   // cart preserved: _bm.lines untouched
+}
+async function bmConfirm(id) {
+  try { const r = await API.post('/api/bills/' + id + '/confirm', {}); ui.toast(r.already ? 'บิลนี้ยืนยันแล้ว' : 'ยืนยันบิล ' + (r.number || '') + ' — ตัดสต๊อกแล้ว'); _bm.editing = null; await bmRender(); }
+  catch (e) { const d = e && e.data || {}; if (d.error === 'FG_STOCK_INSUFFICIENT') ui.toast('สต๊อกไม่พอ: ' + (d.recipeName || ''), 'warning'); else ui.toast('ยืนยันไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+async function bmVoid(id) {
+  if (!(await ui.confirm('ยกเลิกบิลนี้? สต๊อกจะถูกคืน (บิลถูกเก็บไว้และทำเครื่องหมายยกเลิก)', { okText: 'ยกเลิกบิล', danger: true }))) return;
+  const reason = prompt('เหตุผลการยกเลิก?') || '';
+  try { await API.post('/api/bills/' + id + '/void', { reason }); ui.toast('ยกเลิกบิลแล้ว'); await bmRender(); }
+  catch (e) { if (e.status === 403) ui.toast('ต้องเป็นเจ้าของร้านจึงยกเลิกได้', 'warning'); else ui.toast('ยกเลิกไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+async function bmSubmitCorrect() {
+  const reason = (($('bmReason') || {}).value || '').trim();
+  if (!reason) { ui.toast('ต้องระบุเหตุผลการแก้ไข', 'warning'); return; }
+  if (!_bm.lines.length) { ui.toast('ต้องมีรายการอย่างน้อย 1', 'warning'); return; }
+  try { const body = bmPayload(); body.reason = reason; const r = await API.post('/api/bills/' + _bm.correctOf.id + '/correct', body); ui.toast('แก้ไขแล้ว — ออกบิลใหม่ ' + (r.replacement_number || '')); _bm.correctOf = null; _bm.reason = null; await bmRender(); }
+  catch (e) { if (e.status === 403) ui.toast('ต้องเป็นเจ้าของร้านจึงแก้ไขได้', 'warning'); else ui.toast('แก้ไขไม่ได้ (คงข้อมูลไว้): ' + (e && e.message || ''), 'error'); }   // preserved on error
+}
+async function bmPrint(id) {
+  try {
+    const b = (await API.get('/api/bills/' + id)).bill;
+    if (b.lifecycle_status === 'DRAFT') { ui.toast('ร่างยังพิมพ์เป็นใบเสร็จไม่ได้', 'warning'); return; }
+    const w = window.open('', '_blank'); if (!w) { ui.toast('เปิดหน้าต่างพิมพ์ไม่ได้', 'warning'); return; }
+    const items = (b.items_json || []).map(it => '<tr><td>' + esc(it.menu_name) + '</td><td style="text-align:center;">' + it.qty + '</td><td style="text-align:right;">' + dlvFmt((it.qty || 0) * (it.unit_price || 0)) + '</td></tr>').join('');
+    const mark = b.lifecycle_status === 'VOIDED' ? '<div style="color:#dc2626;font-weight:700;font-size:18px;">** ยกเลิกแล้ว VOIDED **</div>' : (b.lifecycle_status === 'REPLACED' ? '<div style="color:#6366f1;font-weight:700;">** ออกบิลใหม่แทนแล้ว **</div>' : '');
+    w.document.write('<html><head><title>' + esc(b.number || 'bill') + '</title></head><body style="font-family:sans-serif;padding:16px;max-width:300px;">' + mark + '<h3>บิล ' + esc(b.number || '') + '</h3>' + (b.original_bill_id ? '<div style="font-size:12px;">แก้จากบิลเดิม</div>' : '') + '<div style="font-size:12px;">วันที่ ' + (b.business_date ? dlvDateOnly(b.business_date) : '') + '</div><table style="width:100%;font-size:13px;margin-top:8px;">' + items + '</table><hr><div style="text-align:right;">สุทธิ ' + dlvFmt(b.net_sales) + '</div>' + (b.actual_received_amount != null ? '<div style="text-align:right;">รับจริง ' + dlvFmt(b.actual_received_amount) + '</div>' : '') + '</body></html>');
+    w.document.close(); w.focus(); w.print();
+  } catch (e) { ui.toast('พิมพ์ไม่ได้: ' + (e && e.message || ''), 'error'); }
+}
+
 function addDlvLine() {
   const sel = $('dlvMenuSel'); if (!sel || !sel.value) return;
   const [refType, id] = sel.value.split('|');
