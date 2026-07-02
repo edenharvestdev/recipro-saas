@@ -11016,13 +11016,13 @@ function deliverySellable() {
 
 // ═══ Front-store Bill Manager (Draft / Confirm / Void / Correct via replacement) ═══
 // Self-contained modal on /api/bills. Does NOT touch the existing quick-sell cart flow.
-let _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', reason: null };
+let _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', paymentMethod: '', reason: null };
 function bmMoney() { let g = 0, d = 0; _bm.lines.forEach(l => { g += (+l.qty || 0) * (+l.unit_price || 0); d += (+l.discount || 0); }); const bd = +_bm.billDiscount || 0; return { gross: g, disc: d + bd, net: g - (d + bd) }; }
 function bmClose() { const ov = $('billMgrModal'); if (ov) ov.remove(); }
 async function openBillMgr() {
   let ov = $('billMgrModal');
   if (!ov) { ov = document.createElement('div'); ov.id = 'billMgrModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) bmClose(); }; document.body.appendChild(ov); }
-  _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', reason: null };
+  _bm = { editing: null, correctOf: null, lines: [], billDiscount: 0, actualReceived: '', businessDate: '', paymentMethod: '', reason: null };
   await bmRender();
 }
 async function bmRender() {
@@ -11033,7 +11033,7 @@ async function bmRender() {
   const badge = s => { const c = { DRAFT: '#f59e0b', CONFIRMED: '#16a34a', REPLACED: '#6366f1', VOIDED: '#dc2626', CORRECTION_PENDING: '#2563eb' }[s] || '#888'; return '<span style="font-size:11px;padding:2px 8px;border-radius:6px;background:' + c + '22;color:' + c + ';">' + s + '</span>'; };
   const row = b => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);flex-wrap:wrap;">'
     + '<div style="flex:1;min-width:150px;"><div style="font-size:13px;font-weight:600;">' + (b.number ? esc(b.number) : '(ร่าง)') + ' ' + badge(b.lifecycle_status) + '</div>'
-    + '<div style="font-size:11px;color:var(--color-text-muted);">' + (b.business_date ? dlvDateOnly(b.business_date) : '') + ' · สุทธิ ' + dlvFmt(b.net_sales) + (b.actual_received_amount != null ? ' · รับจริง ' + dlvFmt(b.actual_received_amount) : '') + (b.replacement_bill_id ? ' · มีบิลใหม่แทน' : '') + (b.original_bill_id ? ' · แก้จากบิลเดิม' : '') + '</div></div>'
+    + '<div style="font-size:11px;color:var(--color-text-muted);">' + (b.business_date ? dlvDateOnly(b.business_date) : '') + ' · สุทธิ ' + dlvFmt(b.net_sales) + (b.actual_received_amount != null ? ' · รับจริง ' + dlvFmt(b.actual_received_amount) : '') + (b.payment_method ? ' · ' + esc(PAY_METHOD_LABELS[b.payment_method] || b.payment_method) : '') + (b.replacement_bill_id ? ' · มีบิลใหม่แทน' : '') + (b.original_bill_id ? ' · แก้จากบิลเดิม' : '') + '</div></div>'
     + (b.lifecycle_status === 'DRAFT' ? '<button class="btn btn-ghost btn-sm" onclick="bmReopen(\'' + b.id + '\')">เปิด/แก้</button><button class="btn btn-primary btn-sm" onclick="bmConfirm(\'' + b.id + '\')">ยืนยัน</button>' : '')
     + (b.lifecycle_status === 'CONFIRMED' ? '<button class="btn btn-ghost btn-sm" onclick="bmStartCorrect(\'' + b.id + '\')">แก้ไข</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="bmVoid(\'' + b.id + '\')">ยกเลิก</button><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">พิมพ์</button>' : '')
     + ((b.lifecycle_status === 'REPLACED' || b.lifecycle_status === 'VOIDED') ? '<span style="font-size:11px;color:#dc2626;font-weight:700;">' + (b.lifecycle_status === 'VOIDED' ? 'ยกเลิกแล้ว' : 'ออกบิลใหม่แทนแล้ว') + '</span><button class="btn btn-ghost btn-sm" onclick="bmPrint(\'' + b.id + '\')">ดู</button>' : '')
@@ -11042,9 +11042,9 @@ async function bmRender() {
     + (bills.length ? bills.map(row).join('') : '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีบิล</p>');
   if (window.renderIcons) renderIcons(ov);
 }
-function bmNew() { _bm.editing = {}; _bm.correctOf = null; _bm.lines = []; _bm.billDiscount = 0; _bm.actualReceived = ''; _bm.businessDate = ''; _bm.reason = null; bmRenderEditor(); }
-async function bmReopen(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = { id: b.id }; _bm.correctOf = null; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.reason = null; bmRenderEditor(); } catch (e) { ui.toast('เปิดไม่ได้: ' + (e && e.message || ''), 'error'); } }
-async function bmStartCorrect(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = null; _bm.correctOf = { id: b.id, number: b.number }; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.reason = ''; bmRenderEditor(); } catch (e) { ui.toast('โหลดไม่ได้: ' + (e && e.message || ''), 'error'); } }
+function bmNew() { _bm.editing = {}; _bm.correctOf = null; _bm.lines = []; _bm.billDiscount = 0; _bm.actualReceived = ''; _bm.businessDate = ''; _bm.paymentMethod = ''; _bm.reason = null; bmRenderEditor(); }
+async function bmReopen(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = { id: b.id }; _bm.correctOf = null; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.paymentMethod = b.payment_method || ''; _bm.reason = null; bmRenderEditor(); } catch (e) { ui.toast('เปิดไม่ได้: ' + (e && e.message || ''), 'error'); } }
+async function bmStartCorrect(id) { try { const b = (await API.get('/api/bills/' + id)).bill; _bm.editing = null; _bm.correctOf = { id: b.id, number: b.number }; _bm.lines = (b.items_json || []).map(it => ({ key: it.key || Math.random().toString(36).slice(2, 6), menu_type: it.menu_type, ref_id: it.ref_id, menu_name: it.menu_name, qty: it.qty, unit_price: it.unit_price, discount: it.discount || 0 })); _bm.billDiscount = +b.bill_discount || 0; _bm.actualReceived = b.actual_received_amount ?? ''; _bm.businessDate = b.business_date ? dlvDateOnly(b.business_date) : ''; _bm.paymentMethod = b.payment_method || ''; _bm.reason = ''; bmRenderEditor(); } catch (e) { ui.toast('โหลดไม่ได้: ' + (e && e.message || ''), 'error'); } }
 function bmRenderEditor() {
   const ov = $('billMgrModal'); if (!ov) return;
   const sellable = deliverySellable(); const m = bmMoney(); const isCorrect = !!_bm.correctOf;
@@ -11064,6 +11064,7 @@ function bmRenderEditor() {
     + '<label style="font-size:12px;">ส่วนลดท้ายบิล<input type="number" value="' + (_bm.billDiscount || 0) + '" onchange="_bm.billDiscount=+this.value;bmRenderEditor();" style="width:100%;padding:5px;"></label>'
     + '<label style="font-size:12px;">รับเงินจริง (แยกจากสุทธิ)<input type="number" value="' + _bm.actualReceived + '" onchange="_bm.actualReceived=this.value;" style="width:100%;padding:5px;"></label>'
     + '<label style="font-size:12px;">วันที่ขาย (ย้อนหลังได้)<input type="date" value="' + (_bm.businessDate || '') + '" max="' + today + '" onchange="_bm.businessDate=this.value;" style="width:100%;padding:5px;"></label>'
+    + '<label style="font-size:12px;">วิธีชำระเงิน<select onchange="_bm.paymentMethod=this.value;" style="width:100%;padding:5px;"><option value="">— เลือกวิธีชำระ —</option>' + Object.keys(PAY_METHOD_LABELS).map(function (k) { return '<option value="' + k + '"' + (_bm.paymentMethod === k ? ' selected' : '') + '>' + esc(PAY_METHOD_LABELS[k]) + '</option>'; }).join('') + '</select></label>'
     + (isCorrect ? '<label style="font-size:12px;">เหตุผลการแก้ไข (จำเป็น)<input type="text" id="bmReason" value="' + esc(_bm.reason || '') + '" style="width:100%;padding:5px;"></label>' : '<div></div>')
     + '</div>'
     + '<div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:8px;font-size:13px;">ยอดรวม ' + dlvFmt(m.gross) + ' · ส่วนลดรวม ' + dlvFmt(m.disc) + ' · <b>สุทธิ ' + dlvFmt(m.net) + '</b></div>'
@@ -11074,7 +11075,7 @@ function bmRenderEditor() {
 function bmSetLine(i, f, v) { if (_bm.lines[i]) { _bm.lines[i][f] = f === 'qty' ? (parseInt(v) || 1) : (parseFloat(v) || 0); bmRenderEditor(); } }
 function bmDelLine(i) { _bm.lines.splice(i, 1); bmRenderEditor(); }
 function bmAddLine() { const sel = $('bmAddSel'); if (!sel || !sel.value) return; const p = sel.value.split('|'); _bm.lines.push({ key: Math.random().toString(36).slice(2, 6), menu_type: p[1] === 'material' ? 'material' : 'recipe', ref_id: p[0], menu_name: p[2], qty: 1, unit_price: +p[3] || 0, discount: 0 }); bmRenderEditor(); }
-function bmPayload() { return { items: _bm.lines, bill_discount: _bm.billDiscount || 0, actual_received_amount: _bm.actualReceived === '' ? null : +_bm.actualReceived, business_date: _bm.businessDate || null }; }
+function bmPayload() { return { items: _bm.lines, bill_discount: _bm.billDiscount || 0, actual_received_amount: _bm.actualReceived === '' ? null : +_bm.actualReceived, payment_method: _bm.paymentMethod || null, business_date: _bm.businessDate || null }; }
 async function bmSaveDraft(confirmAfter) {
   try { const body = bmPayload(); if (_bm.editing && _bm.editing.id) body.id = _bm.editing.id; const r = await API.post('/api/bills/draft', body); if (confirmAfter) { await bmConfirm(r.bill.id); } else { ui.toast('บันทึกร่างแล้ว'); _bm.editing = null; await bmRender(); } }
   catch (e) { ui.toast('บันทึกไม่ได้ (คงข้อมูลไว้): ' + (e && e.message || ''), 'error'); }   // cart preserved: _bm.lines untouched

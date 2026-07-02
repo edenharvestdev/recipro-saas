@@ -181,6 +181,21 @@ const fgStock = async (id) => Number((await query('SELECT fg_stock FROM recipes 
     check('BC28 /bills/recent returns lifecycle bills', rec.status === 200 && Array.isArray(rec.data?.bills) && rec.data.bills.length > 0, { status: rec.status, n: rec.data?.bills?.length });
     check('BC28 recent excludes other shop (tenant)', (rec.data.bills || []).every(x => true) && (await api('GET', '/api/bills/recent', { token: ownerBToken, shop: shopB })).data.bills.every(x => x.original_bill_id !== draftId), true);
 
+    // ── BC29: payment_method flows through draft/confirm/correct, separate from Net, no stock impact ──
+    const d29 = await api('POST', '/api/bills/draft', { token: ownerToken, shop: shopA, body: { items: [mItem(2, 50)], payment_method: 'cash', actual_received_amount: 90 } });
+    const b29 = d29.data.bill.id;
+    check('BC29 draft stores payment_method', d29.data.bill?.payment_method === 'cash', d29.data.bill?.payment_method);
+    const g29 = (await api('GET', '/api/bills/' + b29, { token: ownerToken, shop: shopA })).data.bill;
+    check('BC29 reopen restores payment_method; actual_received separate from Net', g29.payment_method === 'cash' && Number(g29.actual_received_amount) === 90 && Number(g29.net_sales) === 100, g29);
+    await api('POST', '/api/bills/' + b29 + '/confirm', { token: ownerToken, shop: shopA, body: {} });
+    const g29b = (await api('GET', '/api/bills/' + b29, { token: ownerToken, shop: shopA })).data.bill;
+    check('BC29 confirm preserves payment_method', g29b.payment_method === 'cash', g29b.payment_method);
+    const stk29 = await matStock(milk);
+    const corr29 = await api('POST', '/api/bills/' + b29 + '/correct', { token: ownerToken, shop: shopA, body: { reason: 'change pay method', items: [mItem(2, 50)], payment_method: 'transfer' } });
+    check('BC29 correction changes payment_method (→transfer)', corr29.data.replacement?.payment_method === 'transfer', corr29.data.replacement?.payment_method);
+    check('BC29 payment-method change makes no NET stock change (reverse+rededuct same qty)', (await matStock(milk)) === stk29 + 2 - 2, { before: stk29, after: await matStock(milk) });
+    check('BC29 Gross/Net unchanged by payment method (100/100)', Number(corr29.data.replacement?.gross_sales) === 100 && Number(corr29.data.replacement?.net_sales) === 100, corr29.data.replacement);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;

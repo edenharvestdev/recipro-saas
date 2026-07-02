@@ -191,7 +191,7 @@ router.get('/bills/recent', async (req, res) => {
   try {
     const rows = (await query(
       `SELECT id, number, lifecycle_status, gross_sales, net_sales, cogs_total, actual_received_amount,
-              bill_discount, business_date, confirmed_at, draft_saved_at, corrected_at, voided_at,
+              bill_discount, payment_method, business_date, confirmed_at, draft_saved_at, corrected_at, voided_at,
               original_bill_id, replacement_bill_id, correction_reason, items_json
          FROM bills WHERE shop_id=$1 AND lifecycle_status IS NOT NULL
          ORDER BY COALESCE(confirmed_at, draft_saved_at, created_at) DESC LIMIT 100`,
