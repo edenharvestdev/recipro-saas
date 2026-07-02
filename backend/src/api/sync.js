@@ -4,6 +4,7 @@ const express = require('express');
 const { tx } = require('../db');
 const { logEvent } = require('../logs');
 const { maybeAutoSnapshot } = require('./snapshots');   // S1: สำรองอัตโนมัติหลัง sync สำเร็จ
+const { checkSyncPermissions } = require('./sync-guard'); // A0: บังคับสิทธิ์ระดับ field ก่อนเขียน
 const router = express.Router();
 
 // upsert ช่วย: ระบุ table, คอลัมน์, แถว, และคีย์ conflict
@@ -39,6 +40,11 @@ router.post('/sync', async (req, res) => {
         const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
       }
       newVersion = current + 1;
+
+      // A0: enforce field-level permissions BEFORE any write. Staff cannot elevate their own
+      // permissions or change recipes/costs/settings via a crafted payload; unchanged protected
+      // fields (legacy full-payload syncs) pass. Throws a typed 403 that aborts the whole tx.
+      await checkSyncPermissions(client, req, b);
 
       await upsertRows(client, 'suppliers',
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
@@ -245,6 +251,10 @@ router.post('/sync', async (req, res) => {
     }
     if (e && e.code === 'DISCOUNT_EXCEEDED') {
       return res.status(403).json({ error: e.message, code: 'DISCOUNT_EXCEEDED' });
+    }
+    // A0: field-level permission denials from the sync guard (typed 403, no partial write).
+    if (e && e.statusCode === 403) {
+      return res.status(403).json({ error: e.code || e.message, code: e.code || 'PERMISSION_DENIED', field: e.field });
     }
     res.status(500).json({ error: e.message });
   }
