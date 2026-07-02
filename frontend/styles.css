@@ -2270,11 +2270,16 @@ table.bd tfoot td.r { text-align: right; }
     z-index: 2;
     box-shadow: 0 -8px 10px -8px rgba(0, 0, 0, 0.18);
   }
-  /* Delivery / Online sub-panels: fill the remaining bounded height and scroll
-     internally so add-item / stock-mode / reason / Add / settlement controls are
-     always reachable (menu grid keeps its own 42vh internal cap). */
+  /* Delivery / Online / Billing / Sales-log sub-panels: fill the remaining bounded
+     height and scroll INTERNALLY so every control stays reachable inside the
+     viewport-bounded #posPage (which is overflow:hidden). Without this a tall panel
+     — e.g. a bill with many item rows in edit mode — is clipped and its lower rows +
+     Save/Print/totals fall off-screen with no way to scroll. One consistent bounded
+     shell for new-bill AND edit-existing-bill; the menu grids keep their own caps. */
   #posDeliveryPanel:not(.hidden),
-  #posOnlinePanel:not(.hidden) {
+  #posOnlinePanel:not(.hidden),
+  #posBillingPanel:not(.hidden),
+  #posSalesLog:not(.hidden) {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
