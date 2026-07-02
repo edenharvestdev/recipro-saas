@@ -117,6 +117,15 @@ function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', n
     // PA14: no HTTP 500 across the above (all typed 200/403).
     check('PA14 No HTTP 500 in permission checks', true, null);
 
+    // PA15: material delete is OWNER-ONLY — recipe_edit must NOT grant it (avoid over-broad access).
+    const matDel2 = crypto.randomUUID();
+    await query("INSERT INTO materials(id,shop_id,name,unit,stock_unit,price,qty,conv_qty,stock,updated_at) VALUES($1,$2,'DelMat2','ml','ml',5,1,1,10,now())", [matDel2, shopA]);
+    await setPerms({ edit_recipes: true });
+    const d15 = await api('DELETE', '/api/materials/' + matDel2, { token: staffToken, shop: shopA });
+    check('PA15 recipe_edit does NOT grant material delete (owner-only, 403)', d15.status === 403 && d15.data.code === 'PERMISSION_DENIED', d15.data);
+    const d15b = await api('DELETE', '/api/materials/' + matDel2, { token: ownerToken, shop: shopA });
+    check('PA15 Owner deletes material', d15b.status === 200, d15b.data);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;
