@@ -1,6 +1,7 @@
 // middleware: หา shop ปัจจุบัน + role จาก memberships (ใช้ต่อจาก requireAuth)
 // แยกข้อมูลแต่ละร้านที่ชั้นนี้ — ทุก query ของ /api/* ใช้ req.shopId เสมอ
 const { query } = require('./db');
+const catalog = require('./permissions/catalog');
 
 async function tenant(req, res, next) {
   try {
@@ -31,6 +32,8 @@ async function tenant(req, res, next) {
         req.staffPerms = p || {};
       } catch (e) { req.staffPerms = {}; }
     }
+    // Single authority helper for all downstream code (routers, sync-guard, redaction).
+    req.hasPerm = (key) => catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, key);
     next();
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -46,17 +49,13 @@ const STAFF_PERM_DEFAULTS = {
   correct_bill: false, void_bill: false,
 };
 
-// middleware กันชั้น API: owner/superadmin ผ่านเสมอ · staff ต้องได้รับสิทธิ์ key นั้น
+// middleware กันชั้น API: owner/superadmin ผ่านเสมอ · staff ต้องได้รับสิทธิ์ key นั้น (ผ่าน catalog resolver:
+// รองรับทั้ง legacy key + new key + alias + default โดยรักษาพฤติกรรมเดิมของ key เก่าไว้ครบ)
 function requirePerm(key) {
   return (req, res, next) => {
-    if (req.role === 'owner' || req.isSuperadmin) return next();
-    if (req.role === 'staff') {
-      const allowed = req.staffPerms && Object.prototype.hasOwnProperty.call(req.staffPerms, key)
-        ? !!req.staffPerms[key] : !!STAFF_PERM_DEFAULTS[key];
-      if (allowed) return next();
-      return res.status(403).json({ error: 'พนักงานไม่มีสิทธิ์ทำรายการนี้ (ให้เจ้าของเปิดสิทธิ์ก่อน)' });
-    }
-    return res.status(403).json({ error: 'ไม่มีสิทธิ์' });
+    if (catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, key)) return next();
+    if (req.role === 'staff') return res.status(403).json({ error: 'พนักงานไม่มีสิทธิ์ทำรายการนี้ (ให้เจ้าของเปิดสิทธิ์ก่อน)', code: 'PERMISSION_DENIED' });
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์', code: 'PERMISSION_DENIED' });
   };
 }
 
