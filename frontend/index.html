@@ -8534,7 +8534,7 @@ function prRenderWizard() {
     + '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 3 — กระดาษ</div>'
     + '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><select onchange="prSetField(\'paper_width\',this.value)" style="padding:7px;">' + [58, 80].map(w => '<option value="' + w + '"' + (d.paper_width === w ? ' selected' : '') + '>' + w + ' mm</option>').join('') + '</select>' + prReceiptPreview(d.paper_width) + '</div>'
     + '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 4 — จำนวนสำเนา</div>'
-    + '<select onchange="prSetField(\'copies\',this.value)" style="padding:7px;">' + [1, 2, 3].map(n => '<option value="' + n + '"' + (d.copies === n ? ' selected' : '') + '>' + n + ' ใบ</option>').join('') + '</select>'
+    + '<select onchange="prSetField(\'copies\',this.value)" style="padding:7px;">' + [1, 2, 3, 4, 5].map(n => '<option value="' + n + '"' + (d.copies === n ? ' selected' : '') + '>' + n + ' ใบ</option>').join('') + '</select>'
     + (d.id ? '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 5 — ทดสอบพิมพ์</div><button class="btn btn-ghost btn-sm" onclick="prTest(\'' + d.id + '\')">🖨 ทดสอบพิมพ์</button><div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">หลังจากหน้าต่างพิมพ์เปิด ให้เลือกเครื่องพิมพ์ SUNMI แล้วกดพิมพ์</div>' : '<div style="font-size:11px;color:var(--color-text-muted);margin-top:12px;">บันทึกก่อน แล้วจึงทดสอบพิมพ์ได้</div>');
   ov.innerHTML = '<div class="bmm-shell">'
     + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><h2 style="margin:0;font-size:15px;">' + (d.id ? 'แก้ไขเครื่องพิมพ์' : 'เพิ่มเครื่องพิมพ์') + '</h2><button class="btn btn-ghost btn-sm" onclick="_pr.draft=null;prRender()">← กลับ</button></div>'
@@ -8633,14 +8633,17 @@ function resolvePrintConfiguration(purpose) {
   const legacyCopies = p === 'KITCHEN' ? posKitchenCopies() : posBillCopies();
   return { printer_id: null, capability_type: 'BROWSER_SYSTEM', purpose: p, paper_width: 80, copies: capCopies(legacyCopies), status: 'AVAILABLE', source: (PRINTERS && PRINTERS.length) ? 'LEGACY_SETTINGS' : 'BROWSER_FALLBACK' };
 }
-// A configured direct printer with no runtime bridge cannot print directly — warn once, keep browser path.
-function printDirectWarn(cfg) {
-  if (cfg.capability_type === 'BROWSER_SYSTEM') return;
-  const avail = detectPrinterBridges();
-  if (!avail.has(cfg.capability_type)) {
-    const msg = cfg.capability_type === 'SUNMI_NATIVE' ? 'เครื่องพิมพ์ SUNMI ยังไม่พร้อม (ต้องมี Bridge) — พิมพ์ผ่านระบบของเครื่องแทน' : 'เครื่องพิมพ์ตรงยังไม่พร้อม (ต้องมี Bridge) — พิมพ์ผ่านระบบของเครื่องแทน';
-    if (ui && ui.toast) ui.toast(msg, 'warning');
-  }
+// Fail-closed gate for the live print path. This release implements Browser/System printing only —
+// there is no direct-hardware send. So a default configured as a DIRECT capability (SUNMI/bridge/LAN/
+// USB/BT) must NOT silently browser-print: we show the explicit capability error, state that direct
+// printing was NOT performed, and offer an explicit "พิมพ์ผ่านระบบของเครื่องแทน" action. The browser
+// print (`run`) only executes when the printer is BROWSER_SYSTEM, or the user explicitly accepts the
+// fallback. We never claim direct or physical success.
+function gateDirectPrint(cfg, run) {
+  if (cfg.capability_type === 'BROWSER_SYSTEM') { run(); return; }
+  const errCode = cfg.capability_type === 'SUNMI_NATIVE' ? 'SUNMI_PRINTER_NOT_AVAILABLE' : 'PRINTER_BRIDGE_NOT_AVAILABLE';
+  const msg = 'พิมพ์ตรงยังไม่สำเร็จ (' + errCode + ')\nยังไม่ได้เชื่อมต่อ Bridge/เครื่องพิมพ์ตรง — ระบบยังไม่ได้พิมพ์เอกสารนี้\n\nต้องการพิมพ์ผ่านระบบของเครื่อง (เปิดหน้าต่างพิมพ์) แทนหรือไม่?';
+  Promise.resolve(ui.confirm(msg, { okText: 'พิมพ์ผ่านระบบของเครื่องแทน', cancelText: 'ยกเลิก' })).then((ok) => { if (ok) run(); });
 }
 // Duplicate-print protection keyed per document type: blocks rapid double-clicks / rerender / retry of
 // the SAME document, but a receipt and a kitchen ticket from one confirm are different keys and both run.
@@ -8650,28 +8653,31 @@ function printLocked(key) { if (_printLocks[key]) return true; _printLocks[key] 
 function printPosBillWindow(b, total, copiesArg) {
   if (printLocked('RECEIPT')) return;   // prevent accidental duplicate receipt jobs
   const cfg = resolvePrintConfiguration('RECEIPT');
-  printDirectWarn(cfg);
   const copies = cfg.source === 'PRINTER_REGISTRY' ? cfg.copies : capCopies(copiesArg != null ? copiesArg : cfg.copies);
   const paper = cfg.paper_width === 58 ? 58 : 80;
   const rcptW = paper === 58 ? '50mm' : '72mm';
-  const one = posBillReceiptHtml(b, total);
-  const body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + one).join('');
-  const css = 'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    + 'body{font-family:Tahoma,\'TH Sarabun New\',sans-serif;margin:0;padding:0;color:#111;}'
-    + '.rcpt{width:' + rcptW + ';margin:0 auto;padding:' + (paper === 58 ? '3mm 1.5mm' : '4mm 2mm') + ';font-size:' + (paper === 58 ? 11 : 12) + 'px;word-break:break-word;}'
-    + '.shop{text-align:center;font-size:' + (paper === 58 ? 14 : 16) + 'px;font-weight:800;}'
-    + '.sub{text-align:center;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#333;}'
-    + '.hr{border-top:1px dashed #999;margin:6px 0;}'
-    + 'table{width:100%;border-collapse:collapse;table-layout:fixed;}td{padding:2px 0;font-size:' + (paper === 58 ? 11 : 12) + 'px;vertical-align:top;word-break:break-word;}'
-    + '.total{display:flex;justify-content:space-between;font-weight:800;font-size:' + (paper === 58 ? 13 : 15) + 'px;margin:4px 0;}'
-    + '.foot{text-align:center;margin-top:8px;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#555;}'
-    + '.copybreak{page-break-before:always;}'
-    + '@page{size:' + paper + 'mm auto;margin:0;}';
-  const w = window.open('', '_blank', 'width=380,height=640');
-  if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
-  w.document.write('<html><head><meta charset="utf-8"><title>บิล ' + esc(b.billNo || '') + '</title><style>' + css + '</style></head><body>'
-    + body + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>');
-  w.document.close();
+  // Browser/System path only (fail-closed via gateDirectPrint for direct-capability defaults).
+  const run = () => {
+    const one = posBillReceiptHtml(b, total);
+    const body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + one).join('');
+    const css = 'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+      + 'body{font-family:Tahoma,\'TH Sarabun New\',sans-serif;margin:0;padding:0;color:#111;}'
+      + '.rcpt{width:' + rcptW + ';margin:0 auto;padding:' + (paper === 58 ? '3mm 1.5mm' : '4mm 2mm') + ';font-size:' + (paper === 58 ? 11 : 12) + 'px;word-break:break-word;}'
+      + '.shop{text-align:center;font-size:' + (paper === 58 ? 14 : 16) + 'px;font-weight:800;}'
+      + '.sub{text-align:center;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#333;}'
+      + '.hr{border-top:1px dashed #999;margin:6px 0;}'
+      + 'table{width:100%;border-collapse:collapse;table-layout:fixed;}td{padding:2px 0;font-size:' + (paper === 58 ? 11 : 12) + 'px;vertical-align:top;word-break:break-word;}'
+      + '.total{display:flex;justify-content:space-between;font-weight:800;font-size:' + (paper === 58 ? 13 : 15) + 'px;margin:4px 0;}'
+      + '.foot{text-align:center;margin-top:8px;font-size:' + (paper === 58 ? 10 : 11) + 'px;color:#555;}'
+      + '.copybreak{page-break-before:always;}'
+      + '@page{size:' + paper + 'mm auto;margin:0;}';
+    const w = window.open('', '_blank', 'width=380,height=640');
+    if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
+    w.document.write('<html><head><meta charset="utf-8"><title>บิล ' + esc(b.billNo || '') + '</title><style>' + css + '</style></head><body>'
+      + body + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>');
+    w.document.close();
+  };
+  gateDirectPrint(cfg, run);
 }
 
 function renderSalesLog() {
@@ -8756,36 +8762,39 @@ async function voidBill(billId) {
 function printBackOfHouse(metaText, items, copiesArg) {
   if (printLocked('KITCHEN')) return;   // duplicate-print protection (rapid clicks / rerender / retry)
   const cfg = resolvePrintConfiguration('KITCHEN');
-  printDirectWarn(cfg);
   const copies = cfg.source === 'PRINTER_REGISTRY' ? cfg.copies : capCopies(copiesArg != null ? copiesArg : 1);
   const paper = cfg.paper_width === 58 ? 58 : 80;
   const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const mode = settings.kitchenTicketMode || 'receipt';
-  let css, body;
-  if (mode === 'sticker') {
-    // sticker labels are a fixed 50×40mm physical die-cut format — not affected by 58/80 receipt width.
-    const labels = []; items.forEach(it => { for (let k = 0; k < (it.qty || 1); k++) labels.push(it); });
-    css = '@page{size:50mm 40mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{margin:0}'
-      + '.lb{width:50mm;height:40mm;padding:2.5mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;overflow:hidden}'
-      + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0;word-break:break-word}.lo{font-size:11px;line-height:1.2;word-break:break-word}';
-    const oneSet = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
-    body = Array(copies).fill(oneSet).join('');
-  } else {
-    const narrow = paper === 58;
-    css = '@page{size:' + paper + 'mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
-      + 'body{width:' + paper + 'mm;padding:' + (narrow ? '3mm 2mm' : '4mm 3mm') + '}.kh{text-align:center;font-size:' + (narrow ? 15 : 17) + 'px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
-      + '.km{font-size:' + (narrow ? 11 : 12) + 'px;margin-bottom:7px;line-height:1.5;word-break:break-word}.kit{display:flex;gap:' + (narrow ? 5 : 7) + 'px;padding:6px 0;border-bottom:1px dotted #999}'
-      + '.kq{font-size:' + (narrow ? 16 : 19) + 'px;font-weight:800;min-width:' + (narrow ? 28 : 34) + 'px}.kn{font-size:' + (narrow ? 14 : 16) + 'px;font-weight:700;flex:1;word-break:break-word}.ko{font-size:' + (narrow ? 12 : 13) + 'px;font-weight:400;margin-top:2px;word-break:break-word}'
-      + '.copybreak{page-break-before:always}';
-    const rows = items.map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name) + (it.opts ? '<div class="ko">' + e(it.opts) + '</div>' : '') + '</div></div>').join('');
-    const oneSet = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;
-    body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + oneSet).join('');
-  }
-  const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>' + body
-    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
-  const w = window.open('', '_blank');
-  if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
-  w.document.write(html); w.document.close();
+  // Browser/System path only (fail-closed via gateDirectPrint for direct-capability defaults).
+  const run = () => {
+    let css, body;
+    if (mode === 'sticker') {
+      // sticker labels are a fixed 50×40mm physical die-cut format — not affected by 58/80 receipt width.
+      const labels = []; items.forEach(it => { for (let k = 0; k < (it.qty || 1); k++) labels.push(it); });
+      css = '@page{size:50mm 40mm;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}body{margin:0}'
+        + '.lb{width:50mm;height:40mm;padding:2.5mm;page-break-after:always;display:flex;flex-direction:column;justify-content:center;overflow:hidden}'
+        + '.lm{font-size:9px;color:#444}.ln{font-size:15px;font-weight:800;line-height:1.15;margin:1mm 0;word-break:break-word}.lo{font-size:11px;line-height:1.2;word-break:break-word}';
+      const oneSet = labels.map(it => '<div class="lb"><div class="lm">' + e(metaText) + '</div><div class="ln">' + e(it.name) + '</div>' + (it.opts ? '<div class="lo">' + e(it.opts) + '</div>' : '') + '</div>').join('');
+      body = Array(copies).fill(oneSet).join('');
+    } else {
+      const narrow = paper === 58;
+      css = '@page{size:' + paper + 'mm auto;margin:0}*{box-sizing:border-box;font-family:"Sarabun","Segoe UI",sans-serif;margin:0}'
+        + 'body{width:' + paper + 'mm;padding:' + (narrow ? '3mm 2mm' : '4mm 3mm') + '}.kh{text-align:center;font-size:' + (narrow ? 15 : 17) + 'px;font-weight:800;border-bottom:2px dashed #000;padding-bottom:5px;margin-bottom:5px}'
+        + '.km{font-size:' + (narrow ? 11 : 12) + 'px;margin-bottom:7px;line-height:1.5;word-break:break-word}.kit{display:flex;gap:' + (narrow ? 5 : 7) + 'px;padding:6px 0;border-bottom:1px dotted #999}'
+        + '.kq{font-size:' + (narrow ? 16 : 19) + 'px;font-weight:800;min-width:' + (narrow ? 28 : 34) + 'px}.kn{font-size:' + (narrow ? 14 : 16) + 'px;font-weight:700;flex:1;word-break:break-word}.ko{font-size:' + (narrow ? 12 : 13) + 'px;font-weight:400;margin-top:2px;word-break:break-word}'
+        + '.copybreak{page-break-before:always}';
+      const rows = items.map(it => '<div class="kit"><div class="kq">' + (it.qty || 1) + '×</div><div class="kn">' + e(it.name) + (it.opts ? '<div class="ko">' + e(it.opts) + '</div>' : '') + '</div></div>').join('');
+      const oneSet = '<div class="kh">ใบส่งงานหลังร้าน</div><div class="km">' + e(metaText) + '</div>' + rows;
+      body = Array.from({ length: copies }, (_, i) => (i ? '<div class="copybreak"></div>' : '') + oneSet).join('');
+    }
+    const html = '<!doctype html><html><head><meta charset="utf-8"><title>ใบส่งงานหลังร้าน</title><style>' + css + '</style></head><body>' + body
+      + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
+    const w = window.open('', '_blank');
+    if (!w) { ui.alert('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup แล้วลองใหม่', { icon: 'alert-triangle' }); return; }
+    w.document.write(html); w.document.close();
+  };
+  gateDirectPrint(cfg, run);
 }
 function printKitchen(billId) {
   const b = bills.find(x => x.id === billId);

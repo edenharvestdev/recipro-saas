@@ -44,7 +44,9 @@ const factorySrc = [
   'var _alerts = 0;',
   'var _legacyReceipt = 1, _legacyKitchen = 1;',
   'var _opened = [];',
-  'var ui = { toast: function(m,t){ _toasts.push({m:m,t:t}); }, alert: function(){ _alerts++; } };',
+  'var _confirms = [];',
+  'var _confirmAnswer = false;',
+  'var ui = { toast: function(m,t){ _toasts.push({m:m,t:t}); }, alert: function(){ _alerts++; }, confirm: function(m,o){ _confirms.push({m:m,o:o}); return Promise.resolve(_confirmAnswer); } };',
   'function esc(s){ return String(s==null?"":s); }',
   'function money(n){ return Number(n).toFixed(2); }',
   'function matById(){ return null; } function recById(){ return null; } function billIdLabel(){ return "โต๊ะ"; }',
@@ -55,16 +57,17 @@ const factorySrc = [
   'var window = { open: function(){ var w = { document: { html: "", write: function(h){ this.html += h; }, close: function(){} } }; _opened.push(w); return w; } };',
   extractFn('capCopies'),
   extractFn('resolvePrintConfiguration'),
-  extractFn('printDirectWarn'),
+  extractFn('gateDirectPrint'),
   extractFn('printLocked'),
   extractFn('printPosBillWindow'),
   extractFn('printBackOfHouse'),
   'return {',
   '  setPrinters:function(p){PRINTERS=p;}, setSettings:function(s){settings=s;}, setBridges:function(s){_bridges=s;},',
   '  setLegacy:function(r,k){_legacyReceipt=r;_legacyKitchen=k;},',
+  '  setConfirm:function(v){_confirmAnswer=v;}, confirms:function(){return _confirms;}, clearConfirms:function(){_confirms=[];},',
   '  toasts:function(){return _toasts;}, clearToasts:function(){_toasts=[];}, alerts:function(){return _alerts;},',
   '  opened:function(){return _opened;}, clearOpened:function(){_opened.length=0;}, resetLocks:function(){for(var k in _printLocks)delete _printLocks[k];},',
-  '  capCopies:capCopies, resolvePrintConfiguration:resolvePrintConfiguration, printDirectWarn:printDirectWarn,',
+  '  capCopies:capCopies, resolvePrintConfiguration:resolvePrintConfiguration, gateDirectPrint:gateDirectPrint,',
   '  printLocked:printLocked, printPosBillWindow:printPosBillWindow, printBackOfHouse:printBackOfHouse',
   '};',
 ].join('\n');
@@ -75,10 +78,12 @@ let passed = 0, failed = 0;
 function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', name); } else { failed++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : ''); } }
 function lastHtml() { const o = M.opened(); return o.length ? o[o.length - 1].document.html : ''; }
 function countOf(hay, needle) { return hay.split(needle).length - 1; }
-function reset() { M.resetLocks(); M.clearOpened(); M.clearToasts(); }
+function reset() { M.resetLocks(); M.clearOpened(); M.clearToasts(); M.clearConfirms(); M.setConfirm(false); }
+const tick = () => new Promise((r) => setImmediate(r));   // let gateDirectPrint's confirm .then settle
 
 const P = (over) => Object.assign({ id: 'id-' + Math.random().toString(36).slice(2), capability_type: 'BROWSER_SYSTEM', purpose: 'RECEIPT', paper_width: 80, copies: 1, status: 'AVAILABLE', is_default_receipt: false, is_default_kitchen: false }, over);
 
+(async () => {
 console.log('\n=== Live Print Routing Tests (PRT1-PRT22) ===\n');
 try {
   // PRT1: receipt uses the default RECEIPT registry printer.
@@ -155,20 +160,35 @@ try {
   M.printPosBillWindow({ billNo: 'A7' }, 100, null); h = lastHtml();
   check('PRT13 Legacy receipt preserves 80mm/72mm layout', h.includes('@page{size:80mm auto') && h.includes('width:72mm'), null);
 
-  // PRT14: SUNMI direct default without a bridge → explicit warning, still browser-prints.
-  reset(); M.setBridges(new Set()); M.setPrinters([P({ is_default_receipt: true, capability_type: 'SUNMI_NATIVE' })]);
-  M.printPosBillWindow({ billNo: 'A8' }, 100, null);
-  check('PRT14 SUNMI without bridge warns + still opens browser print', M.toasts().some(t => t.t === 'warning' && /SUNMI/.test(t.m)) && M.opened().length === 1, M.toasts());
+  // PRT14: SUNMI direct default → fail-closed. Explicit error + fallback offer, NO silent browser print.
+  reset(); M.setConfirm(false); M.setPrinters([P({ is_default_receipt: true, capability_type: 'SUNMI_NATIVE' })]);
+  M.printPosBillWindow({ billNo: 'A8' }, 100, null); await tick();
+  check('PRT14 SUNMI default does NOT silently print; offers explicit fallback',
+    M.opened().length === 0 && M.confirms().length === 1
+    && /SUNMI_PRINTER_NOT_AVAILABLE/.test(M.confirms()[0].m)
+    && M.confirms()[0].o.okText === 'พิมพ์ผ่านระบบของเครื่องแทน', { opened: M.opened().length, confirms: M.confirms() });
 
-  // PRT15: BROWSER_SYSTEM default → no bridge warning.
+  // PRT14b: user explicitly accepts the fallback → browser print then runs (only after explicit choice).
+  reset(); M.setConfirm(true); M.setPrinters([P({ is_default_receipt: true, capability_type: 'SUNMI_NATIVE' })]);
+  M.printPosBillWindow({ billNo: 'A8b' }, 100, null); await tick();
+  check('PRT14b Explicit fallback choice → browser print runs (1 window)', M.opened().length === 1, M.opened().length);
+
+  // PRT14c: LAN/USB/BT direct default → generic PRINTER_BRIDGE_NOT_AVAILABLE, still fail-closed.
+  reset(); M.setConfirm(false); M.setPrinters([P({ is_default_kitchen: true, purpose: 'KITCHEN', capability_type: 'LAN_ESC_POS' })]);
+  M.printBackOfHouse('meta', [{ qty: 1, name: 'x' }], 1); await tick();
+  check('PRT14c LAN direct kitchen default fail-closed (PRINTER_BRIDGE_NOT_AVAILABLE, no print)',
+    M.opened().length === 0 && /PRINTER_BRIDGE_NOT_AVAILABLE/.test(M.confirms()[0].m), { opened: M.opened().length });
+
+  // PRT15: BROWSER_SYSTEM default → prints directly, no confirm, no warning.
   reset(); M.setPrinters([P({ is_default_receipt: true, capability_type: 'BROWSER_SYSTEM' })]);
-  M.printPosBillWindow({ billNo: 'A9' }, 100, null);
-  check('PRT15 BROWSER_SYSTEM default produces no bridge warning', M.toasts().filter(t => t.t === 'warning').length === 0, M.toasts());
+  M.printPosBillWindow({ billNo: 'A9' }, 100, null); await tick();
+  check('PRT15 BROWSER_SYSTEM default prints without a fallback prompt', M.opened().length === 1 && M.confirms().length === 0, { opened: M.opened().length, confirms: M.confirms().length });
 
-  // PRT16: direct type WITH a detected bridge → no warning.
-  reset(); M.setBridges(new Set(['SUNMI_NATIVE'])); M.setPrinters([P({ is_default_receipt: true, capability_type: 'SUNMI_NATIVE' })]);
-  M.printPosBillWindow({ billNo: 'A10' }, 100, null);
-  check('PRT16 Direct type with bridge → no warning', M.toasts().filter(t => t.t === 'warning').length === 0, M.toasts());
+  // PRT16: direct type is fail-closed even if a bridge is "detected" — this release performs no direct
+  // send, so it must never claim direct success; it routes through the explicit fallback offer.
+  reset(); M.setConfirm(false); M.setBridges(new Set(['SUNMI_NATIVE'])); M.setPrinters([P({ is_default_receipt: true, capability_type: 'SUNMI_NATIVE' })]);
+  M.printPosBillWindow({ billNo: 'A10' }, 100, null); await tick();
+  check('PRT16 Direct type never claims direct success (fail-closed to explicit fallback)', M.opened().length === 0 && M.confirms().length === 1, { opened: M.opened().length });
   M.setBridges(new Set());
 
   // PRT17: capCopies clamps min 1 and max 5.
@@ -214,3 +234,4 @@ try {
 }
 console.log('\n=== Results: ' + passed + ' passed, ' + failed + ' failed ===');
 process.exit(failed > 0 ? 1 : 0);
+})();

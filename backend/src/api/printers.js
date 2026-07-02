@@ -51,7 +51,7 @@ router.post('/printers', requirePerm('printer_add'), async (req, res) => {
   if (!name) return res.status(400).json({ error: 'name required' });
   const purpose = ['RECEIPT', 'KITCHEN', 'BOTH'].includes(b.purpose) ? b.purpose : 'RECEIPT';
   const paper = [58, 80].includes(Number(b.paper_width)) ? Number(b.paper_width) : 80;
-  const copies = Math.max(1, Math.min(9, Number(b.copies) || 1));
+  const copies = Math.max(1, Math.min(5, Number(b.copies) || 1));   // safe cap 5 (matches print-time capCopies)
   // Direct hardware without a confirmed bridge cannot be AVAILABLE — mark BRIDGE_NOT_AVAILABLE.
   const status = capability === 'BROWSER_SYSTEM' ? 'NOT_CONFIGURED' : 'BRIDGE_NOT_AVAILABLE';
   try {
@@ -74,7 +74,7 @@ router.patch('/printers/:id', requirePerm('printer_edit'), async (req, res) => {
     const name = b.name != null ? String(b.name).trim() : cur.name;
     const purpose = ['RECEIPT', 'KITCHEN', 'BOTH'].includes(b.purpose) ? b.purpose : cur.purpose;
     const paper = [58, 80].includes(Number(b.paper_width)) ? Number(b.paper_width) : cur.paper_width;
-    const copies = b.copies != null ? Math.max(1, Math.min(9, Number(b.copies) || 1)) : cur.copies;
+    const copies = b.copies != null ? Math.max(1, Math.min(5, Number(b.copies) || 1)) : cur.copies;   // safe cap 5
     const r = (await query(
       'update printers set name=$1, purpose=$2, paper_width=$3, copies=$4, updated_at=now() where id=$5 and shop_id=$6 returning *',
       [name, purpose, paper, copies, req.params.id, req.shopId]
