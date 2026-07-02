@@ -713,6 +713,21 @@ body.theme-dark .brand-logo-area img { filter: drop-shadow(0 0 2px rgba(244,122,
    ---------------------------------------------------------------------------- */
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 
+/* Delivery bill menu grid (desktop P1). On mobile the grid flows and the page scrolls
+   naturally. On desktop/front-store PC the (up to 40) menu cards made the grid very tall,
+   pushing the add-item controls (qty / options / stock-mode / reason / Add) below the
+   viewport. Cap the grid height and let it scroll INSIDE its own container ≥900px so the
+   bill action controls below it stay reachable without zooming out. Scoped class — no other
+   layout affected. */
+.dlv-menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+@media (min-width: 900px) {
+  .dlv-menu-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+}
+
 /* Stock / Production page (P1 responsive fix): the two stock sections each carry a
    table plus inline inputs (รับเข้า / ปรับค่า / quantity). Below ~1440px two columns
    cram the right-side controls, forcing users to zoom to 80%. Stack them until the

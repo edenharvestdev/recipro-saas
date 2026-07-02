@@ -11325,7 +11325,7 @@ function dlvBillHtml(b, items, movements) {
       + '<div style="font-size:11px;font-weight:700;color:var(--color-text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">เพิ่มเมนูในบิล</div>'
       + '<input type="text" placeholder="ค้นหาเมนู..." value="' + esc(_dlvMenuSearch) + '" oninput="dlvMenuSearch(this.value)" style="width:100%;padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);font-size:12px;margin-bottom:6px;">'
       + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">' + catBtns + '</div>'
-      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:8px;">' + (menuCards || '<span style="font-size:12px;color:var(--color-text-muted);">ไม่พบเมนู</span>') + '</div>'
+      + '<div class="dlv-menu-grid" style="margin-bottom:8px;">' + (menuCards || '<span style="font-size:12px;color:var(--color-text-muted);">ไม่พบเมนู</span>') + '</div>'
       + optPickers
       + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<label style="font-size:11px;color:var(--color-text-muted);">จำนวน</label>'
