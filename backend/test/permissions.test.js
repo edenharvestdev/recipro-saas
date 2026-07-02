@@ -126,6 +126,37 @@ function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', n
     const d15b = await api('DELETE', '/api/materials/' + matDel2, { token: ownerToken, shop: shopA });
     check('PA15 Owner deletes material', d15b.status === 200, d15b.data);
 
+    // Fresh recipe for the rollback/compat tests (rec was deleted in PA13).
+    const rec2 = crypto.randomUUID();
+    await query("INSERT INTO recipes(id,shop_id,name,yield_unit,batch_yield,updated_at) VALUES($1,$2,'PA-Rec2','cup',1,now())", [rec2, shopA]);
+    const rec2Row = (name) => ({ id: rec2, name, yield_unit: 'cup', batch_yield: 1 });
+
+    // PA16: MIXED-PAYLOAD ROLLBACK — one unauthorized field aborts the whole tx; the allowed
+    // mutation earlier in the same payload (a new supplier — not guarded) must NOT be committed.
+    await setPerms({});
+    const supRb = crypto.randomUUID();
+    const mix = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { suppliers: [{ id: supRb, name: 'RollbackSup' }], recipes: [rec2Row('MIXED-HACK')] } });
+    check('PA16 Mixed payload rejected with typed 403', mix.status === 403 && mix.data.code === 'RECIPE_READ_ONLY', mix.data);
+    check('PA16 Earlier valid mutation NOT committed (whole tx rolled back)', (await query('select 1 from suppliers where id=$1', [supRb])).rowCount === 0, null);
+    check('PA16 Recipe unchanged (no partial write)', (await query('select name from recipes where id=$1', [rec2])).rows[0].name === 'PA-Rec2', null);
+
+    // PA17: LEGACY FULL-SYNC — unchanged recipe + unchanged staff_permissions + unchanged setting,
+    // plus an allowed operational change (new supplier). Must pass (200) and save the allowed change.
+    await setPerms({ edit_recipes: false });   // explicit false (must remain denied)
+    const dbSet = (await query('select phone, staff_permissions from shop_settings where shop_id=$1', [shopA])).rows[0];
+    const supOk = crypto.randomUUID();
+    const legacy = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: {
+      recipes: [rec2Row('PA-Rec2')],                                   // unchanged
+      shop_settings: { staff_permissions: { edit_recipes: false }, phone: dbSet.phone },  // unchanged protected
+      suppliers: [{ id: supOk, name: 'LegacyOKSup' }],                 // allowed operational change
+    } });
+    check('PA17 Legacy full sync passes (no false 403)', legacy.status === 200, legacy.data);
+    check('PA17 Allowed operational change saved', (await query('select 1 from suppliers where id=$1', [supOk])).rowCount === 1, null);
+
+    // PA18: legacy explicit-false permission stays denied (edit_recipes:false → recipe edit blocked).
+    const s18 = await api('POST', '/api/sync', { token: staffToken, shop: shopA, body: { recipes: [rec2Row('SHOULD-FAIL')] } });
+    check('PA18 Explicit edit_recipes:false denies recipe edit', s18.status === 403 && s18.data.code === 'RECIPE_READ_ONLY', s18.data);
+
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);
     failed++;
