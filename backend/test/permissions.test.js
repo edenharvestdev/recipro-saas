@@ -213,7 +213,7 @@ function check(name, cond, extra) { if (cond) { passed++; console.log('  ✓', n
     // PA26: dry-run report (owner) — proposed mapping, no write.
     await setPerms({ edit_recipes: true, view_cost: true }); await setMemberPerms(staff2Login.data.user.id, null);
     const dry = await api('GET', '/api/permissions/dry-run', { token: ownerToken, shop: shopA });
-    check('PA26 Dry-run maps legacy→granular, backfilled:false', dry.status === 200 && dry.data.dry_run === true && dry.data.backfilled === false && dry.data.mapping.proposed.recipe_edit === true && dry.data.mapping.proposed.recipe_view_cost === true, dry.data);
+    check('PA26 Dry-run conservative proposal, backfilled:false', dry.status === 200 && dry.data.dry_run === true && dry.data.backfilled === false && dry.data.proposal && dry.data.proposal.safe_auto_map.recipe_edit === true && !!dry.data.proposal.review_required.view_cost && dry.data.proposal.safe_auto_map.recipe_view_cost === undefined, dry.data);
     check('PA26 Dry-run wrote nothing (staff2 permissions still null)', (await query('select permissions from memberships where user_id=$1 and shop_id=$2', [staff2Login.data.user.id, shopA])).rows[0].permissions === null, null);
 
     // PA27: staff cannot access dry-run.

@@ -10,22 +10,51 @@ const router = express.Router();
 
 const KEYSET = new Set(catalog.ALL_KEYS);
 
-// Expand a legacy shop-level permission object into proposed granular per-user permissions (dry-run).
-function mapLegacyToNew(legacy) {
+// ── Conservative dry-run PROPOSAL (Founder-revised safety mapping) ──────────────────────────────
+// IMPORTANT: this is the dry-run PROPOSAL only. It is deliberately separate from the runtime
+// catalog.LEGACY_ALIASES (which is left untouched so existing enforcement/back-compat is unchanged).
+// Only evidence-backed, non-broadening mappings auto-apply; everything else is flagged for Owner review.
+const SAFE_MAP = {
+  discount: ['pos_apply_discount'],
+  void: ['void'],                    // legacy POS void — enforced by POST /api/pos/void via requirePerm('void'). NOT pos_void.
+  void_bill: ['void_bill'],          // canonical confirmed-bill Void
+  correct_bill: ['bill_correct'],
+  stock_receive: ['stock_receive'],  // NOT stock_produce — production is assigned separately
+  waste: ['stock_adjust'],
+  edit_recipes: ['recipe_edit'],     // NOT recipe_create, NOT any cost permission
+  delivery_entry: ['pos_open_delivery'],
+  delivery_settlement: ['pos_close_day'],
+};
+const REVIEW_MAP = {
+  edit_recipes: { keys: ['recipe_create'], reason: 'RECIPE_CREATE_REVIEW_REQUIRED — grant only if legacy explicitly allowed creating new recipes' },
+  view_cost: { keys: ['recipe_view_cost', 'pos_view_cost', 'stock_view_cost', 'production_view_cost', 'report_view_cost'], reason: 'LEGACY_VIEW_COST_REVIEW_REQUIRED — do not auto-grant cost across modules the user never opened; recommend minimal reachable set' },
+};
+const UNMAPPED_LEGACY_NOTES = { petty_cash: 'kept legacy-compatible; proposed future granular key: petty_cash_manage (inventory endpoints first)' };
+// Catalog keys with no enforced backend route — must NOT be emitted by any mapping.
+const DEPRECATED_ORPHAN = [{ key: 'pos_void', note: 'no enforced route in the catalog; legacy POS void uses "void" (/api/pos/void), confirmed-bill void uses "void_bill"' }];
+
+// Build a categorized, conservative proposal from a legacy shop-level permission object.
+function buildProposal(legacy) {
   const p = legacy || {};
-  const proposed = {}; const added = []; const unmapped = []; const risky = [];
-  const RISKY = new Set(['recipe_edit', 'recipe_edit_cost', 'void_bill', 'bill_correct', 'team_edit_permissions', 'store_settings_edit', 'system_admin', 'production_reverse', 'production_void', 'printer_delete']);
+  const safe_auto_map = {}; const review_required = {}; const cost_review = [];
+  const unmapped_legacy = []; const potential_access_gain = []; const potential_access_loss = [];
   for (const [k, v] of Object.entries(p)) {
     if (v !== true) continue;
-    if (catalog.LEGACY_ALIASES[k]) {
-      for (const nk of catalog.LEGACY_ALIASES[k]) { proposed[nk] = true; added.push(nk); if (RISKY.has(nk)) risky.push(nk); }
-    } else if (KEYSET.has(k)) {
-      proposed[k] = true; added.push(k); if (RISKY.has(k)) risky.push(k);
-    } else {
-      unmapped.push(k);   // e.g. petty_cash — no granular equivalent yet
+    if (SAFE_MAP[k]) { for (const nk of SAFE_MAP[k]) safe_auto_map[nk] = true; }
+    if (REVIEW_MAP[k]) {
+      review_required[k] = { proposed_keys: REVIEW_MAP[k].keys, reason: REVIEW_MAP[k].reason };
+      if (k === 'view_cost') cost_review.push(...REVIEW_MAP[k].keys);
+      potential_access_loss.push(k + ' → held back for review: ' + REVIEW_MAP[k].keys.join(', '));
     }
+    if (UNMAPPED_LEGACY_NOTES[k]) { unmapped_legacy.push({ key: k, note: UNMAPPED_LEGACY_NOTES[k] }); potential_access_loss.push(k + ' (unmapped)'); }
+    if (!SAFE_MAP[k] && !REVIEW_MAP[k] && !UNMAPPED_LEGACY_NOTES[k]) { unmapped_legacy.push({ key: k, note: 'unknown legacy key — no granular mapping' }); }
   }
-  return { proposed, added: [...new Set(added)], unmapped: [...new Set(unmapped)], risky: [...new Set(risky)] };
+  return {
+    safe_auto_map, review_required, cost_review: [...new Set(cost_review)],
+    unmapped_legacy, deprecated_orphan: DEPRECATED_ORPHAN,
+    potential_access_gain,                          // empty: safe maps are pure preservation, never broaden
+    potential_access_loss: [...new Set(potential_access_loss)],
+  };
 }
 
 // Effective permission map for a membership (what hasPerm would resolve to for each catalog key).
@@ -126,20 +155,29 @@ router.get('/permissions/dry-run', async (req, res) => {
     let legacy = (await query('select staff_permissions from shop_settings where shop_id=$1', [req.shopId])).rows[0];
     legacy = legacy ? legacy.staff_permissions : {};
     if (typeof legacy === 'string') { try { legacy = JSON.parse(legacy); } catch (e) { legacy = {}; } }
-    const mapping = mapLegacyToNew(legacy || {});
+    const proposal = buildProposal(legacy || {});
     const staff = (await query("select user_id, role, permissions from memberships where shop_id=$1 and role='staff'", [req.shopId])).rows;
+    const roleBreakdown = (await query('select role, count(*)::int c from memberships where shop_id=$1 group by role', [req.shopId])).rows;
     const report = staff.map((m) => ({
       user_id: m.user_id, legacy_role: m.role,
       already_has_per_user: !!m.permissions,
       current_legacy_permissions: legacy || {},
-      proposed_permissions: mapping.proposed,
-      permissions_added: mapping.added,
-      unmapped_legacy_keys: mapping.unmapped,
-      risky_broad_access: mapping.risky,
+      SAFE_AUTO_MAP: proposal.safe_auto_map,
+      REVIEW_REQUIRED: proposal.review_required,
+      COST_REVIEW: proposal.cost_review,
+      UNMAPPED_LEGACY: proposal.unmapped_legacy,
+      DEPRECATED_ORPHAN: proposal.deprecated_orphan,
+      POTENTIAL_ACCESS_GAIN: proposal.potential_access_gain,
+      POTENTIAL_ACCESS_LOSS: proposal.potential_access_loss,
+      // conservative view-only proposals (granted via preset, NOT auto from legacy)
+      proposed_recipe_view_only: false,
+      proposed_production_view_only: false,
+      proposed_printer_permissions: [],   // never auto-granted; assign explicitly per staff
     }));
     res.json({
       shop_id: req.shopId, memberships_affected: staff.length, shops_affected: 1,
-      legacy_permissions: legacy || {}, mapping, dry_run: true, backfilled: false, report,
+      role_breakdown: roleBreakdown, legacy_permissions: legacy || {},
+      proposal, dry_run: true, backfilled: false, report,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
