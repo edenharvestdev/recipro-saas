@@ -1786,6 +1786,43 @@ table.bd tfoot td.r { text-align: right; }
   overflow: hidden;
 }
 
+/* ── PC billing viewport height fix (P1 follow-up) ─────────────────────────
+   The height:calc(100dvh - var(--topbar-h,60px)) above under-budgets the real
+   chrome: .main-container has 26px top + 90px bottom padding, and .top-bar adds
+   34px + 26px bottom margin — so #posPage's bottom (and the sticky pay button)
+   landed ~42px below the fold and got clipped. Instead of guessing an offset,
+   let .main-container own exactly the viewport height WHILE POS is the active
+   section, and let #posPage flex into the remaining space after the top-bar and
+   its margins consume their natural height. Bottom padding is reclaimed so the
+   workspace uses the full height. Scoped ≥768px; mobile (<768px) keeps its own
+   natural page scroll untouched. (:has() is already used elsewhere in this file.) */
+@media (min-width: 768px) {
+  .main-container:has(> #posPage:not(.hidden)) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    /* override the base .main-container { min-height:100vh } — 100vh can exceed
+       100dvh, which would inflate this container past the viewport and re-clip the
+       sticky pay button. Pin it to exactly the dynamic viewport height. */
+    min-height: 100dvh;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .main-container > #posPage:not(.hidden) {
+    flex: 1 1 auto;
+    height: auto;      /* override the fixed calc() height above */
+    min-height: 0;     /* allow the flex child to shrink so internal scroll works */
+  }
+  /* Constrain the quick-sell grid ROW to the container height. Without this the
+     implicit auto row grows to its content, so .pos-cart-panel { height:100% }
+     resolves against a content-sized row and the panel/footer overflow the
+     viewport instead of scrolling internally. (Footer shrink is re-asserted at ID
+     specificity further down, after the base #posCartFooter rule.) */
+  .pos-qs-layout {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
 /* ── Sub-tab bar ─────────────────────────────────────────────────────────── */
 .pos-subtab-bar {
   display: flex;
@@ -2193,7 +2230,10 @@ table.bd tfoot td.r { text-align: right; }
    #posPage is height:auto/overflow:visible (natural scroll) — leave it untouched. */
 @media (min-width: 768px) {
   #posCartItems { min-height: 0; }
-  .pos-cart-footer {
+  /* ID specificity so this beats the base #posCartFooter { flex-shrink:0 } above —
+     flex-shrink must be 1 for the footer to shrink and its overflow-y:auto to engage,
+     which keeps the sticky pay button clamped inside the viewport-bounded panel. */
+  #posCartFooter {
     flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
