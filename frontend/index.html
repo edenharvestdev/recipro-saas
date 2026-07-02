@@ -8449,6 +8449,127 @@ function autoPrintBillOn() { return localStorage.getItem('recipro_autoprint_bill
 function setAutoPrintBill(on) { localStorage.setItem('recipro_autoprint_bill', on ? 'on' : 'off'); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
 function posBillCopies() { return Math.max(1, Math.min(3, Number(settings.posBillCopies) || 1)); }
 function setPosBillCopies(n) { settings.posBillCopies = Math.max(1, Math.min(3, Number(n) || 1)); saveAll(); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
+
+// ═══ Track B: Printer registry — guided setup + bridge detection (browser/system now; native later) ═══
+// Real detection only — NEVER fake a "Connected" state. Returns the set of AVAILABLE direct-hardware types.
+function detectPrinterBridges() {
+  const avail = new Set();
+  try {
+    if (window.SunmiPrinter || (window.sunmi && window.sunmi.printer) || window.AndroidPrinter) avail.add('SUNMI_NATIVE');
+    if (window.__printerBridge && window.__printerBridge.available === true) avail.add('LOCAL_BRIDGE');
+  } catch (e) {}
+  return avail;
+}
+let _pr = null, _prTesting = false;
+async function openPrinterSetup() {
+  let ov = $('printerSetupModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'printerSetupModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10055;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) prClose(); }; document.body.appendChild(ov); }
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">กำลังโหลด...</div></div>';
+  try {
+    const [caps, list] = await Promise.all([API.get('/api/printers/capabilities'), API.get('/api/printers')]);
+    _pr = { caps: caps.capabilities, printers: list.printers, bridges: detectPrinterBridges(), draft: null };
+    prRender();
+  } catch (e) { ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">โหลดไม่ได้: ' + esc((e && e.message) || '') + ' (ต้องมีสิทธิ์ printer_view)</div><div class="bmm-foot" style="text-align:right;"><button class="btn btn-ghost" onclick="prClose()">ปิด</button></div></div>'; }
+}
+function prClose() { const o = $('printerSetupModal'); if (o) o.remove(); _pr = null; }
+function prEffStatus(type) { if (type === 'BROWSER_SYSTEM') return 'AVAILABLE'; return _pr.bridges.has(type) ? 'NOT_CONFIGURED' : 'BRIDGE_NOT_AVAILABLE'; }
+function prRender() { if (_pr.draft) prRenderWizard(); else prRenderList(); }
+function prRenderList() {
+  const ov = $('printerSetupModal'); if (!ov) return;
+  const stTh = { AVAILABLE: '✅ พร้อม', NOT_CONFIGURED: '⚠️ ยังไม่ทดสอบ', BRIDGE_NOT_AVAILABLE: '🔌 ต้องมี Bridge', UNSUPPORTED: 'ไม่รองรับ', CONNECTION_FAILED: 'เชื่อมต่อไม่ได้' };
+  const rows = _pr.printers.map(p => {
+    const method = _pr.caps.find(c => c.type === p.capability_type);
+    const badges = (p.is_default_receipt ? '<span style="font-size:10px;background:#16a34a22;color:#16a34a;padding:1px 6px;border-radius:5px;">ค่าเริ่มต้น·ใบเสร็จ</span> ' : '') + (p.is_default_kitchen ? '<span style="font-size:10px;background:#2563eb22;color:#2563eb;padding:1px 6px;border-radius:5px;">ค่าเริ่มต้น·ครัว</span>' : '');
+    const lastTest = p.last_test_at ? ('ทดสอบล่าสุด: ' + new Date(p.last_test_at).toLocaleString('th-TH') + ' · ' + esc(p.last_test_status || '')) : 'ยังไม่ทดสอบ';
+    const acts = (can('printer_test') ? '<button class="btn btn-ghost btn-sm" onclick="prTest(\'' + p.id + '\')">ทดสอบพิมพ์</button>' : '')
+      + (can('printer_edit') ? '<button class="btn btn-ghost btn-sm" onclick="prEditStart(\'' + p.id + '\')">แก้ไข</button>' : '')
+      + (can('printer_set_default') ? '<button class="btn btn-ghost btn-sm" onclick="prSetDefault(\'' + p.id + '\',\'receipt\')">ตั้งใบเสร็จ</button><button class="btn btn-ghost btn-sm" onclick="prSetDefault(\'' + p.id + '\',\'kitchen\')">ตั้งครัว</button>' : '')
+      + (can('printer_delete') ? '<button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="prDelete(\'' + p.id + '\')">ลบ</button>' : '');
+    return '<div style="border:1px solid var(--border-soft);border-radius:10px;padding:10px;margin-bottom:8px;">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b>' + esc(p.name) + '</b> ' + badges + '</div>'
+      + '<div style="font-size:12px;color:var(--color-text-muted);margin-top:3px;">' + esc(method ? method.label : p.capability_type) + ' · ' + p.paper_width + 'mm · ' + ({ RECEIPT: 'ใบเสร็จ', KITCHEN: 'ใบออเดอร์', BOTH: 'ทั้งสองแบบ' }[p.purpose] || p.purpose) + ' · ' + p.copies + ' ใบ · ' + (stTh[p.status] || p.status) + '</div>'
+      + (p.capability_type === 'BROWSER_SYSTEM' ? '<div style="font-size:11px;color:var(--color-text-muted);">ใช้เครื่องพิมพ์ที่เลือกในระบบของอุปกรณ์</div>' : '')
+      + '<div style="font-size:11px;color:var(--color-text-muted);margin:3px 0;">' + esc(lastTest) + '</div>'
+      + '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">' + acts + '</div></div>';
+  }).join('') || '<p style="font-size:13px;color:var(--color-text-muted);">ยังไม่มีเครื่องพิมพ์ — เพิ่มเครื่องแรก</p>';
+  ov.innerHTML = '<div class="bmm-shell">'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🖨 จัดการเครื่องพิมพ์</h2><div style="display:flex;gap:6px;">' + (can('printer_add') ? '<button class="btn btn-primary btn-sm" onclick="prNew()">+ เพิ่มเครื่องพิมพ์</button>' : '') + '<button class="btn btn-ghost btn-sm" onclick="prClose()">ปิด</button></div></div>'
+    + '<div class="bmm-scroll">' + rows + '</div></div>';
+}
+function prNew() { _pr.draft = { id: null, step: 1, capability_type: 'BROWSER_SYSTEM', name: '', purpose: 'RECEIPT', paper_width: 80, copies: 1 }; prRender(); }
+function prEditStart(id) { const p = _pr.printers.find(x => x.id === id); if (!p) return; _pr.draft = { id: p.id, step: 2, capability_type: p.capability_type, name: p.name, purpose: p.purpose, paper_width: p.paper_width, copies: p.copies }; prRender(); }
+function prSetCap(t) { if (prEffStatus(t) === 'BRIDGE_NOT_AVAILABLE') return; _pr.draft.capability_type = t; prRender(); }
+function prSetField(f, v) { _pr.draft[f] = (f === 'paper_width' || f === 'copies') ? Number(v) : v; prRender(); }
+function prReceiptPreview(w) {
+  const cols = w === 58 ? 32 : 42;
+  return '<pre style="font-family:monospace;font-size:' + (w === 58 ? 9 : 10) + 'px;background:#fff;color:#000;padding:8px;border-radius:6px;max-width:' + (w === 58 ? 180 : 260) + 'px;white-space:pre-wrap;line-height:1.35;overflow-x:auto;">'
+    + (settings.shopName || 'ร้านของฉัน').slice(0, cols) + '\n' + '-'.repeat(cols) + '\nชาไทย        x1     40.00\nกาแฟเย็น     x2     90.00\n' + '-'.repeat(cols) + '\nรวมสุทธิ           130.00\n' + '='.repeat(cols) + '\n(ทดสอบพิมพ์ ' + w + 'mm)</pre>';
+}
+function prRenderWizard() {
+  const ov = $('printerSetupModal'); if (!ov) return; const d = _pr.draft;
+  const capOptions = _pr.caps.map(c => {
+    const st = prEffStatus(c.type); const disabled = st === 'BRIDGE_NOT_AVAILABLE';
+    return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid ' + (d.capability_type === c.type ? 'var(--color-primary)' : 'var(--border-soft)') + ';border-radius:8px;margin-bottom:6px;' + (disabled ? 'opacity:.55;' : 'cursor:pointer;') + '"><input type="radio" name="prCap"' + (d.capability_type === c.type ? ' checked' : '') + (disabled ? ' disabled' : '') + ' onchange="prSetCap(\'' + c.type + '\')" style="margin-top:3px;"><span><b>' + esc(c.label) + '</b><br><span style="font-size:11px;color:var(--color-text-muted);">' + esc(c.desc) + (disabled ? ' — ยังไม่รองรับในเว็บเวอร์ชันนี้ ต้องติดตั้ง Printer Bridge' : '') + '</span></span></label>';
+  }).join('');
+  const body = '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">ขั้นที่ 1 — วิธีพิมพ์</div>' + capOptions
+    + '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 2 — ชื่อ & งานพิมพ์</div>'
+    + '<label style="display:block;font-size:12px;margin-bottom:6px;">ชื่อเครื่องพิมพ์<input value="' + esc(d.name) + '" oninput="_pr.draft.name=this.value" style="width:100%;padding:7px;"></label>'
+    + '<label style="display:block;font-size:12px;margin-bottom:6px;">งานพิมพ์<select onchange="prSetField(\'purpose\',this.value)" style="width:100%;padding:7px;">' + [['RECEIPT', 'ใบเสร็จลูกค้า'], ['KITCHEN', 'ใบออเดอร์ (ครัว)'], ['BOTH', 'ทั้งสองแบบ']].map(o => '<option value="' + o[0] + '"' + (d.purpose === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>'
+    + '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 3 — กระดาษ</div>'
+    + '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><select onchange="prSetField(\'paper_width\',this.value)" style="padding:7px;">' + [58, 80].map(w => '<option value="' + w + '"' + (d.paper_width === w ? ' selected' : '') + '>' + w + ' mm</option>').join('') + '</select>' + prReceiptPreview(d.paper_width) + '</div>'
+    + '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 4 — จำนวนสำเนา</div>'
+    + '<select onchange="prSetField(\'copies\',this.value)" style="padding:7px;">' + [1, 2, 3].map(n => '<option value="' + n + '"' + (d.copies === n ? ' selected' : '') + '>' + n + ' ใบ</option>').join('') + '</select>'
+    + (d.id ? '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 5 — ทดสอบพิมพ์</div><button class="btn btn-ghost btn-sm" onclick="prTest(\'' + d.id + '\')">🖨 ทดสอบพิมพ์</button><div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">หลังจากหน้าต่างพิมพ์เปิด ให้เลือกเครื่องพิมพ์ SUNMI แล้วกดพิมพ์</div>' : '<div style="font-size:11px;color:var(--color-text-muted);margin-top:12px;">บันทึกก่อน แล้วจึงทดสอบพิมพ์ได้</div>');
+  ov.innerHTML = '<div class="bmm-shell">'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><h2 style="margin:0;font-size:15px;">' + (d.id ? 'แก้ไขเครื่องพิมพ์' : 'เพิ่มเครื่องพิมพ์') + '</h2><button class="btn btn-ghost btn-sm" onclick="_pr.draft=null;prRender()">← กลับ</button></div>'
+    + '<div class="bmm-scroll">' + body + '</div>'
+    + '<div class="bmm-foot" style="display:flex;justify-content:flex-end;gap:8px;"><button class="btn btn-primary" id="prSaveBtn" onclick="prSaveWizard()">บันทึก & ตั้งค่า</button></div></div>';
+}
+async function prSaveWizard() {
+  const d = _pr.draft; if (!d.name || !d.name.trim()) { ui.toast('กรอกชื่อเครื่องพิมพ์', 'warning'); return; }
+  const btn = $('prSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; }
+  try {
+    const body = { name: d.name.trim(), capability_type: d.capability_type, purpose: d.purpose, paper_width: d.paper_width, copies: d.copies };
+    const r = d.id ? await API.patch('/api/printers/' + d.id, body) : await API.post('/api/printers', body);
+    ui.toast('บันทึกเครื่องพิมพ์แล้ว');
+    const list = await API.get('/api/printers'); _pr.printers = list.printers;
+    _pr.draft = d.id ? null : { ...d, id: r.printer.id, step: 5 };   // stay on wizard (step 5 test) for new; back to list for edit
+    prRender();
+  } catch (e) { const c = (e && e.data && e.data.code) || (e && e.message); ui.toast('บันทึกไม่ได้: ' + c, e && e.status === 403 ? 'warning' : 'error'); if (btn) { btn.disabled = false; btn.textContent = 'บันทึก & ตั้งค่า'; } }
+}
+async function prTest(id) {
+  if (_prTesting) return; _prTesting = true;   // double-click guard
+  try {
+    const r = await API.post('/api/printers/' + id + '/test', {});
+    if (r.action === 'open_print_dialog') {
+      prOpenTestReceipt(r.paper_width || 80);
+      ui.toast('เปิดหน้าต่างพิมพ์แล้ว (PRINT_DIALOG_OPENED) — เลือกเครื่องพิมพ์ SUNMI แล้วกดพิมพ์');
+    } else {
+      const msg = { SUNMI_PRINTER_NOT_AVAILABLE: 'ยังเชื่อมต่อเครื่องพิมพ์ SUNMI ไม่ได้ (ต้องมี Bridge)', PRINTER_BRIDGE_NOT_AVAILABLE: 'ยังไม่มี Printer Bridge — ใช้ "พิมพ์ผ่านระบบ" แทน' }[r.status] || r.status;
+      ui.toast(msg, 'warning');
+    }
+    if (_pr) { const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender(); }
+  } catch (e) { ui.toast('ทดสอบไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
+  finally { setTimeout(() => { _prTesting = false; }, 800); }
+}
+function prOpenTestReceipt(w) {
+  const win = window.open('', '_blank', 'width=360,height=520'); if (!win) { ui.toast('เปิดหน้าต่างพิมพ์ไม่ได้ (อนุญาต popup)', 'warning'); return; }
+  const mm = w === 58 ? '58mm' : '80mm';
+  win.document.write('<html><head><meta charset="utf-8"><title>ทดสอบพิมพ์</title><style>@page{size:' + mm + ' auto;margin:0}body{font-family:monospace;width:' + mm + ';padding:6px;font-size:' + (w === 58 ? 11 : 12) + 'px;}h3{text-align:center;margin:4px 0;}hr{border:none;border-top:1px dashed #000;}</style></head><body><h3>' + esc(settings.shopName || 'ร้านของฉัน') + '</h3><div style="text-align:center;">** ทดสอบพิมพ์ ' + w + 'mm **</div><hr>ชาไทย x1 40.00<br>กาแฟเย็น x2 90.00<hr><div style="text-align:right;">รวม 130.00</div><hr><div style="text-align:center;font-size:10px;">Recipro · ' + new Date().toLocaleString("th-TH") + '</div><scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},250)}<\/scr' + 'ipt></body></html>');
+  win.document.close();
+}
+async function prSetDefault(id, role) {
+  try { await API.post('/api/printers/' + id + '/set-default', { role }); ui.toast('ตั้งค่าเริ่มต้นแล้ว (' + (role === 'receipt' ? 'ใบเสร็จ' : 'ครัว') + ')'); const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender(); }
+  catch (e) { ui.toast('ตั้งไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
+}
+async function prDelete(id) {
+  const p = _pr.printers.find(x => x.id === id); const isDef = p && (p.is_default_receipt || p.is_default_kitchen);
+  if (!(await ui.confirm(isDef ? 'เครื่องนี้เป็นค่าเริ่มต้น — ลบแล้วต้องตั้งเครื่องอื่นเป็นค่าเริ่มต้นแทน ยืนยันลบ?' : 'ลบเครื่องพิมพ์นี้?', { okText: 'ลบ', danger: true }))) return;
+  try {
+    await API.del('/api/printers/' + id + (isDef ? '?confirm=true' : ''));
+    ui.toast('ลบแล้ว'); const list = await API.get('/api/printers'); _pr.printers = list.printers; prRender();
+  } catch (e) { ui.toast('ลบไม่ได้: ' + ((e && e.data && e.data.code) || (e && e.message)), e && e.status === 403 ? 'warning' : 'error'); }
+}
 function posBillReceiptHtml(b, total) {
   const shopName = settings.shopName || 'Recipro';
   const vatOn = !!settings.vatEnabled;
@@ -12109,7 +12230,7 @@ function printerSettingsCard() {
   const SECT = 'margin-top:10px;padding:11px 12px;border:1px solid var(--border-soft);border-radius:11px;background:var(--surface-1);';
   const TTL = 'font-size:13px;font-weight:800;margin-bottom:7px;';
   return `<div class="glass-card" style="margin-bottom:14px;">
-    <div style="font-size:14px;font-weight:800;margin-bottom:6px;"><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ</div>
+    <div style="font-size:14px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ</span><button class="btn btn-primary btn-sm" onclick="openPrinterSetup()">🖨 จัดการเครื่องพิมพ์ (แบบมีขั้นตอน)</button></div>
     <div style="font-size:11.5px;color:var(--color-text-main);background:var(--surface-2);border-radius:8px;padding:8px 11px;margin-bottom:4px;line-height:1.6;"><b>มีหลายเครื่องพิมพ์ (แยกใบเสร็จ/ครัว)?</b> เปิดแอปบนอุปกรณ์ของแต่ละเครื่องพิมพ์ → ตั้งเครื่องพิมพ์นั้นเป็น "เริ่มต้น" ของอุปกรณ์ (Bluetooth/USB/WiFi) → แล้วตั้งค่าด้านล่างนี้ <b>แยกแต่ละอุปกรณ์</b> ให้พิมพ์เฉพาะเอกสารของมัน · (เว็บพิมพ์ผ่านเครื่องพิมพ์เริ่มต้นของอุปกรณ์ จึงแยกงานได้ด้วยการแยกอุปกรณ์)</div>
 
     <div style="${SECT}">
