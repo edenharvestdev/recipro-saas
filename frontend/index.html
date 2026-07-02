@@ -11905,7 +11905,7 @@ function renderOnlineMenu() {
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">ธีมสำเร็จรูป<select onchange="setMenuTheme(this.value)" style="${selStyle}">${themes.map(([v,l]) => `<option value="${v}"${(mc.theme||'recipro')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">กรอบการ์ด<select onchange="setMenuFrame(this.value)" style="${selStyle}">${frames.map(([v,l]) => `<option value="${v}"${(mc.frame||'soft')===v?' selected':''}>${l}</option>`).join('')}</select></label>
         <label style="font-size:12px;color:var(--color-text-muted);display:flex;flex-direction:column;">แถบหมวดอยู่<select onchange="setMenuTabPos(this.value)" style="${selStyle}">${[['top','ด้านบน'],['left','ด้านซ้าย'],['right','ด้านขวา']].map(([v,l]) => `<option value="${v}"${(mc.tabPos||'top')===v?' selected':''}>${l}</option>`).join('')}</select></label>
-        <a href="${esc(url)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('eye')} ดูตัวอย่าง</a>
+        <a href="${esc(url)}?preview=admin" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('eye')} ดูตัวอย่าง (ผู้ดูแล)</a>
         <a href="${esc(url)}?kiosk=1" target="_blank" class="btn btn-ghost btn-sm" style="font-size:12px;">${icon('monitor')} โหมดจอร้าน (kiosk)</a>
       </div>
       <div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;">

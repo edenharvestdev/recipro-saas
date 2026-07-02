@@ -2184,7 +2184,39 @@ table.bd tfoot td.r { text-align: right; }
   background: var(--surface-1);
   display: block !important; /* override hidden when cart has items */
 }
-.pos-cart-footer { /* container class */ }
+/* ── PC billing workspace height (P1) ──────────────────────────────────────
+   #posPage is viewport-bounded (height:calc(100dvh - topbar); overflow:hidden).
+   Keep every operational control reachable INSIDE it instead of clipping the
+   bottom action off-screen: the cart footer and the delivery/online sub-panels
+   scroll internally; the primary pay action stays stuck to the panel bottom. */
+/* Desktop/tablet only (≥768px): #posPage is viewport-bounded there. On mobile (<768px)
+   #posPage is height:auto/overflow:visible (natural scroll) — leave it untouched. */
+@media (min-width: 768px) {
+  #posCartItems { min-height: 0; }
+  .pos-cart-footer {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  /* Keep ชำระเงิน visible while the footer scrolls */
+  #posCartFooter > button.btn-primary {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    box-shadow: 0 -8px 10px -8px rgba(0, 0, 0, 0.18);
+  }
+  /* Delivery / Online sub-panels: fill the remaining bounded height and scroll
+     internally so add-item / stock-mode / reason / Add / settlement controls are
+     always reachable (menu grid keeps its own 42vh internal cap). */
+  #posDeliveryPanel:not(.hidden),
+  #posOnlinePanel:not(.hidden) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 0;
+  }
+}
 .pos-cart-grand {
   display: flex;
   justify-content: space-between;

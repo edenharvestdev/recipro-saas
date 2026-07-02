@@ -127,6 +127,7 @@
 </style>
 </head>
 <body>
+<div id="adminBar" style="display:none;"></div>
 <div id="loader"><div class="bunscene"><div class="bun">🐇</div><span class="puff">💨</span><div class="carrot3">🥕</div><div class="ground"></div></div><div class="lt">กำลังโหลดเมนู<span class="dots"></span></div></div>
 <header><img id="shopLogo" alt="" style="display:none;height:52px;border-radius:10px;object-fit:contain;margin-bottom:6px;"><h1 id="shopName">กำลังโหลดเมนู…</h1><div class="sub" id="shopSub">สั่งออนไลน์ · รับที่ร้าน</div>
   <div class="viewtoggle"><button id="vbBook" class="on" onclick="setView('book')">📖 เล่ม</button><button id="vbGrid" onclick="setView('grid')">▦ ตาราง</button></div>
@@ -422,7 +423,29 @@ function saveBillPdf(){
   if(!w){ alert('กรุณาอนุญาต popup เพื่อบันทึกบิล'); return; }
   w.document.write(html); w.document.close();
 }
+// Admin-only preview bar — customer/kiosk view is unaffected. Requires BOTH ?preview=admin AND a
+// server-verified authenticated owner/admin of THIS shop (the query param alone grants nothing).
+async function maybeShowAdminPreview(){
+  try{
+    if (QS.get('preview') !== 'admin' || KIOSK) return;            // trigger; never in kiosk mode
+    let token = null; try { token = localStorage.getItem('recipro_access'); } catch(e){}
+    if (!token) return;                                            // unauthenticated → plain customer view
+    const r = await fetch('/api/preview/verify/'+encodeURIComponent(TOKEN), { headers:{ 'Authorization':'Bearer '+token } });
+    if (!r.ok) return;                                             // 401/403/404 → no bar (customer view)
+    const v = await r.json(); if (!v || !v.ok) return;             // server did not confirm admin of THIS shop
+    const bar = document.getElementById('adminBar');
+    const customerUrl = '/menu/' + TOKEN;
+    bar.innerHTML = '<div style="position:sticky;top:0;z-index:99999;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#4338ca;color:#fff;padding:8px 14px;font-size:13px;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.25);">'
+      + '<span style="font-weight:700;">👁 โหมดตัวอย่างสำหรับผู้ดูแล' + (v.shop_name ? (' · ' + esc(v.shop_name)) : '') + '</span>'
+      + '<span style="flex:1;"></span>'
+      + '<button onclick="location.href=\'' + (v.back_url || '/') + '\'" style="background:#fff;color:#4338ca;border:0;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;font-family:inherit;">← กลับระบบหลังบ้าน</button>'
+      + '<button onclick="location.href=\'' + customerUrl + '\'" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;">เปิดหน้าลูกค้าแบบจริง</button>'
+      + '</div>';
+    bar.style.display = 'block';
+  }catch(e){ /* any failure → stay in customer view */ }
+}
 load();
+maybeShowAdminPreview();
 </script>
 </body>
 </html>
