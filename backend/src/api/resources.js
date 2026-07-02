@@ -25,6 +25,8 @@ for (const table of TABLES) {
         // 'created' entry. Clear the FK children then the bill, atomically, so the delete succeeds.
         const name = cur ? ((await query('select number from bills where id=$1 and shop_id=$2', [req.params.id, req.shopId])).rows[0] || {}).number : null;
         await tx(async (c) => {
+          // Release any un-confirmed coupon reservation so the code frees up (draft never redeemed it).
+          await require('../coupons/redemption').releaseDraft(c, req.shopId, req.params.id);
           await c.query('delete from bill_stock_movements where bill_id = $1 and shop_id = $2', [req.params.id, req.shopId]);
           await c.query('delete from bill_audit_log where bill_id = $1 and shop_id = $2', [req.params.id, req.shopId]);
           await c.query('delete from bills where id = $1 and shop_id = $2', [req.params.id, req.shopId]);

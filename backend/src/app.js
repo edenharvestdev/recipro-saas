@@ -80,6 +80,7 @@ api.use(require('./api/billing'));     // GET  /api/plans · POST /api/billing/c
 api.use(require('./api/logs'));        // GET  /api/logs
 api.use(require('./api/bills'));       // front-store bill lifecycle: /api/bills/{draft,drafts,:id,:id/confirm,:id/void,:id/correct}
 api.use(require('./api/preview'));     // GET /api/preview/verify/:token — admin online-menu preview gate
+api.use(require('./api/coupons'));     // free-item coupon redemption: /api/coupons/{validate,apply,redemptions,import}
 // Delivery MVP Release A — default OFF. Set DELIVERY_ENABLED=1 to activate globally.
 // Per-shop allowlist enforcement is inside the delivery router (delivery-feature.js).
 const deliveryRouter = require('./api/delivery');
