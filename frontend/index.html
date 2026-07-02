@@ -11048,7 +11048,8 @@ function bmBadge(s) {
 async function bmRender() {
   const ov = $('billMgrModal'); if (!ov) return;
   if (_bm.editing !== null || _bm.correctOf) { bmRenderEditor(); return; }
-  bmShell('<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><h2 style="margin:0;font-size:16px;">🧾 ร่าง / แก้ไขบิล</h2><div style="display:flex;gap:6px;"><button class="btn btn-primary btn-sm" onclick="bmNew()">+ บิลใหม่</button><button class="btn btn-ghost btn-sm" onclick="bmClose()">ปิด</button></div></div>', 'กำลังโหลด...', '');
+  const ownerCouponBtn = (USER_ROLE === 'owner' || USER_ROLE === 'superadmin') ? '<button class="btn btn-ghost btn-sm" onclick="bmCouponReport()">🎟️ คูปอง</button>' : '';
+  bmShell('<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><h2 style="margin:0;font-size:16px;">🧾 ร่าง / แก้ไขบิล</h2><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" onclick="bmNew()">+ บิลใหม่</button>' + ownerCouponBtn + '<button class="btn btn-ghost btn-sm" onclick="bmClose()">ปิด</button></div></div>', 'กำลังโหลด...', '');
   let bills = []; try { bills = (await API.get('/api/bills/recent')).bills || []; } catch (e) {}
   const canVoid = can('void');   // owner/superadmin always; staff needs the void permission
   const row = b => {
@@ -11105,7 +11106,7 @@ function bmRenderEditor() {
     + '<td><button class="btn btn-ghost btn-sm" style="color:#dc2626;padding:1px 5px;" onclick="bmDelLine(' + i + ')">✕</button></td></tr>').join('');
   const today = new Date().toISOString().slice(0, 10);
   const head = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><h2 style="margin:0;font-size:15px;">' + (isCorrect ? ('✏️ แก้ไขบิล ' + esc(_bm.correctOf.number || '') + ' → ออกบิลใหม่แทน') : '🧾 บิลร่าง') + '</h2><button class="btn btn-ghost btn-sm" onclick="bmRender()">← กลับ</button></div>';
-  const body = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><select id="bmAddSel" style="flex:1;min-width:180px;padding:5px;">' + opts + '</select><button class="btn btn-primary btn-sm" onclick="bmAddLine()">+ เพิ่มรายการ</button></div>'
+  const body = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><select id="bmAddSel" style="flex:1;min-width:180px;padding:5px;">' + opts + '</select><button class="btn btn-primary btn-sm" onclick="bmAddLine()">+ เพิ่มรายการ</button><button class="btn btn-ghost btn-sm" onclick="bmCoupon()">🎟️ ใช้คูปอง</button></div>'
     + (_bm.lines.length ? '<table style="width:100%;font-size:12px;border-collapse:collapse;"><tr style="color:var(--color-text-muted);font-size:11px;"><th style="text-align:left;">เมนู</th><th>จำนวน</th><th>ราคา</th><th>ส่วนลด</th><th style="text-align:right;">รวม</th><th></th></tr>' + lineRows + '</table>' : '<p style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีรายการ</p>')
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;">'
     + '<label style="font-size:12px;">ส่วนลดท้ายบิล<input type="number" value="' + (_bm.billDiscount || 0) + '" onchange="_bm.billDiscount=+this.value;bmRenderEditor();" style="width:100%;padding:5px;"></label>'
@@ -11125,8 +11126,98 @@ function bmDelLine(i) { _bm.lines.splice(i, 1); bmRenderEditor(); }
 function bmAddLine() { const sel = $('bmAddSel'); if (!sel || !sel.value) return; const p = sel.value.split('|'); _bm.lines.push({ key: Math.random().toString(36).slice(2, 6), menu_type: p[1] === 'material' ? 'material' : 'recipe', ref_id: p[0], menu_name: p[2], qty: 1, unit_price: +p[3] || 0, discount: 0 }); bmRenderEditor(); }
 function bmPayload() { return { items: _bm.lines, bill_discount: _bm.billDiscount || 0, actual_received_amount: _bm.actualReceived === '' ? null : +_bm.actualReceived, payment_method: _bm.paymentMethod || null, business_date: _bm.businessDate || null }; }
 async function bmSaveDraft(confirmAfter) {
-  try { const body = bmPayload(); if (_bm.editing && _bm.editing.id) body.id = _bm.editing.id; const r = await API.post('/api/bills/draft', body); if (confirmAfter) { await bmConfirm(r.bill.id); } else { ui.toast('บันทึกร่างแล้ว'); _bm.editing = null; await bmRender(); } }
+  try {
+    const body = bmPayload(); if (_bm.editing && _bm.editing.id) body.id = _bm.editing.id;
+    const r = await API.post('/api/bills/draft', body);
+    const billId = r.bill.id;
+    if (_bm.editing) _bm.editing = { id: billId };
+    // Reserve any not-yet-applied coupon lines against the saved draft (locks the code; no stock yet).
+    for (const ln of _bm.lines) {
+      if (ln.coupon && !ln.coupon.applied) {
+        try {
+          await API.post('/api/coupons/apply', { bill_id: billId, bill_item_key: ln.key, code: ln.coupon.code, ref_type: ln.menu_type, ref_id: ln.ref_id, qty: ln.qty, unit_price: ln.unit_price, member_id: ln.coupon.member || null });
+          ln.coupon.applied = true;
+        } catch (e) { const d = (e && e.data) || {}; ui.toast('จองคูปอง ' + ln.coupon.code + ' ไม่ได้: ' + (d.error || (e && e.message) || ''), 'warning'); }
+      }
+    }
+    if (confirmAfter) { await bmConfirm(billId); } else { ui.toast('บันทึกร่างแล้ว'); _bm.editing = null; await bmRender(); }
+  }
   catch (e) { ui.toast('บันทึกไม่ได้ (คงข้อมูลไว้): ' + (e && e.message || ''), 'error'); }   // cart preserved: _bm.lines untouched
+}
+// ── Free-item coupon redemption UI (POS / Bill Manager) ──
+let _bmCoupon = null;
+function bmCoupon() {
+  if (!_bm.editing && !_bm.correctOf) { ui.toast('เปิดบิลร่างก่อนใช้คูปอง', 'warning'); return; }
+  const sellable = deliverySellable();
+  let ov = $('bmCouponModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'bmCouponModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(20,15,5,.55);display:flex;align-items:center;justify-content:center;padding:16px;'; document.body.appendChild(ov); }
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const opts = '<option value="">— เลือกเมนู —</option>' + sellable.map(s => '<option value="' + s.id + '|' + s.refType + '|' + esc(s.name) + '|' + (s.price || 0) + '">' + esc(s.name) + ' (' + dlvFmt(s.price) + ')</option>').join('');
+  ov.innerHTML = '<div class="bmm-shell" style="max-width:460px;">'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><h2 style="margin:0;font-size:16px;">🎟️ ใช้คูปอง / แลกของฟรี</h2><button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'bmCouponModal\');if(o)o.remove();">ปิด</button></div>'
+    + '<div class="bmm-scroll">'
+    + '<label style="display:block;font-size:12px;margin-bottom:8px;">รหัสคูปอง (สแกน/พิมพ์)<input id="bmcCode" placeholder="รหัสคูปอง" style="width:100%;padding:7px;"></label>'
+    + '<label style="display:block;font-size:12px;margin-bottom:8px;">เมนูที่แลก<select id="bmcMenu" style="width:100%;padding:7px;">' + opts + '</select></label>'
+    + '<label style="display:block;font-size:12px;margin-bottom:8px;">รหัสสมาชิก (ถ้ามี)<input id="bmcMember" style="width:100%;padding:7px;"></label>'
+    + '<button class="btn btn-ghost btn-sm" onclick="bmCouponValidate()">ตรวจสอบคูปอง</button>'
+    + '<div id="bmcPreview" style="margin-top:10px;"></div>'
+    + '<div id="bmcErr" style="color:#dc2626;font-size:12px;margin-top:8px;"></div>'
+    + '</div>'
+    + '<div class="bmm-foot" style="display:flex;justify-content:flex-end;gap:8px;"><button class="btn btn-primary" id="bmcConfirm" onclick="bmCouponConfirm()" disabled>ยืนยันแลกของฟรี</button></div>'
+    + '</div>';
+  _bmCoupon = null;
+  setTimeout(() => { const c = $('bmcCode'); if (c) c.focus(); }, 30);
+}
+async function bmCouponValidate() {
+  const code = (($('bmcCode') || {}).value || '').trim(), sel = ($('bmcMenu') || {}).value, member = (($('bmcMember') || {}).value || '').trim();
+  const err = $('bmcErr'); err.textContent = ''; $('bmcPreview').innerHTML = ''; $('bmcConfirm').disabled = true;
+  if (!code || !sel) { err.textContent = 'กรอกรหัสและเลือกเมนู'; return; }
+  const p = sel.split('|'); const item = { id: p[0], refType: p[1], name: p[2], price: +p[3] || 0 };
+  try {
+    const r = await API.post('/api/coupons/validate', { code, ref_type: item.refType, ref_id: item.id, qty: 1, unit_price: item.price, member_id: member || null });
+    if (!r.ok) { err.textContent = 'คูปองใช้ไม่ได้: ' + (r.error || ''); return; }
+    const pv = r.preview;
+    $('bmcPreview').innerHTML = '<div style="padding:10px;background:var(--surface-2);border-radius:8px;font-size:13px;line-height:1.7;">'
+      + 'เมนู: <b>' + esc(item.name) + '</b><br>'
+      + 'แคมเปญ: ' + esc(r.campaign_id || '-') + ' · แหล่งทุน: ' + esc(pv.funding_source || '-') + '<br>'
+      + 'ราคาปกติ: ' + dlvFmt(pv.normal_unit_price) + ' · ส่วนลดคูปอง: ' + dlvFmt(pv.coupon_discount) + '<br>'
+      + '<b>สุทธิ: ' + dlvFmt(pv.net) + '</b> · ต้นทุน (COGS): ' + dlvFmt(pv.total_cogs) + ' · ตัดสต๊อก: 1 หน่วย'
+      + '</div>';
+    _bmCoupon = { code, member, item, preview: pv };
+    $('bmcConfirm').disabled = false;
+  } catch (e) { err.textContent = 'ตรวจสอบไม่ได้: ' + (e && e.message || ''); }
+}
+function bmCouponConfirm() {
+  if (!_bmCoupon) return;
+  const it = _bmCoupon.item, price = it.price;
+  // Free item = full price + full discount (Net 0); stock deducts on confirm, COGS stays real.
+  _bm.lines.push({ key: Math.random().toString(36).slice(2, 6), menu_type: it.refType === 'material' ? 'material' : 'recipe', ref_id: it.id, menu_name: it.name + ' 🎟️', qty: 1, unit_price: price, discount: price, coupon: { code: _bmCoupon.code, member: _bmCoupon.member, applied: false } });
+  const o = $('bmCouponModal'); if (o) o.remove();
+  bmRenderEditor();
+  ui.toast('เพิ่มของฟรีแล้ว — บันทึกร่างเพื่อจองคูปอง');
+}
+// Owner coupon-redemption report (separates coupon-funded free items from cash discounts).
+async function bmCouponReport() {
+  let data; try { data = await API.get('/api/coupons/redemptions'); } catch (e) { ui.toast('โหลดไม่ได้ (ต้องเป็นเจ้าของ)', 'warning'); return; }
+  const rows = data.redemptions || [];
+  let ov = $('bmCouponReportModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'bmCouponReportModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(20,15,5,.55);display:flex;align-items:center;justify-content:center;padding:16px;'; document.body.appendChild(ov); }
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const stC = { REDEEMED: '#16a34a', PENDING: '#f59e0b', VOIDED_REVIEW: '#dc2626', REINSTATED: '#6366f1', REJECTED: '#888', EXPIRED: '#888', VALIDATED: '#2563eb' };
+  const list = rows.map(r => '<div style="padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12px;">'
+    + '<b>' + esc(r.external_coupon_code) + '</b> <span style="color:' + (stC[r.redemption_status] || '#888') + ';font-weight:700;">' + esc(r.redemption_status) + '</span>'
+    + (r.external_campaign_id ? ' · ' + esc(r.external_campaign_id) : '') + ' · ' + esc(r.funding_source) + '<br>'
+    + (r.menu_name ? esc(r.menu_name) + ' · ' : '') + (r.bill_number ? 'บิล ' + esc(r.bill_number) + ' · ' : '')
+    + 'ปกติ ' + dlvFmt(r.normal_unit_price) + ' · ส่วนลด ' + dlvFmt(r.coupon_discount_amount) + ' · สุทธิ ' + dlvFmt(r.net_amount) + ' · COGS ' + dlvFmt(r.total_cogs)
+    + (r.redemption_status === 'VOIDED_REVIEW' ? ' <button class="btn btn-ghost btn-sm" style="color:#6366f1;" onclick="bmReinstate(\'' + r.id + '\')">คืนสิทธิ์</button>' : '')
+    + '</div>').join('') || '<p style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีการแลกคูปอง</p>';
+  ov.innerHTML = '<div class="bmm-shell" style="max-width:520px;"><div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;font-size:15px;">🎟️ รายงานการแลกคูปอง</h2><button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'bmCouponReportModal\');if(o)o.remove();">ปิด</button></div><div class="bmm-scroll">' + list + '</div></div>';
+}
+async function bmReinstate(id) {
+  const reason = prompt('เหตุผลการคืนสิทธิ์คูปอง (จำเป็น)?');
+  if (!reason || !reason.trim()) { ui.toast('ต้องระบุเหตุผล', 'warning'); return; }
+  try { await API.post('/api/coupons/redemptions/' + id + '/reinstate', { reason: reason.trim() }); ui.toast('คืนสิทธิ์คูปองแล้ว'); bmCouponReport(); }
+  catch (e) { const d = (e && e.data) || {}; ui.toast('คืนสิทธิ์ไม่ได้: ' + (d.error || (e && e.message) || ''), e && e.status === 403 ? 'warning' : 'error'); }
 }
 async function bmConfirm(id) {
   try { const r = await API.post('/api/bills/' + id + '/confirm', {}); ui.toast(r.already ? 'บิลนี้ยืนยันแล้ว' : 'ยืนยันบิล ' + (r.number || '') + ' — ตัดสต๊อกแล้ว'); _bm.editing = null; await bmRender(); }

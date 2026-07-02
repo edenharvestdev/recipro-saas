@@ -7,6 +7,7 @@ const express = require('express');
 const { tx, query } = require('../db');
 const { requirePerm } = require('../tenant');
 const engine = require('../stockEngine');
+const couponRedemption = require('../coupons/redemption');   // free-item coupon lifecycle hooks
 const router = express.Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -238,6 +239,8 @@ router.post('/bills/:id/confirm', async (req, res) => {
       const note = 'ขาย ' + number;
       const { links, cogsTotal } = await deductBillLines(c, req.shopId, req.userId, lines, note, globalMTO, cats);
       await insertLinks(c, req.shopId, req.params.id, links, 'ORIGINAL_DEDUCTION');
+      // Finalize any coupon reservations on this bill → REDEEMED with real COGS from the movements above.
+      await couponRedemption.onConfirm(c, req.shopId, req.userId, req.params.id);
 
       const m = computeMoney(items, bill.bill_discount);
       await c.query(
@@ -281,6 +284,7 @@ router.post('/bills/:id/void', requirePerm('void_bill'), async (req, res) => {
         const e = new Error('LEGACY_STOCK_LINK_REVIEW_REQUIRED'); e.statusCode = 409; throw e;
       }
       const rev = await reverseBillLinks(c, req.shopId, req.userId, req.params.id, 'ยกเลิก ' + (bill.number || req.params.id));
+      await couponRedemption.onVoid(c, req.shopId, req.userId, req.params.id);   // free-item coupon → VOIDED_REVIEW (not silently reusable)
       await c.query('UPDATE bills SET lifecycle_status=\'VOIDED\', status=\'voided\', voided_by=$1, voided_at=now() WHERE id=$2', [req.userId, req.params.id]);
       await auditLog(c, req.shopId, req.userId, req.userName, req.params.id, 'voided', reason, { reversed: rev.reversed, legacy: isLegacy });
       return { bill: (await c.query('SELECT * FROM bills WHERE id=$1', [req.params.id])).rows[0], reversed: rev.reversed, legacy: isLegacy };
@@ -334,6 +338,8 @@ router.post('/bills/:id/correct', requirePerm('correct_bill'), async (req, res) 
       const { links, cogsTotal } = await deductBillLines(c, req.shopId, req.userId, lines, note, globalMTO, cats);
       await insertLinks(c, req.shopId, repId, links, 'REPLACEMENT_DEDUCTION');
       await c.query('UPDATE bills SET cogs_total=$1 WHERE id=$2', [cogsTotal, repId]);
+      // Transfer any coupon redemption to the replacement (no double redeem / double COGS).
+      await couponRedemption.onCorrect(c, req.shopId, req.userId, req.params.id, repId);
 
       // 3) mark original REPLACED + cross-link + audit
       await c.query(
