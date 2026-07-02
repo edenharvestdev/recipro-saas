@@ -4,6 +4,7 @@ const express = require('express');
 const { query } = require('../db');
 const { computeBillingState, GRACE_DAYS } = require('../billing-state');
 const { isDeliveryEnabledForShop } = require('../delivery-feature');
+const catalog = require('../permissions/catalog');
 const router = express.Router();
 
 router.get('/bootstrap', async (req, res) => {
@@ -69,6 +70,10 @@ router.get('/bootstrap', async (req, res) => {
       server_now: new Date().toISOString(),
       role: req.role,
       isSuperadmin: req.isSuperadmin,
+      // A1: the current user's effective granular permissions (for read-only UI / gating). Backend
+      // remains the authority; this is only to hide/disable controls the user cannot use.
+      my_permissions: (() => { const o = {}; for (const k of catalog.ALL_KEYS) o[k] = catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, k); return o; })(),
+      can_view_cost: (typeof req.canViewCost === 'function') ? req.canViewCost() : true,
       features: { deliveryEnabledForShop: isDeliveryEnabledForShop(shopId) },
       shop: shopRow,
       plan,

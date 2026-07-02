@@ -1084,6 +1084,7 @@
             </select>
           </div>
           <button class="btn btn-primary" onclick="addStaff()"><span class="ico" data-icon="user-plus"></span> เพิ่มทีมงาน</button>
+          <button class="btn btn-ghost" onclick="openPermMatrix()"><span class="ico" data-icon="key"></span> สิทธิ์พนักงาน (ละเอียด)</button>
         </div>
         <div class="table-scroll"><table class="lst">
           <thead><tr><th>อีเมล</th><th>สิทธิ์</th><th></th></tr></thead>
@@ -2441,8 +2442,13 @@ let SHOP_PLAN = null; // แพ็กเกจปัจจุบัน { code, n
 const DEFAULT_STAFF_PERMS = { discount: true, void: false, stock_receive: false, waste: false, edit_recipes: false, view_cost: false, petty_cash: false, delivery_entry: false };
 const STAFF_PERM_LABELS = { discount: 'ให้ส่วนลด (ตามเพดาน)', void: 'ยกเลิกบิล', stock_receive: 'รับของเข้า/นับสต๊อก', waste: 'ตัดของเสีย', edit_recipes: 'เพิ่ม/แก้ วัตถุดิบ-สูตร', view_cost: 'ดูต้นทุน/กำไร', petty_cash: 'ดูเงินสดย่อย/ลิ้นชัก' };
 // can(key): owner/superadmin ทำได้เสมอ · staff ต้องได้รับสิทธิ์
+// A1: prefer the per-user effective permissions from the backend (MY_PERMS); fall back to the legacy
+// shop-level object. Backend remains the authority — this only hides/disables unusable controls.
+let MY_PERMS = null;
+let CAN_VIEW_COST = true;
 function can(key) {
   if (USER_ROLE !== 'staff') return true;
+  if (MY_PERMS && Object.prototype.hasOwnProperty.call(MY_PERMS, key)) return !!MY_PERMS[key];
   const p = (settings && settings.staffPermissions) || {};
   return Object.prototype.hasOwnProperty.call(p, key) ? !!p[key] : !!DEFAULT_STAFF_PERMS[key];
 }
@@ -3663,6 +3669,8 @@ async function openHqSummary() {
 
 function applyBootstrapData(data) {
   USER_ROLE = data.isSuperadmin ? 'superadmin' : (data.role || null);
+  MY_PERMS = data.my_permissions || null;   // A1: per-user effective permissions
+  CAN_VIEW_COST = data.can_view_cost !== false;
   BILLING = data.billing || { state: 'trial', days_left: null, grace_days: 5 };
   SHOP_PLAN = data.plan || null;
   document.body.classList.toggle('role-staff', USER_ROLE === 'staff');
@@ -8990,6 +8998,84 @@ function toggleStaffPerm(key, on) {
   settings.staffPermissions[key] = !!on;
   saveSettings();
   applyPermissionGates();
+}
+
+// ═══ A1: Per-user Granular Permission Matrix (grouped, presets, backend-enforced) ═══
+let _pm = null;
+async function openPermMatrix() {
+  let ov = $('permMatrixModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'permMatrixModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10055;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) pmClose(); }; document.body.appendChild(ov); }
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">กำลังโหลด...</div></div>';
+  try {
+    const [cat, mem] = await Promise.all([API.get('/api/permissions/catalog'), API.get('/api/permissions/members')]);
+    const firstStaff = (mem.members || []).find(m => m.role === 'staff') || (mem.members || [])[0] || null;
+    _pm = { cat, members: mem.members || [], grantable: new Set(mem.grantable_keys || []), canEdit: !!mem.can_edit, sel: firstStaff ? firstStaff.user_id : null, edited: {}, dirty: false, preset: null, collapsed: new Set(), filter: '' };
+    pmLoadSel();
+  } catch (e) { ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">โหลดไม่ได้: ' + esc((e && e.message) || '') + '</div><div class="bmm-foot" style="text-align:right;"><button class="btn btn-ghost" onclick="pmClose()">ปิด</button></div></div>'; }
+}
+function pmClose() { if (_pm && _pm.dirty && !confirm('มีการแก้ไขที่ยังไม่บันทึก — ปิดโดยไม่บันทึก?')) return; const o = $('permMatrixModal'); if (o) o.remove(); _pm = null; }
+function pmCurrent() { return _pm.members.find(m => m.user_id === _pm.sel) || null; }
+function pmLoadSel() { const m = pmCurrent(); _pm.edited = m ? Object.assign({}, m.permissions || {}) : {}; _pm.preset = m ? (m.preset || null) : null; _pm.dirty = false; pmRender(); }
+function pmSelectMember(uid) { if (_pm.dirty && !confirm('มีการแก้ไขที่ยังไม่บันทึก — เปลี่ยนพนักงานโดยไม่บันทึก?')) { pmRender(); return; } _pm.sel = uid; pmLoadSel(); }
+function pmToggle(k, on) { _pm.edited[k] = on; _pm.dirty = true; _pm.preset = null; pmRenderBody(); }
+function pmApplyPreset(name) { const p = (_pm.cat.presets && _pm.cat.presets[name]) || {}; _pm.edited = {}; Object.keys(p).forEach(k => { if (p[k] === true) _pm.edited[k] = true; }); _pm.dirty = true; _pm.preset = name; pmRenderBody(); }
+function pmToggleGroup(g) { if (_pm.collapsed.has(g)) _pm.collapsed.delete(g); else _pm.collapsed.add(g); pmRenderBody(); }
+function pmSelectAll(gkey, on) { const g = _pm.cat.groups.find(x => x.key === gkey); if (!g) return; g.perms.forEach(p => { if (on === false || _pm.grantable.has(p.key)) _pm.edited[p.key] = on; }); _pm.dirty = true; _pm.preset = null; pmRenderBody(); }
+function pmFilter(v) { _pm.filter = (v || '').toLowerCase(); pmRenderBody(); }
+function pmRender() {
+  const ov = $('permMatrixModal'); if (!ov) return;
+  const memOpts = _pm.members.map(m => '<option value="' + m.user_id + '"' + (m.user_id === _pm.sel ? ' selected' : '') + '>' + esc(m.email) + (m.role === 'owner' ? ' (เจ้าของ)' : m.role === 'superadmin' ? ' (แอดมิน)' : '') + '</option>').join('');
+  const head = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🔑 สิทธิ์พนักงาน (ละเอียด)</h2><div style="display:flex;gap:6px;align-items:center;"><select onchange="pmSelectMember(this.value)" style="padding:6px;max-width:220px;">' + memOpts + '</select><button class="btn btn-ghost btn-sm" onclick="pmClose()">ปิด</button></div></div>';
+  const foot = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span id="pmDirty" style="font-size:12px;color:#f59e0b;">' + (_pm.dirty ? '● มีการแก้ไขที่ยังไม่บันทึก' : '') + '</span><button class="btn btn-primary" id="pmSaveBtn" onclick="pmSave()"' + (_pm.canEdit ? '' : ' disabled') + '>บันทึกสิทธิ์</button></div>';
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-head">' + head + '</div><div class="bmm-scroll" id="pmBody"></div><div class="bmm-foot">' + foot + '</div></div>';
+  pmRenderBody();
+}
+function pmRenderBody() {
+  const el = $('pmBody'); if (!el) return;
+  const m = pmCurrent();
+  const dEl = $('pmDirty'); if (dEl) dEl.innerHTML = _pm.dirty ? '● มีการแก้ไขที่ยังไม่บันทึก' : '';
+  if (!m) { el.innerHTML = '<p style="font-size:13px;color:var(--color-text-muted);">ไม่มีพนักงาน</p>'; return; }
+  if (m.role === 'owner' || m.role === 'superadmin') { el.innerHTML = '<div style="padding:14px;background:var(--surface-2);border-radius:10px;font-size:14px;">' + (m.role === 'owner' ? 'เจ้าของร้าน' : 'ผู้ดูแลระบบ') + ' — <b>มีสิทธิ์เต็มทุกอย่าง</b> (แก้ไขสิทธิ์ไม่ได้)</div>'; return; }
+  const readOnly = !_pm.canEdit;
+  const presetBtns = Object.keys(_pm.cat.presets || {}).map(k => '<button class="btn btn-ghost btn-sm" onclick="pmApplyPreset(\'' + k + '\')"' + (readOnly ? ' disabled' : '') + (_pm.preset === k ? ' style="border-color:var(--color-primary);color:var(--color-primary);"' : '') + '>' + esc((_pm.cat.preset_labels && _pm.cat.preset_labels[k]) || k) + '</button>').join('');
+  const roBanner = readOnly ? '<div style="padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;margin-bottom:8px;">👁 โหมดดูอย่างเดียว — คุณไม่มีสิทธิ์แก้ไขสิทธิ์พนักงาน (ต้องมี team_edit_permissions)</div>' : '';
+  const groups = (_pm.cat.groups || []).map(g => {
+    const perms = g.perms.filter(p => !_pm.filter || (g.label + ' ' + p.label + ' ' + p.key).toLowerCase().includes(_pm.filter));
+    if (!perms.length) return '';
+    const collapsed = _pm.collapsed.has(g.key);
+    const onCount = g.perms.filter(p => _pm.edited[p.key] === true).length;
+    const rows = collapsed ? '' : perms.map(p => {
+      const on = _pm.edited[p.key] === true;
+      const cantGrant = readOnly || (!_pm.grantable.has(p.key) && !on);   // can't grant a perm the actor lacks
+      const risk = p.sensitive ? ' <span style="color:#dc2626;font-size:10px;">⚠ เสี่ยง</span>' : '';
+      return '<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;' + (cantGrant ? 'opacity:.5;' : 'cursor:pointer;') + '"><input type="checkbox"' + (on ? ' checked' : '') + (cantGrant ? ' disabled' : '') + ' onchange="pmToggle(\'' + p.key + '\',this.checked)" style="width:18px;height:18px;flex:none;"> <span>' + esc(p.label) + risk + '<br><span style="font-size:10px;color:var(--color-text-muted);">' + esc(p.key) + '</span></span></label>';
+    }).join('');
+    return '<div style="border:1px solid var(--border-soft);border-radius:10px;margin-bottom:8px;overflow:hidden;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--surface-2);cursor:pointer;" onclick="pmToggleGroup(\'' + g.key + '\')"><b style="font-size:13px;">' + esc(g.label) + ' <span style="color:var(--color-text-muted);font-weight:400;">(' + onCount + '/' + g.perms.length + ')</span></b>'
+      + '<span style="display:flex;gap:6px;align-items:center;" onclick="event.stopPropagation();">' + (readOnly ? '' : '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;" onclick="pmSelectAll(\'' + g.key + '\',true)">เลือกทั้งหมด</button><button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;" onclick="pmSelectAll(\'' + g.key + '\',false)">ล้าง</button>') + '<span style="font-size:12px;">' + (collapsed ? '▸' : '▾') + '</span></span></div>'
+      + (collapsed ? '' : '<div style="padding:4px 10px 8px;">' + rows + '</div>') + '</div>';
+  }).join('');
+  el.innerHTML = roBanner
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' + presetBtns + '</div>'
+    + '<input placeholder="ค้นหาสิทธิ์..." oninput="pmFilter(this.value)" value="' + esc(_pm.filter) + '" style="width:100%;padding:7px;margin-bottom:8px;">'
+    + groups;
+}
+async function pmSave() {
+  const m = pmCurrent(); if (!m) return;
+  const btn = $('pmSaveBtn'); if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; }
+  try {
+    const r = await API.put('/api/permissions/member/' + m.user_id, { permissions: _pm.edited, preset: _pm.preset || 'custom' });
+    m.permissions = r.permissions; m.effective = r.effective; m.preset = _pm.preset || 'custom';
+    _pm.dirty = false;
+    ui.toast('บันทึกสิทธิ์แล้ว');
+    if (btn) { btn.disabled = false; btn.textContent = 'บันทึกสิทธิ์'; }
+    pmRenderBody();
+  } catch (e) {
+    const d = (e && e.data) || {}; const code = d.error || (e && e.message);
+    const msg = { PERMISSION_GRANT_EXCEEDS_ACTOR: 'ให้สิทธิ์เกินกว่าที่คุณมีไม่ได้', SELF_ELEVATION_DENIED: 'แก้สิทธิ์ตัวเองไม่ได้', ROLE_ESCALATION_DENIED: 'แก้สิทธิ์เจ้าของไม่ได้', SHOP_SCOPE_MISMATCH: 'พนักงานไม่ได้อยู่ในร้านนี้', PERMISSION_DENIED: 'ต้องมีสิทธิ์ team_edit_permissions' }[code] || ('บันทึกไม่ได้: ' + code);
+    ui.toast(msg, 'warning');
+    if (btn) { btn.disabled = false; btn.textContent = 'บันทึกสิทธิ์'; }
+  }
 }
 
 function saveSettings() {

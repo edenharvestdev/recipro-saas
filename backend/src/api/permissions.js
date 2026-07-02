@@ -37,7 +37,7 @@ function effectiveFor(perms, role, isSuper) {
 
 // GET /permissions/catalog — groups + presets (for the matrix UI). Any authenticated shop member.
 router.get('/permissions/catalog', (req, res) => {
-  res.json({ groups: catalog.GROUPS, presets: Object.keys(catalog.PRESETS) });
+  res.json({ groups: catalog.GROUPS, presets: catalog.PRESETS, preset_labels: catalog.PRESET_LABELS });
 });
 
 // GET /permissions/me — the caller's own effective permissions.
