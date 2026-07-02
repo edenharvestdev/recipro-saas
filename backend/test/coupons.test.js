@@ -108,9 +108,9 @@ const redRow = async (id) => (await query('SELECT * FROM coupon_redemptions WHER
     const exp = await draftAndApply('FREE_EXP', ownerToken, shopA);
     check('CR8 Expired code rejected (409 COUPON_EXPIRED)', exp.ap.status === 409 && exp.ap.data?.error === 'COUPON_EXPIRED', exp.ap.data);
 
-    // ── CR9: wrong branch rejected (shopB coupon not valid on shopA) ──
+    // ── CR9: wrong branch rejected (shopB coupon invisible/unvalidatable on shopA → fail closed) ──
     const wrongBranch = await draftAndApply('FREE_B', ownerToken, shopA);
-    check('CR9 Wrong-branch coupon rejected', wrongBranch.ap.status === 409 && (wrongBranch.ap.data?.error === 'COUPON_NOT_FOUND'), wrongBranch.ap.data);
+    check('CR9 Wrong-branch coupon rejected (fail closed)', wrongBranch.ap.status === 409 && ['COUPON_NOT_FOUND', 'COUPON_PROVIDER_NOT_CONFIGURED'].includes(wrongBranch.ap.data?.error), wrongBranch.ap.data);
 
     // ── CR10: wrong menu rejected (coupon eligible for recipe recX, applied to material) ──
     const wrongMenu = await draftAndApply('FREE_MENU', ownerToken, shopA);
@@ -168,6 +168,16 @@ const redRow = async (id) => (await query('SELECT * FROM coupon_redemptions WHER
     check('CR24 Staff CAN call validate (200, ok:false for bad code)', staffValidate.status === 200 && staffValidate.data.ok === false, staffValidate.data);
     const staffImport = await api('POST', '/api/coupons/import', { token: staffToken, shop: shopA, body: { coupons: [{ code: 'X' }] } });
     check('CR24 Staff cannot import (403)', staffImport.status === 403, staffImport.status);
+
+    // ── CR25: external provider FAIL CLOSED — unknown code, no provider configured ──
+    const failClosed = await api('POST', '/api/coupons/validate', { token: ownerToken, shop: shopA, body: { code: 'EXT-UNKNOWN-999', ref_type: 'material', ref_id: mat } });
+    check('CR25 Unknown code fails closed (COUPON_PROVIDER_NOT_CONFIGURED)', failClosed.status === 200 && failClosed.data.ok === false && failClosed.data.error === 'COUPON_PROVIDER_NOT_CONFIGURED', failClosed.data);
+
+    // ── CR26: import tenant-forcing — Owner cannot import into another shop via body shop_id ──
+    await api('POST', '/api/coupons/import', { token: ownerToken, shop: shopA, body: { coupons: [{ code: 'TENANT_TEST', shop_id: shopB }] } });
+    const landedA = (await query("SELECT count(*)::int c FROM coupons WHERE code='TENANT_TEST' AND shop_id=$1", [shopA])).rows[0].c;
+    const leakedB = (await query("SELECT count(*)::int c FROM coupons WHERE code='TENANT_TEST' AND shop_id=$1", [shopB])).rows[0].c;
+    check('CR26 Import forced to own shop (lands in A, not B)', landedA === 1 && leakedB === 0, { landedA, leakedB });
 
   } catch (err) {
     console.error('UNEXPECTED ERROR:', err.message, err.stack);

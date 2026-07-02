@@ -56,4 +56,8 @@ async function lookupCoupon(c, shopId, code) {
   return null;
 }
 
-module.exports = { lookupCoupon, localProvider, externalProvider };
+// Is a real external provider wired? Used to FAIL CLOSED: when a code isn't a known LOCAL_IMPORT
+// coupon and no external provider is configured, validation is rejected (never auto-approved).
+function externalConfigured() { return !!process.env.COUPON_PROVIDER_URL; }
+
+module.exports = { lookupCoupon, externalConfigured, localProvider, externalProvider };

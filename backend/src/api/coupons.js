@@ -21,16 +21,19 @@ router.post('/coupons/validate', async (req, res) => {
     const v = await redemption.validate(conn, req.shopId, b.code, ctx, providers);
     if (!v.ok) return res.status(200).json({ ok: false, error: v.error });
     const d = v.descriptor;
-    const unitCogs = await redemption.previewUnitCogs(conn, req.shopId, ctx.refType, ctx.refId);
     const money = redemption.computeBenefit(d, b.unit_price, b.qty || 1);
+    // COGS is cost data — only Owner/superadmin or staff with view_cost may see it in the preview.
+    const showCogs = req.role === 'owner' || req.isSuperadmin === true || (req.staffPerms && req.staffPerms.view_cost === true);
+    const unitCogs = showCogs ? await redemption.previewUnitCogs(conn, req.shopId, ctx.refType, ctx.refId) : null;
+    const preview = {
+      normal_unit_price: Number(b.unit_price) || 0, gross: money.gross, coupon_discount: money.discount,
+      net: money.net, funding_source: d.funding_source,
+    };
+    if (showCogs) { preview.unit_cogs = unitCogs; preview.total_cogs = unitCogs * (Number(b.qty) || 1); }
     res.json({
       ok: true, campaign_id: d.campaign_id, funding_source: d.funding_source,
       benefit_type: d.benefit_type, eligible_recipe_id: d.eligible_recipe_id, eligible_category: d.eligible_category,
-      external_reference: d.external_reference, source: d.source,
-      preview: {
-        normal_unit_price: Number(b.unit_price) || 0, gross: money.gross, coupon_discount: money.discount,
-        net: money.net, unit_cogs: unitCogs, total_cogs: unitCogs * (Number(b.qty) || 1), funding_source: d.funding_source,
-      },
+      external_reference: d.external_reference, source: d.source, preview,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -106,7 +109,8 @@ router.post('/coupons/import', ownerOnly, async (req, res) => {
                  benefit_value=EXCLUDED.benefit_value, usage_limit=EXCLUDED.usage_limit,
                  funding_source=EXCLUDED.funding_source, expires_at=EXCLUDED.expires_at,
                  active=EXCLUDED.active, updated_at=now()`,
-          [x.shop_id || req.shopId, x.code, x.campaign_id || null, x.member_id || null, x.eligible_recipe_id || null,
+          // Tenant safety: an Owner may import ONLY into their own shop — ignore any client shop_id.
+          [req.shopId, x.code, x.campaign_id || null, x.member_id || null, x.eligible_recipe_id || null,
            x.eligible_category || null, x.benefit_type || null, x.benefit_value ?? null, x.usage_limit ?? null,
            x.per_member_limit ?? null, x.funding_source || null, x.external_reference || null,
            x.starts_at || null, x.expires_at || null, x.active]

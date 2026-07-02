@@ -36,7 +36,12 @@ async function previewUnitCogs(c, shopId, refType, refId) {
 async function validate(c, shopId, code, ctx, providers) {
   const now = Date.now();
   const descriptor = await providers.lookupCoupon(c, shopId, String(code || '').trim());
-  if (!descriptor) return { ok: false, error: 'COUPON_NOT_FOUND' };
+  if (!descriptor) {
+    // FAIL CLOSED: the code is not a known LOCAL_IMPORT coupon for this shop. If no external provider
+    // is configured we cannot validate it — reject explicitly (never fall back to auto-approval).
+    if (!providers.externalConfigured()) return { ok: false, error: 'COUPON_PROVIDER_NOT_CONFIGURED' };
+    return { ok: false, error: 'COUPON_NOT_FOUND' };   // provider configured but code unknown/unavailable
+  }
   if (!descriptor.active) return { ok: false, error: 'COUPON_INACTIVE', descriptor };
   const winErr = nowExpired(descriptor, now);
   if (winErr) return { ok: false, error: winErr, descriptor };
