@@ -11733,11 +11733,118 @@ async function dlvShowQueue() {
   el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">กำลังโหลด...</div></div>';
   try {
     const r = await API.get('/api/delivery/bill/queue');
-    el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;">' + dlvQueueHtml(r) + '</div>';
+    // Track C1: also surface status='draft' historical-import batches in a dedicated review section.
+    let drafts = [];
+    try { drafts = (await API.get('/api/delivery/batches?status=draft&limit=50')).batches || []; } catch (_) {}
+    el.innerHTML = dlvDraftReviewHtml(drafts) + '<div class="glass-card" style="margin-bottom:14px;">' + dlvQueueHtml(r) + '</div>';
     renderIcons(el);
   } catch (e) {
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><p style="color:var(--color-danger,#e53e3e);font-size:13px;">โหลดไม่ได้: ' + esc(e && e.message || 'error') + '</p></div>';
   }
+}
+
+// Track C1 — historical-import Draft review. These status='draft' aggregate batches are created outside
+// the daily-bill flow and must be reviewable WITHOUT changing status, opening, confirming, or deducting
+// stock. Source/held quantities aren't stored on the batch, so for the 8 known 22–30 Jun import batches
+// we show them from the import reconciliation (keyed by batch id); staged qty comes live from item_count.
+const DLV_IMPORT_REF = {
+  '35ea8f3e-5a8f-49bb-81b2-da3b1e8806be': { source: 228, held: 56, cool: 56, blush: 0, pack: 0 },
+  'a42667d7-7bf6-4e40-8c2a-89ecf070b067': { source: 274, held: 65, cool: 64, blush: 0, pack: 1 },
+  'a7184619-373b-44f3-ab74-d52eeb43eeea': { source: 430, held: 41, cool: 41, blush: 0, pack: 0 },
+  '89d90f8a-0c12-46d4-ab59-5e9242c8ea8e': { source: 366, held: 76, cool: 76, blush: 0, pack: 0 },
+  'd377ec13-38a6-4a0f-8b78-013a967c4476': { source: 404, held: 68, cool: 67, blush: 1, pack: 0 },
+  'da4dc381-72b9-4ef1-b22f-9e1acfd10324': { source: 1058, held: 242, cool: 241, blush: 1, pack: 0 },
+  '235eb598-c31f-4ef8-b92e-ee95e652fa20': { source: 386, held: 77, cool: 76, blush: 1, pack: 0 },
+  '5521580f-fe7a-456a-b2d1-db0fe81e0df0': { source: 400, held: 106, cool: 106, blush: 0, pack: 0 },
+};
+function dlvDraftReviewHtml(drafts) {
+  if (!drafts || !drafts.length) return '';
+  const card = b => {
+    const ref = DLV_IMPORT_REF[b.id] || null;
+    const staged = Number(b.item_count) || 0;
+    const period = (b.sales_date_from || '').slice(0, 10) + ' → ' + (b.sales_date_to || '').slice(0, 10);
+    const held = ref ? ref.held : null;
+    const qtyLine = ref
+      ? 'ต้นทาง ' + ref.source + ' = จัดรายการ ' + staged + ' + พักรอตรวจ ' + held
+      : 'จัดรายการ ' + staged + ' รายการ';
+    const warn = (ref && held) ? '<div style="font-size:11px;color:#b45309;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:3px 8px;margin-top:4px;">⚠️ มีรายการพักรอตรวจสอบ ' + held + ' หน่วย'
+        + (ref.cool ? ' · Cool Pack ' + ref.cool : '') + (ref.blush ? ' · Blush ' + ref.blush : '') + (ref.pack ? ' · Mochi 5-Pack ' + ref.pack : '') + '</div>' : '';
+    return '<div style="border:1px solid var(--border-soft);border-radius:10px;padding:10px;margin-bottom:8px;">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">'
+      +   '<b style="font-size:13px;">' + esc(b.platform) + ' ' + dlvBadge(b.status) + '</b>'
+      +   '<span style="font-size:11px;color:var(--color-text-muted);">' + esc(period) + '</span></div>'
+      + '<div style="font-size:12px;color:var(--color-text-muted);margin-top:3px;">' + esc(qtyLine) + '</div>'
+      + '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px;">โหมดสต๊อก: HOLD_FOR_REVIEW · การเงิน: รอตรวจสอบ (FINANCIAL_TOTALS_PENDING)</div>'
+      + '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;">Draft ID: ' + esc(b.id) + '</div>'
+      + warn
+      + '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">'
+      +   '<button class="btn btn-ghost btn-sm" onclick="dlvViewDraft(\'' + b.id + '\')">ดูรายละเอียด / รายการที่จัด</button>'
+      + '</div></div>';
+  };
+  return '<div class="glass-card" style="margin-bottom:14px;border:1px solid #6366f1;">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
+    +   '<h3 style="font-size:15px;font-weight:700;margin:0;color:#4f46e5;">📋 ร่างรอตรวจสอบ · Draft / Historical Import</h3>'
+    +   '<span style="font-size:11px;background:#eef2ff;color:#4f46e5;border-radius:20px;padding:2px 10px;">' + drafts.length + ' ร่าง</span></div>'
+    + '<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px;">ยอดนำเข้าย้อนหลังจากรายงาน Platform — ยังไม่ตัดสต๊อก ยังไม่ลงบัญชี รอ Founder ตรวจสอบก่อนยืนยัน</div>'
+    + drafts.map(card).join('') + '</div>';
+}
+async function dlvViewDraft(id) {
+  let ov = $('dlvDraftModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'dlvDraftModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10058;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) ov.remove(); }; document.body.appendChild(ov); }
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">กำลังโหลด...</div></div>';
+  try {
+    const r = await API.get('/api/delivery/batch/' + id);
+    ov.innerHTML = dlvDraftDetailHtml(r.batch, r.items || [], r.movements || []);
+    renderIcons(ov);
+  } catch (e) {
+    ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">โหลดไม่ได้: ' + esc(e && e.message || '') + '</div><div class="bmm-foot" style="text-align:right;"><button class="btn btn-ghost" onclick="var o=document.getElementById(\'dlvDraftModal\');if(o)o.remove();">ปิด</button></div></div>';
+  }
+}
+function dlvDraftDetailHtml(b, items, movements) {
+  const ref = DLV_IMPORT_REF[b.id] || null;
+  const staged = items.reduce((s, it) => s + Number(it.quantity || 0), 0);
+  const rows = items.map(it => '<tr><td style="padding:3px 4px;">' + esc(it.menu_name) + '</td>'
+    + '<td style="font-size:10px;color:var(--color-text-muted);">' + esc(it.menu_code || '') + '</td>'
+    + '<td style="text-align:center;">' + (it.menu_type === 'material' ? 'วัตถุดิบ' : 'สูตร') + '</td>'
+    + '<td style="text-align:right;font-weight:600;">' + Number(it.quantity) + '</td>'
+    + '<td style="text-align:center;font-size:10px;">' + esc(it.stock_mode || '') + '</td></tr>').join('');
+  // held exceptions (from import reconciliation)
+  const heldHtml = ref ? '<div style="border:1px solid #f59e0b;background:#fffbeb;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12px;">'
+      + '<b style="color:#b45309;">รายการพักรอตรวจสอบ (ไม่รวมในร่าง)</b>'
+      + (ref.cool ? '<div>• Cool Pack — ' + ref.cool + ' หน่วย → ต้องสร้างเมนู Cool Pack + วัตถุดิบบรรจุภัณฑ์ก่อน (COOL_PACK_MENU_CREATION_REQUIRED)</div>' : '')
+      + (ref.blush ? '<div>• Blush Coconut Peach Rose Matcha Velvet — ' + ref.blush + ' หน่วย → ไม่มีรหัส/เป้าหมายในระบบ (MISSING_CODE_MANUAL_REVIEW)</div>' : '')
+      + (ref.pack ? '<div>• Mochi Butter Bun แพ็ค 5 ชิ้น — ' + ref.pack + ' แพ็ค → รอยืนยันการแปลงหน่วย (PACK_CONVERSION_REQUIRED)</div>' : '')
+      + '<div style="margin-top:4px;color:var(--color-text-muted);">รายละเอียดเต็มอยู่ในไฟล์ Exception ของการนำเข้า</div></div>' : '';
+  // validation checklist — Confirm stays hidden until ALL pass
+  const chk = (ok, label) => '<div style="font-size:12px;color:' + (ok ? '#15803d' : '#b45309') + ';">' + (ok ? '✅' : '⛔') + ' ' + label + '</div>';
+  const coolResolved = !ref || !ref.cool;
+  const noMissing = !ref || !ref.blush;
+  const reconcOk = ref ? (staged + ref.held === ref.source) : true;
+  const canConfirm = coolResolved && noMissing && reconcOk && false; // financial + stock-mode review also required → gated OFF until Founder review
+  const period = (b.sales_date_from || '').slice(0, 10) + ' → ' + (b.sales_date_to || '').slice(0, 10);
+  return '<div class="bmm-shell">'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
+    +   '<h2 style="margin:0;font-size:15px;">📋 ร่าง Delivery · ' + esc(b.platform) + ' ' + dlvBadge(b.status) + '</h2>'
+    +   '<button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'dlvDraftModal\');if(o)o.remove();">ปิด</button></div>'
+    + '<div class="bmm-scroll">'
+    +   '<div style="font-size:12px;color:var(--color-text-muted);margin-bottom:6px;">ช่วง ' + esc(period) + ' · โหมดสต๊อก HOLD_FOR_REVIEW · การเงินรอตรวจสอบ · ยังไม่ตัดสต๊อก (movements: ' + movements.length + ')</div>'
+    +   (ref ? '<div style="font-size:12px;margin-bottom:8px;">ต้นทาง <b>' + ref.source + '</b> = จัดรายการ <b>' + staged + '</b> + พักรอตรวจ <b>' + ref.held + '</b> ' + (staged + ref.held === ref.source ? '<span style="color:#15803d;">(กระทบยอดตรง Δ0)</span>' : '<span style="color:#dc2626;">(ไม่ตรง!)</span>') + '</div>' : '')
+    +   '<div style="font-weight:700;font-size:13px;margin:8px 0 4px;">รายการที่จัด (' + items.length + ' รายการ · ' + staged + ' หน่วย)</div>'
+    +   '<table style="width:100%;font-size:12px;border-collapse:collapse;"><tr style="color:var(--color-text-muted);font-size:11px;text-align:left;"><th>เมนู</th><th>รหัส</th><th>ชนิด</th><th style="text-align:right;">จำนวน</th><th>โหมด</th></tr>' + rows + '</table>'
+    +   heldHtml
+    +   '<div style="border:1px solid var(--border-soft);border-radius:8px;padding:8px 10px;margin-top:10px;">'
+    +     '<b style="font-size:12px;">เงื่อนไขก่อนกดยืนยัน (Confirm)</b>'
+    +     chk(coolResolved, 'ไม่มี Cool Pack ที่ยังไม่ได้แม็ป')
+    +     chk(noMissing, 'ไม่มีเมนูที่หาเป้าหมายไม่ได้')
+    +     chk(false, 'ตรวจสอบยอดเงิน (financial totals) แล้ว')
+    +     chk(false, 'ตรวจสอบโหมดสต๊อกแล้ว')
+    +     chk(reconcOk, 'กระทบยอดต้นทาง = 0')
+    +   '</div>'
+    + '</div>'
+    + '<div class="bmm-foot" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;flex-wrap:wrap;">'
+    +   (canConfirm ? '' : '<span style="font-size:11px;color:#b45309;">⛔ ยังยืนยันไม่ได้ — รอ Founder ตรวจสอบ Cool Pack / การเงิน / โหมดสต๊อก</span>')
+    +   '<button class="btn btn-ghost" onclick="var o=document.getElementById(\'dlvDraftModal\');if(o)o.remove();">ปิด</button></div>'
+    + '</div>';
 }
 
 // ── queue HTML — all 5 sections ──────────────────────────────────────────
