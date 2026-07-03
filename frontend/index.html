@@ -1563,6 +1563,17 @@
         <div id="manualBizTip" style="background:#FFF7E6;border:1px solid #F0D9A8;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;color:#7A5C00;line-height:1.7;"></div>
       </div>
 
+      <div class="glass-card" style="margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:180px;">
+          <div style="font-weight:800;font-size:14px;"><span class="ico" data-icon="printer"></span> เครื่องพิมพ์และการพิมพ์</div>
+          <div style="font-size:12.5px;color:var(--color-text-muted);line-height:1.7;margin-top:2px;">ตั้งค่าเครื่องพิมพ์ใบเสร็จ/ครัว · กระดาษ 58/80mm · จำนวนสำเนา · ทดสอบพิมพ์ · แก้ปัญหาพิมพ์ไม่ออก · ความต่าง Browser/System · SUNMI · Bridge</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="openPrinterGuide()"><span class="ico" data-icon="book-open"></span> เปิดคู่มือเครื่องพิมพ์</button>
+          <button class="btn btn-ghost btn-sm" style="color:#b45309;" onclick="openPrinterGuide('troubleshoot')">พิมพ์ไม่ออก? ดูวิธีแก้</button>
+        </div>
+      </div>
+
       <div class="glass-card" style="display:flex;flex-direction:column;gap:8px;">
         <div style="font-weight:800;font-size:12px;color:var(--color-secondary);margin:4px 2px 2px;border-bottom:2px solid var(--border-soft);padding-bottom:5px;"><span class="ico" data-icon="wrench"></span> ส่วน A · เตรียมของ & เมนู <span style="font-weight:500;color:var(--color-text-muted);">(ทำก่อนเปิดร้าน)</span></div>
         <details style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;">
@@ -8461,6 +8472,7 @@ function showPosReceipt(b, total) {
         <button class="btn btn-secondary" onclick="closePosReceipt(); switchPosTab('log');"><span class="ico" data-icon="history"></span> ดูบิล</button>
         <button class="btn btn-ghost" onclick="closePosReceipt()">ปิด</button>
       </div>
+      <div class="no-print" style="text-align:center;margin-top:6px;"><a onclick="openPrinterGuide('troubleshoot')" style="font-size:11px;color:#b45309;cursor:pointer;text-decoration:underline;">พิมพ์ไม่ออก? ดูวิธีแก้</a></div>
     </div>`;
   document.body.appendChild(el);
   renderIcons(document.getElementById('posReceiptContent'));
@@ -8487,6 +8499,119 @@ function detectPrinterBridges() {
   } catch (e) {}
   return avail;
 }
+// ── Printer user guide (Thai) — คู่มือ → เครื่องพิมพ์และการพิมพ์ ─────────────────────────────
+// Content-only, viewport-bounded modal (.bmm-shell): searchable accordions + printable + deep-link to a
+// section. Opened from the manual, printer settings, printer manager, test/preview, and print-error paths.
+// Does NOT change any print/receipt/kitchen/lifecycle/permission behavior.
+function _pgSections() {
+  const S = 'font-size:13px;color:var(--color-text-main);line-height:1.9;padding:4px 0 12px;';
+  const warn = (t) => '<div style="color:#b45309;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12.5px;">⚠️ ' + t + '</div>';
+  const ok = (t) => '<div style="color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:6px 10px;margin-top:6px;font-size:12.5px;">✅ ' + t + '</div>';
+  const steps = (arr) => '<ol style="margin:4px 0 0;padding-left:20px;">' + arr.map(x => '<li style="margin-bottom:3px;">' + x + '</li>').join('') + '</ol>';
+  const tr = (p, cause, act, esc2) => '<div style="border:1px solid var(--border-soft);border-radius:9px;padding:8px 10px;margin-bottom:7px;"><b>❗ ' + p + '</b>'
+    + '<div style="margin-top:3px;"><span style="color:var(--color-text-muted);">สาเหตุที่เป็นไปได้:</span> ' + cause + '</div>'
+    + '<div><span style="color:var(--color-text-muted);">วิธีแก้:</span> ' + act + '</div>'
+    + '<div style="color:#9333ea;"><span style="color:var(--color-text-muted);">เมื่อไรควรแจ้งผู้จัดการ/IT:</span> ' + esc2 + '</div></div>';
+  return [
+    { id: 'overview', icon: 'printer', title: '1. ภาพรวมระบบพิมพ์', body: '<div style="' + S + '">'
+      + 'Recipro พิมพ์ผ่าน <b>หน้าต่างพิมพ์ของอุปกรณ์ (Browser/System Print)</b> เป็นหลัก — คือเปิดหน้าต่างพิมพ์ของเครื่อง/เบราว์เซอร์ แล้วให้คุณเลือกเครื่องพิมพ์เอง<br>'
+      + 'ขั้นตอนหลัก: ① เพิ่มเครื่องพิมพ์ในระบบ → ② เลือกงานพิมพ์ (ใบเสร็จ/ครัว/ทั้งสอง) → ③ เลือกกระดาษ 58/80mm + จำนวนสำเนา → ④ ตั้งเป็นเครื่องพิมพ์หลัก → ⑤ ทดสอบพิมพ์<br>'
+      + 'มี 3 วิธีพิมพ์: <b>Browser/System</b> (ใช้ได้เลย), <b>SUNMI Direct</b> และ <b>Printer Bridge</b> (ต้องมีตัวเชื่อม) — ดูข้อ 12'
+      + ok('ตั้งค่าเครื่องพิมพ์ในระบบใช้กับการพิมพ์จริงแล้ว: กระดาษ + จำนวนสำเนา + เครื่องหลัก จะถูกใช้ทันทีตอนพิมพ์บิล/ครัว') + '</div>' },
+    { id: 'receipt-setup', icon: 'receipt', title: '2. ตั้งค่าเครื่องพิมพ์ใบเสร็จ', body: '<div style="' + S + '">'
+      + steps(['ไปที่ <b>ตั้งค่า</b>', 'เลือก <b>เครื่องพิมพ์และอุปกรณ์</b>', 'กด <b>เพิ่มเครื่องพิมพ์</b>', 'เลือก <b>Browser/System Print</b>', 'ตั้งชื่อเครื่อง (เช่น "เครื่องหน้าร้าน")', 'เลือกงานพิมพ์ <b>ใบเสร็จ</b>', 'เลือกกระดาษ <b>58mm หรือ 80mm</b> ให้ตรงกับเครื่อง', 'เลือกจำนวนสำเนา <b>1–5</b>', 'ตั้งเป็น <b>เครื่องพิมพ์ใบเสร็จหลัก</b>', 'กด <b>ทดสอบพิมพ์</b>', 'เลือกเครื่องพิมพ์ในหน้าต่างระบบ แล้วกดพิมพ์', '<b>บันทึก</b>'])
+      + ok('ตั้งเป็น "เริ่มต้น" ของอุปกรณ์ (Bluetooth/USB/WiFi) ในระบบเครื่องด้วย — เว็บจะพิมพ์ผ่านเครื่องพิมพ์เริ่มต้นของอุปกรณ์นั้น') + '</div>' },
+    { id: 'kitchen-setup', icon: 'chef-hat', title: '3. ตั้งค่าเครื่องพิมพ์ใบออเดอร์ / หลังร้าน', body: '<div style="' + S + '">'
+      + steps(['<b>เพิ่มเครื่องพิมพ์ใหม่</b> หรือใช้เครื่องเดิมแบบ <b>ทั้งสองแบบ (BOTH)</b>', 'เลือกงานพิมพ์ <b>ใบออเดอร์ (ครัว)</b>', 'ตั้งเป็น <b>เครื่องพิมพ์หลังร้านหลัก</b>', 'เลือกจำนวนสำเนา', 'กด <b>ทดสอบพิมพ์</b>', 'ตรวจว่ารายการเมนูและตัวเลือก (option) แสดงครบ', 'ตรวจว่าราคาไม่แสดง ถ้า template ครัวไม่ควรแสดงราคา'])
+      + warn('อย่าตั้งเครื่องพิมพ์ "ใบเสร็จอย่างเดียว" ให้พิมพ์งานครัว — ถ้าไม่มีเครื่องครัวหลัก ระบบจะใช้รูปแบบเดิม (kitchen ticket) ตามการตั้งค่า') + '</div>' },
+    { id: 'paper', icon: 'file', title: '4. เลือกขนาดกระดาษ 58mm / 80mm', body: '<div style="' + S + '">'
+      + '<b>58mm</b> — กระดาษเล็ก เครื่องพกพา/เครื่องเล็ก: ชื่อเมนู/ตัวเลือกจะตัดบรรทัดให้พอดี ไม่ล้นขอบ<br>'
+      + '<b>80mm</b> — กระดาษมาตรฐานหน้าร้าน: กว้างกว่า อ่านง่าย เนื้อหา/ยอดรวมเท่ากัน<br>'
+      + 'เลือกให้ <b>ตรงกับกระดาษจริงในเครื่อง</b> — ระบบจะจัดรูปแบบใบพิมพ์ (CSS/เทมเพลต) ตามขนาดที่เลือกทันที'
+      + warn('เลือกผิดขนาด = ใบเสร็จตัดขอบหรือมีขอบว่างเยอะ — เปลี่ยนขนาดให้ตรงเครื่องแล้วทดสอบพิมพ์ใหม่') + '</div>' },
+    { id: 'default', icon: 'star', title: '5. ตั้งเป็นเครื่องพิมพ์หลัก', body: '<div style="' + S + '">'
+      + 'ในหน้า <b>จัดการเครื่องพิมพ์</b> แต่ละเครื่องมีปุ่ม <b>ตั้งใบเสร็จ</b> และ <b>ตั้งครัว</b><br>'
+      + 'มีเครื่องพิมพ์ใบเสร็จหลักได้ <b>1 เครื่อง</b> และครัวหลัก <b>1 เครื่อง</b> ต่อร้าน (ตั้งเครื่องใหม่ = เครื่องเดิมถูกยกเลิกให้อัตโนมัติ)<br>'
+      + 'เครื่องแบบ <b>ทั้งสองแบบ (BOTH)</b> ตั้งเป็นหลักได้ทั้งใบเสร็จและครัว — แต่ละงานใช้จำนวนสำเนาของตัวเอง' + '</div>' },
+    { id: 'test', icon: 'flask-conical', title: '6. ทดสอบพิมพ์', body: '<div style="' + S + '">'
+      + 'กด <b>ทดสอบพิมพ์</b> ที่เครื่อง → ระบบเปิดหน้าต่างพิมพ์ (สถานะ <b>PRINT_DIALOG_OPENED</b>) → เลือกเครื่องพิมพ์ในหน้าต่าง แล้วกดพิมพ์<br>'
+      + warn('<b>PRINT_DIALOG_OPENED = หน้าต่างพิมพ์เปิดแล้วเท่านั้น ไม่ได้ยืนยันว่ากระดาษพิมพ์ออกสำเร็จ</b> — ต้องดูที่เครื่องพิมพ์จริงว่ากระดาษออกไหม') + '</div>' },
+    { id: 'pos-receipt', icon: 'receipt', title: '7. พิมพ์ใบเสร็จจาก POS', body: '<div style="' + S + '">'
+      + 'ที่ <b>ตั้งค่า → เครื่องพิมพ์และอุปกรณ์</b> เปิด "ขายหน้าร้านเสร็จ → พิมพ์อัตโนมัติ" ได้ (หรือปิดไว้กดพิมพ์เอง) + ตั้งจำนวนใบ<br>'
+      + 'ตอนขายเสร็จ ถ้าเปิดอัตโนมัติ ระบบจะพิมพ์ใบเสร็จให้ทันทีตามเครื่อง/กระดาษ/สำเนาที่ตั้งไว้ — กดพิมพ์ซ้ำเร็ว ๆ ระบบกันพิมพ์ซ้ำให้'
+      + ok('ถ้ายังไม่ได้ตั้งเครื่องพิมพ์ในระบบ จะใช้การพิมพ์ผ่านระบบของเครื่องแบบเดิม (80mm) เหมือนเดิมทุกอย่าง') + '</div>' },
+    { id: 'kitchen-print', icon: 'chef-hat', title: '8. พิมพ์ใบออเดอร์ (หลังร้าน)', body: '<div style="' + S + '">'
+      + 'ใบออเดอร์/ใบส่งครัว พิมพ์แยกจากใบเสร็จ — ใช้เครื่องครัวหลัก + กระดาษครัว + จำนวนสำเนาครัว + เทมเพลตครัว<br>'
+      + 'รองรับ 2 แบบ: ใบรวม (58/80mm) หรือสติกเกอร์ต่อแก้ว (50×40mm) ตามการตั้งค่า kitchen ticket<br>'
+      + 'ใบครัวแสดงเมนู + ตัวเลือก (option) แต่ปกติ <b>ไม่แสดงราคา</b> (เทมเพลตครัว)' + '</div>' },
+    { id: 'reprint', icon: 'history', title: '9. พิมพ์ย้อนหลังจากประวัติบิล', body: '<div style="' + S + '">'
+      + 'เปิด <b>ร่าง/แก้ไขบิล</b> หรือ <b>ประวัติบิล</b> → เลือกบิล → ปุ่ม <b>พิมพ์</b> เพื่อพิมพ์ใบเสร็จของบิลนั้นซ้ำ<br>'
+      + 'การพิมพ์ย้อนหลังใช้เครื่อง/กระดาษ/สำเนาเดียวกับการตั้งค่าปัจจุบัน และไม่กระทบยอดขาย/สต๊อก' + '</div>' },
+    { id: 'copies', icon: 'copy', title: '10. ตั้งจำนวนสำเนา 1–5', body: '<div style="' + S + '">'
+      + 'ตั้งจำนวนสำเนาได้ <b>1 ถึง 5</b> ต่อเครื่อง — ใบเสร็จใช้จำนวนสำเนาใบเสร็จ, ครัวใช้จำนวนสำเนาครัว (แยกกัน)<br>'
+      + 'ระบบจะพิมพ์ตามจำนวนในเอกสารพิมพ์ครั้งเดียว (คั่นหน้าแต่ละสำเนา) — กดเร็ว ๆ ก็ไม่พิมพ์เกิน'
+      + warn('ค่าสูงสุดที่ปลอดภัยคือ 5 สำเนา — ระบบจะจำกัดไว้ที่ 1–5 เสมอ') + '</div>' },
+    { id: 'troubleshoot', icon: 'wrench', title: '11. แก้ปัญหาพิมพ์ไม่ออก', body: '<div style="' + S + '">'
+      + tr('กดพิมพ์แล้วไม่มีอะไรเกิดขึ้น', 'เบราว์เซอร์บล็อกหน้าต่าง (popup) หรือยังไม่ได้เลือกเครื่องพิมพ์เริ่มต้นของอุปกรณ์', 'อนุญาต popup ให้เว็บ Recipro → ตั้งเครื่องพิมพ์เริ่มต้นของอุปกรณ์ → กดพิมพ์ใหม่', 'ถ้าอนุญาต popup แล้วยังไม่ขึ้น')
+      + tr('หน้าต่างพิมพ์ไม่เปิด', 'popup ถูกบล็อก หรืออุปกรณ์ไม่มีเครื่องพิมพ์ในระบบ', 'เปิดสิทธิ์ popup + ตรวจว่าอุปกรณ์เชื่อมเครื่องพิมพ์แล้ว', 'ถ้าอุปกรณ์ไม่เห็นเครื่องพิมพ์เลย')
+      + tr('หาเครื่อง SUNMI ไม่เจอ', 'ยังไม่มี Bridge/ตัวเชื่อมของ SUNMI ในเว็บเวอร์ชันนี้', 'ใช้ <b>พิมพ์ผ่านระบบของเครื่อง (Browser/System)</b> โดยตั้งเครื่องพิมพ์ SUNMI เป็นเครื่องเริ่มต้นของอุปกรณ์', 'ถ้าต้องพิมพ์ตรงกับ SUNMI จริง — แจ้ง IT เรื่อง Bridge')
+      + tr('กระดาษผิดขนาด', 'ตั้งขนาดกระดาษไม่ตรงกับเครื่อง (58/80mm)', 'เปลี่ยนขนาดกระดาษให้ตรงเครื่อง แล้วทดสอบพิมพ์', 'ถ้าเปลี่ยนขนาดแล้วยังผิด')
+      + tr('ใบเสร็จตัดขอบ', 'ขนาดกระดาษ/เครื่องพิมพ์ไม่ตรง หรือ margin เครื่องพิมพ์', 'เลือกขนาดให้ตรง + ตั้งเครื่องพิมพ์ให้พิมพ์แบบไม่มีขอบ (borderless) ถ้ามี', 'ถ้าปรับแล้วยังตัดขอบ')
+      + tr('พิมพ์ซ้ำ (ออกหลายใบ)', 'กดพิมพ์ซ้ำเร็ว หรือตั้งจำนวนสำเนามากไป', 'ระบบกันกดซ้ำให้อยู่แล้ว — ตรวจจำนวนสำเนาว่าตั้งไว้กี่ใบ', 'ถ้าออกเกินจำนวนสำเนาที่ตั้งไว้')
+      + tr('ใบเสร็จออกเครื่องหลังร้าน / ใบออเดอร์ออกเครื่องหน้าร้าน', 'ตั้งเครื่องพิมพ์หลัก/งานพิมพ์สลับกัน', 'ตรวจว่าเครื่องใบเสร็จหลัก = เครื่องหน้าร้าน และเครื่องครัวหลัก = เครื่องหลังร้าน (ดูข้อ 5)', 'ถ้าตั้งถูกแล้วยังสลับ')
+      + tr('Direct Printer ใช้ไม่ได้', 'เลือกวิธีพิมพ์ตรง (SUNMI/USB/LAN/Bluetooth) แต่ไม่มี Bridge', 'ระบบจะไม่บอกว่าพิมพ์สำเร็จ และจะเสนอ "พิมพ์ผ่านระบบของเครื่องแทน" — กดใช้ระบบแทนได้', 'ถ้าจำเป็นต้องพิมพ์ตรง — แจ้ง IT')
+      + tr('Printer Bridge ไม่พร้อม', 'บริการ Bridge ในเครื่องยังไม่เปิด/ไม่ได้ติดตั้ง', 'ใช้เส้นทางสำรอง "พิมพ์ผ่านระบบของเครื่อง" ที่ระบบเสนอให้', 'ถ้าต้องใช้ Bridge — แจ้ง IT ให้เปิด/ติดตั้งบริการ') + '</div>' },
+    { id: 'methods', icon: 'git-compare', title: '12. ความต่าง: Browser/System · SUNMI Direct · Printer Bridge', body: '<div style="' + S + '">'
+      + '<b>🖥️ Browser/System Print (แนะนำ · ใช้ได้เลย)</b><br>Recipro เปิดหน้าต่างพิมพ์ของอุปกรณ์/ระบบ → คุณเลือกเครื่องพิมพ์เอง → กดพิมพ์<br>สถานะ <b>PRINT_DIALOG_OPENED</b> = หน้าต่างพิมพ์เปิดแล้ว <b>ไม่ได้การันตีว่ากระดาษพิมพ์สำเร็จ</b> (ต้องดูที่เครื่องจริง)'
+      + '<div style="height:8px;"></div>'
+      + '<b>🖨️ SUNMI Direct</b><br>พิมพ์ตรงกับเครื่องพิมพ์ในตัว SUNMI — ต้องมี native/bridge ที่รองรับ<br>ถ้าไม่มี Bridge <b>ระบบจะไม่อ้างว่าพิมพ์ตรงสำเร็จ</b> และให้ใช้ "พิมพ์ผ่านระบบ" แทน (ตั้ง SUNMI เป็นเครื่องเริ่มต้นของอุปกรณ์)'
+      + '<div style="height:8px;"></div>'
+      + '<b>🔌 Printer Bridge</b><br>พิมพ์ตรงผ่านบริการ Bridge ในเครื่อง (USB/LAN/Bluetooth ESC/POS) — ต้องมีบริการ Bridge ทำงานอยู่<br>ถ้าไม่พร้อม ระบบจะแสดง <b>เส้นทางสำรอง</b> ("พิมพ์ผ่านระบบของเครื่องแทน") ให้ชัดเจน'
+      + warn('เวอร์ชันนี้รองรับการพิมพ์จริงผ่าน Browser/System เท่านั้น — การพิมพ์ตรง (Direct/Bridge) ต้องมีตัวเชื่อมและทดสอบกับเครื่องจริงก่อน') + '</div>' },
+  ];
+}
+function openPrinterGuide(sectionId) {
+  let ov = document.getElementById('printerGuideModal');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'printerGuideModal'; ov.className = 'modal-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:10062;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick = (e) => { if (e.target === ov) ov.remove(); }; document.body.appendChild(ov); }
+  const secs = _pgSections();
+  const toc = secs.map(s => '<button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="pgGoto(\'' + s.id + '\')">' + esc(s.title) + '</button>').join('');
+  const acc = secs.map(s => '<details id="pg-' + s.id + '" class="pg-sec" data-txt="' + esc((s.title + ' ' + s.body).replace(/<[^>]+>/g, ' ').toLowerCase()) + '" style="border:1px solid var(--border-soft);border-radius:10px;padding:4px 14px;margin-bottom:8px;">'
+    + '<summary style="font-weight:700;cursor:pointer;padding:10px 0;font-size:14px;"><span class="ico" data-icon="' + s.icon + '"></span> ' + esc(s.title) + '</summary>' + s.body + '</details>').join('');
+  ov.innerHTML = '<div class="bmm-shell">'
+    + '<div class="bmm-head" style="display:flex;flex-direction:column;gap:8px;">'
+    +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🖨 คู่มือเครื่องพิมพ์และการพิมพ์</h2>'
+    +     '<div style="display:flex;gap:6px;"><button class="btn btn-ghost btn-sm" onclick="pgPrint()">🖶 พิมพ์คู่มือ</button><button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'printerGuideModal\');if(o)o.remove();">← ปิด</button></div></div>'
+    +   '<input id="pgSearch" placeholder="ค้นหาในคู่มือ… (เช่น 58mm, SUNMI, พิมพ์ไม่ออก)" oninput="pgFilter(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--border-soft);border-radius:8px;font-size:13px;">'
+    +   '<div style="display:flex;flex-wrap:wrap;gap:5px;">' + toc + '</div></div>'
+    + '<div class="bmm-scroll" id="pgBody">' + acc + '<div id="pgNoResult" style="display:none;font-size:13px;color:var(--color-text-muted);padding:10px;">ไม่พบหัวข้อที่ค้นหา</div></div>'
+    + '</div>';
+  if (window.renderIcons) renderIcons(ov);
+  if (sectionId) pgGoto(sectionId);
+}
+function pgGoto(id) {
+  const d = document.getElementById('pg-' + id); if (!d) return;
+  d.open = true; d.scrollIntoView({ block: 'start' });
+}
+function pgFilter(q) {
+  q = (q || '').trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll('#printerGuideModal .pg-sec').forEach(d => {
+    const hit = !q || (d.getAttribute('data-txt') || '').includes(q);
+    d.style.display = hit ? '' : 'none'; if (hit) shown++; if (hit && q) d.open = true;
+  });
+  const nr = document.getElementById('pgNoResult'); if (nr) nr.style.display = shown ? 'none' : '';
+}
+function pgPrint() {
+  const secs = _pgSections();
+  const html = '<html><head><meta charset="utf-8"><title>คู่มือเครื่องพิมพ์ Recipro</title>'
+    + '<style>body{font-family:Tahoma,\'TH Sarabun New\',sans-serif;max-width:720px;margin:0 auto;padding:16px;color:#111;line-height:1.7;}h1{font-size:20px;}h2{font-size:15px;margin:16px 0 4px;border-bottom:1px solid #ccc;}ol{padding-left:20px;}</style></head><body>'
+    + '<h1>🖨 คู่มือเครื่องพิมพ์และการพิมพ์ — Recipro</h1>'
+    + secs.map(s => '<h2>' + esc(s.title) + '</h2>' + s.body).join('')
+    + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print()},300)}<\/scr' + 'ipt></body></html>';
+  const w = window.open('', '_blank'); if (!w) { ui.toast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ — อนุญาต popup ก่อน', 'warning'); return; }
+  w.document.write(html); w.document.close();
+}
+
 let _pr = null, _prTesting = false;
 async function openPrinterSetup() {
   let ov = $('printerSetupModal');
@@ -8534,7 +8659,7 @@ function prRenderList() {
       + '<div style="margin-top:4px;color:var(--color-text-muted);">กว้างกระดาษและจำนวนสำเนาด้านบนถูกใช้กับหน้าต่างพิมพ์จริงทันที</div></div>'
     : '';
   ov.innerHTML = '<div class="bmm-shell">'
-    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🖨 จัดการเครื่องพิมพ์</h2><div style="display:flex;gap:6px;">' + (can('printer_add') ? '<button class="btn btn-primary btn-sm" onclick="prNew()">+ เพิ่มเครื่องพิมพ์</button>' : '') + '<button class="btn btn-ghost btn-sm" onclick="prClose()">ปิด</button></div></div>'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:16px;">🖨 จัดการเครื่องพิมพ์</h2><div style="display:flex;gap:6px;flex-wrap:wrap;">' + (can('printer_add') ? '<button class="btn btn-primary btn-sm" onclick="prNew()">+ เพิ่มเครื่องพิมพ์</button>' : '') + '<button class="btn btn-ghost btn-sm" onclick="openPrinterGuide()">📖 คู่มือ</button><button class="btn btn-ghost btn-sm" style="color:#b45309;" onclick="openPrinterGuide(\'troubleshoot\')">พิมพ์ไม่ออก? ดูวิธีแก้</button><button class="btn btn-ghost btn-sm" onclick="prClose()">ปิด</button></div></div>'
     + '<div class="bmm-scroll">' + banner + rows + '</div></div>';
 }
 function prNew() { _pr.draft = { id: null, step: 1, capability_type: 'BROWSER_SYSTEM', name: '', purpose: 'RECEIPT', paper_width: 80, copies: 1 }; prRender(); }
@@ -8562,7 +8687,7 @@ function prRenderWizard() {
     + '<select onchange="prSetField(\'copies\',this.value)" style="padding:7px;">' + [1, 2, 3, 4, 5].map(n => '<option value="' + n + '"' + (d.copies === n ? ' selected' : '') + '>' + n + ' ใบ</option>').join('') + '</select>'
     + (d.id ? '<div style="font-weight:700;font-size:13px;margin:12px 0 6px;">ขั้นที่ 5 — ทดสอบพิมพ์</div><button class="btn btn-ghost btn-sm" onclick="prTest(\'' + d.id + '\')">🖨 ทดสอบพิมพ์</button><div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">หลังจากหน้าต่างพิมพ์เปิด ให้เลือกเครื่องพิมพ์ SUNMI แล้วกดพิมพ์</div>' : '<div style="font-size:11px;color:var(--color-text-muted);margin-top:12px;">บันทึกก่อน แล้วจึงทดสอบพิมพ์ได้</div>');
   ov.innerHTML = '<div class="bmm-shell">'
-    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><h2 style="margin:0;font-size:15px;">' + (d.id ? 'แก้ไขเครื่องพิมพ์' : 'เพิ่มเครื่องพิมพ์') + '</h2><button class="btn btn-ghost btn-sm" onclick="_pr.draft=null;prRender()">← กลับ</button></div>'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:15px;">' + (d.id ? 'แก้ไขเครื่องพิมพ์' : 'เพิ่มเครื่องพิมพ์') + '</h2><div style="display:flex;gap:6px;"><button class="btn btn-ghost btn-sm" onclick="openPrinterGuide(\'test\')">📖 คู่มือ</button><button class="btn btn-ghost btn-sm" onclick="_pr.draft=null;prRender()">← กลับ</button></div></div>'
     + '<div class="bmm-scroll">' + body + '</div>'
     + '<div class="bmm-foot" style="display:flex;justify-content:flex-end;gap:8px;"><button class="btn btn-primary" id="prSaveBtn" onclick="prSaveWizard()">บันทึก & ตั้งค่า</button></div></div>';
 }
@@ -8667,7 +8792,7 @@ function resolvePrintConfiguration(purpose) {
 function gateDirectPrint(cfg, run) {
   if (cfg.capability_type === 'BROWSER_SYSTEM') { run(); return; }
   const errCode = cfg.capability_type === 'SUNMI_NATIVE' ? 'SUNMI_PRINTER_NOT_AVAILABLE' : 'PRINTER_BRIDGE_NOT_AVAILABLE';
-  const msg = 'พิมพ์ตรงยังไม่สำเร็จ (' + errCode + ')\nยังไม่ได้เชื่อมต่อ Bridge/เครื่องพิมพ์ตรง — ระบบยังไม่ได้พิมพ์เอกสารนี้\n\nต้องการพิมพ์ผ่านระบบของเครื่อง (เปิดหน้าต่างพิมพ์) แทนหรือไม่?';
+  const msg = 'พิมพ์ตรงยังไม่สำเร็จ (' + errCode + ')\nยังไม่ได้เชื่อมต่อ Bridge/เครื่องพิมพ์ตรง — ระบบยังไม่ได้พิมพ์เอกสารนี้\n\nต้องการพิมพ์ผ่านระบบของเครื่อง (เปิดหน้าต่างพิมพ์) แทนหรือไม่?\n(แก้ปัญหาการพิมพ์: ตั้งค่า → เครื่องพิมพ์ → 📖 คู่มือ → หัวข้อ "แก้ปัญหาพิมพ์ไม่ออก")';
   Promise.resolve(ui.confirm(msg, { okText: 'พิมพ์ผ่านระบบของเครื่องแทน', cancelText: 'ยกเลิก' })).then((ok) => { if (ok) run(); });
 }
 // Duplicate-print protection keyed per document type: blocks rapid double-clicks / rerender / retry of
@@ -12426,7 +12551,7 @@ function printerSettingsCard() {
   const SECT = 'margin-top:10px;padding:11px 12px;border:1px solid var(--border-soft);border-radius:11px;background:var(--surface-1);';
   const TTL = 'font-size:13px;font-weight:800;margin-bottom:7px;';
   return `<div class="glass-card" style="margin-bottom:14px;">
-    <div style="font-size:14px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ</span><button class="btn btn-primary btn-sm" onclick="openPrinterSetup()">🖨 จัดการเครื่องพิมพ์ (แบบมีขั้นตอน)</button></div>
+    <div style="font-size:14px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><span class="ico" data-icon="printer"></span> ตั้งค่าเครื่องพิมพ์ & การพิมพ์อัตโนมัติ</span><span style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="openPrinterGuide()">📖 ดูคู่มือการตั้งค่าเครื่องพิมพ์</button><button class="btn btn-primary btn-sm" onclick="openPrinterSetup()">🖨 จัดการเครื่องพิมพ์ (แบบมีขั้นตอน)</button></span></div>
     <div style="font-size:11.5px;color:var(--color-text-main);background:var(--surface-2);border-radius:8px;padding:8px 11px;margin-bottom:4px;line-height:1.6;"><b>มีหลายเครื่องพิมพ์ (แยกใบเสร็จ/ครัว)?</b> เปิดแอปบนอุปกรณ์ของแต่ละเครื่องพิมพ์ → ตั้งเครื่องพิมพ์นั้นเป็น "เริ่มต้น" ของอุปกรณ์ (Bluetooth/USB/WiFi) → แล้วตั้งค่าด้านล่างนี้ <b>แยกแต่ละอุปกรณ์</b> ให้พิมพ์เฉพาะเอกสารของมัน · (เว็บพิมพ์ผ่านเครื่องพิมพ์เริ่มต้นของอุปกรณ์ จึงแยกงานได้ด้วยการแยกอุปกรณ์)</div>
 
     <div style="${SECT}">
