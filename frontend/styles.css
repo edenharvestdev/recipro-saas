@@ -2278,12 +2278,33 @@ table.bd tfoot td.r { text-align: right; }
      shell for new-bill AND edit-existing-bill; the menu grids keep their own caps. */
   #posDeliveryPanel:not(.hidden),
   #posOnlinePanel:not(.hidden),
-  #posBillingPanel:not(.hidden),
   #posSalesLog:not(.hidden) {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     margin-top: 0;
+  }
+  /* Billing panel (Track A): the LEFT editor and RIGHT history must scroll INDEPENDENTLY so editing a
+     bill can return only the editor to the top while the history-list keeps its position. The panel is a
+     bounded, non-scrolling flex row; each card owns its own vertical scroll. */
+  #posBillingPanel:not(.hidden) {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    margin-top: 0;
+  }
+  #posBillingPanel:not(.hidden) > .grid-2 {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 0 !important;   /* neutralise inline margin so the row fits the bounded height */
+    align-items: stretch;
+  }
+  #posBillingPanel:not(.hidden) > .grid-2 > .glass-card {
+    min-height: 0;
+    overflow-y: auto;              /* each card (editor / history) is its own scroll owner */
+    scrollbar-width: thin;
   }
 }
 .pos-cart-grand {
