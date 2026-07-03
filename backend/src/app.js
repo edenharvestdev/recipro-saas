@@ -1,16 +1,24 @@
 // สร้าง Express app (แยกจาก index.js เพื่อให้เทสต์ import ได้)
 // Sentry ต้อง init ก่อน require อื่นๆ เพื่อ auto-instrument ได้ครบ
 const Sentry = require('@sentry/node');
+const { scrubSentryEvent } = require('./sentry-scrub');
+// Sentry stays fully OFF unless SENTRY_DSN is supplied: no network calls, no warnings, app starts normally.
+// When a DSN is present, sendDefaultPii is off and beforeSend scrubs secrets/PII from every event.
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
     tracesSampleRate: 0.1,
     environment: process.env.NODE_ENV || 'production',
+    release: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || undefined,
+    sendDefaultPii: false,          // do not auto-attach IP / headers / cookies / request bodies
+    beforeSend: scrubSentryEvent,   // strip auth headers/cookies/tokens + redact secrets/payment/db fields
+    beforeSendTransaction: scrubSentryEvent,
   });
 }
 
 const path = require('path');
 const express = require('express');
+const helmet = require('helmet');
 const { requireAuth, requireSuperadmin } = require('./auth/middleware');
 const { tenant } = require('./tenant');
 const { computeBillingState, isWriteBlocked } = require('./billing-state');
@@ -21,6 +29,24 @@ const app = express();
 
 // trust Railway/proxy X-Forwarded-For เพื่อให้ rate-limit ใช้ IP จริงของผู้ใช้ ไม่ใช่ IP ของ proxy
 app.set('trust proxy', 1);
+
+// Safe security headers (helmet). CONSERVATIVE by design for the inline-script Vanilla SPA + PWA:
+//  - CSP DISABLED here (index.html uses inline <script>/<style>, blob:/data: images, print windows,
+//    sw.js + manifest) — a strict CSP would break the app; a Report-Only CSP is a separate future track.
+//  - COOP/COEP/CORP disabled so window.open print/QR popups and cross-origin asset loads keep working.
+//  - HSTS is safe because Railway terminates HTTPS and trust proxy=1 is set above.
+// Adds: X-Content-Type-Options=nosniff, X-Frame-Options=SAMEORIGIN, Referrer-Policy, DNS-Prefetch-Control,
+// hides X-Powered-By.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
+  originAgentCluster: false,
+  frameguard: { action: 'sameorigin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  hsts: { maxAge: 15552000, includeSubDomains: true },
+}));
 
 // Stripe webhook ต้องใช้ raw body เพื่อตรวจลายเซ็น — ต้องมาก่อน express.json()
 app.use('/webhooks/stripe', express.raw({ type: '*/*' }));
