@@ -53,7 +53,8 @@ The active feature freeze covers **historical stock deduction / Delivery Drafts 
   ToC drawer, quick tabs, Showcase carousel + per-type CTAs + session + CATEGORY routing,
   admin manager render + ghost-target warning. No console errors. `/public/menu` returns
   sanitized `showcase_slots`.
-- Responsive: 0 horizontal overflow at 1440, 1024×600, 390 (grid / book / kiosk / showcase-open).
+- Responsive: 0 horizontal overflow at 1440, 1024×600, **768×1024 tablet portrait**, 390
+  (grid / book / kiosk / showcase-open); ToC jump + Showcase 44px touch-nav verified on tablet.
 
 ## Files touched
 
