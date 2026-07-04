@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS option_stock_effects (
   unit             TEXT,
   replace_ref_id   UUID,                                                 -- for REPLACE: the base target removed
   target_role      TEXT,                                                 -- optional role-based targeting (legacy bridge)
+  enabled          BOOLEAN NOT NULL DEFAULT true,                        -- soft-disable (never hard-delete history)
+  strict_stock     BOOLEAN NOT NULL DEFAULT false,                       -- block sale if this target is short (future)
   note             TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -30,5 +32,9 @@ CREATE TABLE IF NOT EXISTS option_stock_effects (
     OR replace_ref_id IS NOT NULL
   )
 );
+-- Additive columns (idempotent whether the table is new or already exists from an earlier run).
+ALTER TABLE option_stock_effects ADD COLUMN IF NOT EXISTS enabled      BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE option_stock_effects ADD COLUMN IF NOT EXISTS strict_stock BOOLEAN NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS ose_choice_idx ON option_stock_effects (choice_id, seq);
 CREATE INDEX IF NOT EXISTS ose_shop_idx   ON option_stock_effects (shop_id);
