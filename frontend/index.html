@@ -3764,7 +3764,7 @@ function applyBootstrapData(data) {
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
       posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
-      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top' }; })(),
+      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top', showcase_slots: Array.isArray(m.showcase_slots) ? m.showcase_slots : [] }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     serverFeatures = data.features || { deliveryEnabledForShop: false };
@@ -12685,6 +12685,7 @@ function renderOnlineMenu() {
         </div>
         <div style="font-size:11px;color:var(--color-text-muted);margin-top:5px;">แบนเนอร์โปรโมชั่น/เมนูพิเศษ — ลูกค้าเห็นก่อนเลือกสินค้า แล้วกด "เลือกเมนู" เข้าต่อได้</div>
       </div>
+      ${showcaseManagerHtml()}
     </div>`;
   })()}${printerSettingsCard()}<div class="glass-card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -12807,7 +12808,7 @@ async function setOrderPaid(id, paid) {
 }
 function setOrderPaymentMode(mode) { settings.orderPaymentMode = mode; saveAll(); renderOnlineMenu(); }
 // ===== M11: ตั้งค่าธีม/กรอบ/โปรโมชั่น เมนูออนไลน์ =====
-function _menuCfg() { if (!settings.menuConfig || typeof settings.menuConfig !== 'object') settings.menuConfig = { theme: 'recipro', frame: 'soft', promos: [], showcaseOn: false }; if (!Array.isArray(settings.menuConfig.promos)) settings.menuConfig.promos = []; return settings.menuConfig; }
+function _menuCfg() { if (!settings.menuConfig || typeof settings.menuConfig !== 'object') settings.menuConfig = { theme: 'recipro', frame: 'soft', promos: [], showcaseOn: false }; if (!Array.isArray(settings.menuConfig.promos)) settings.menuConfig.promos = []; settings.menuConfig.promos.forEach(p => { if (p && !p.id) p.id = 'promo_' + Math.random().toString(36).slice(2, 9); }); if (!Array.isArray(settings.menuConfig.showcase_slots)) settings.menuConfig.showcase_slots = []; return settings.menuConfig; }
 function setMenuTheme(v) { _menuCfg().theme = v || 'recipro'; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เปลี่ยนธีมเมนูแล้ว'); renderOnlineMenu(); }
 function setMenuFrame(v) { _menuCfg().frame = v || 'soft'; saveAll(); renderOnlineMenu(); }
 function setMenuTabPos(v) { _menuCfg().tabPos = (v === 'left' || v === 'right') ? v : 'top'; saveAll(); renderOnlineMenu(); }
@@ -12827,6 +12828,139 @@ async function addPromo(file) {
   } catch (e) { if (typeof ui !== 'undefined' && ui.alert) ui.alert('เพิ่มรูปไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
 }
 function removePromo(i) { const mc = _menuCfg(); mc.promos.splice(i, 1); saveAll(); renderOnlineMenu(); }
+
+// ===== Marketing Showcase (หน้าโปรโมต) — จัดการสไลด์สูงสุด 4 ช่อง =====
+// นำเสนออย่างเดียว ไม่มีลอจิกส่วนลด/สต๊อก · กติกาตรงกับ backend/src/menu-showcase.js
+const SC_MAX = 4;
+const SC_TYPE_OPTS = [['PROMOTION','โปรโมชั่น'],['PRODUCT_OF_MONTH','เมนูประจำเดือน'],['NEW','เมนูใหม่'],['SEASONAL','ตามฤดูกาล'],['LIMITED','จำนวนจำกัด'],['BEST_SELLER','ขายดี'],['RECOMMENDED','แนะนำ'],['BRAND_STORY','เรื่องราวของร้าน'],['CUSTOM','กำหนดเอง']];
+const SC_TARGET_OPTS = [['MENU_ITEM','ไปที่เมนู'],['CATEGORY','ไปที่หมวด'],['PROMOTION','ไปที่โปรโมชั่น'],['NONE','แค่เข้าเมนู']];
+// รายการเป้าหมายในร้านนี้ (ป้องกันชี้ข้ามร้าน/ของที่ลบไปแล้ว)
+function scMenuItems() {
+  const out = [];
+  (recipes || []).forEach(r => { if (recIsOnMenu(r) && Number(r.sellPrice) > 0) out.push({ id: r.id, name: r.name }); });
+  (materials || []).forEach(m => { if ((m.saleType === 'SELLABLE') && m.showInPos) out.push({ id: m.id, name: m.name }); });
+  return out;
+}
+function scCategoriesList() {
+  const set = new Set();
+  (recipes || []).forEach(r => { if (recIsOnMenu(r) && r.category) set.add(r.category); });
+  (materials || []).forEach(m => { if ((m.saleType === 'SELLABLE') && m.showInPos && m.category) set.add(m.category); });
+  return Array.from(set);
+}
+function scPromoList() { return (_menuCfg().promos || []).map((p, i) => ({ id: p.id || ('promo' + i), name: 'แบนเนอร์โปร #' + (i + 1) })); }
+function scTargetExists(slot) {
+  if (slot.target_type === 'NONE') return true;
+  if (!slot.target_id) return false;
+  if (slot.target_type === 'MENU_ITEM') return scMenuItems().some(x => x.id === slot.target_id);
+  if (slot.target_type === 'CATEGORY') return scCategoriesList().indexOf(slot.target_id) !== -1;
+  if (slot.target_type === 'PROMOTION') return scPromoList().some(x => x.id === slot.target_id);
+  return false;
+}
+function scSlotState(slot) {
+  if (!slot.active) return { key: 'DISABLED', label: 'ปิดใช้งาน', color: '#6b7280', bg: '#f3f4f6' };
+  const now = Date.now();
+  const sa = slot.start_at ? Date.parse(slot.start_at) : null, ea = slot.end_at ? Date.parse(slot.end_at) : null;
+  if (sa != null && !isNaN(sa) && now < sa) return { key: 'SCHEDULED', label: 'ยังไม่ถึงเวลา', color: '#b45309', bg: '#fef3c7' };
+  if (ea != null && !isNaN(ea) && now > ea) return { key: 'EXPIRED', label: 'หมดอายุ', color: '#b91c1c', bg: '#fee2e2' };
+  return { key: 'LIVE', label: 'กำลังแสดง', color: '#15803d', bg: '#dcfce7' };
+}
+function scSlotErrors(slot) {
+  const e = [];
+  if (slot.active && !String(slot.title || '').trim()) e.push('ต้องใส่หัวข้อเมื่อเปิดใช้งาน');
+  const sa = slot.start_at ? Date.parse(slot.start_at) : null, ea = slot.end_at ? Date.parse(slot.end_at) : null;
+  if (sa != null && ea != null && !isNaN(sa) && !isNaN(ea) && ea <= sa) e.push('เวลาสิ้นสุดต้องหลังเวลาเริ่ม');
+  if (slot.target_type !== 'NONE' && !slot.target_id) e.push('เลือกเป้าหมายให้ปุ่ม');
+  if (slot.target_type !== 'NONE' && slot.target_id && !scTargetExists(slot)) e.push('เป้าหมายไม่พบในร้านนี้');
+  return e;
+}
+function _scId() { return 'sc_' + Math.random().toString(36).slice(2, 9); }
+function scSlots() { return _menuCfg().showcase_slots; }
+function scAddSlot() {
+  const arr = scSlots();
+  if (arr.length >= SC_MAX) { if (ui && ui.alert) ui.alert('มีสไลด์ได้สูงสุด ' + SC_MAX + ' ช่อง', { icon: 'info' }); return; }
+  arr.push({ id: _scId(), active: false, order: arr.length + 1, type: 'CUSTOM', title: '', description: '', image: '', badge: '', cta_label: '', target_type: 'NONE', target_id: null, start_at: null, end_at: null });
+  saveAll(); renderOnlineMenu();
+}
+function scRemoveSlot(i) { const arr = scSlots(); arr.splice(i, 1); arr.forEach((s, k) => s.order = k + 1); saveAll(); renderOnlineMenu(); }
+function scMoveSlot(i, dir) { const arr = scSlots(); const j = i + dir; if (j < 0 || j >= arr.length) return; const t = arr[i]; arr[i] = arr[j]; arr[j] = t; arr.forEach((s, k) => s.order = k + 1); saveAll(); renderOnlineMenu(); }
+function scSet(i, field, val) {
+  const s = scSlots()[i]; if (!s) return;
+  if (field === 'active') { const activeCount = scSlots().filter((x, k) => k !== i && x.active).length; if (val && activeCount >= SC_MAX) { if (ui && ui.alert) ui.alert('เปิดแสดงได้สูงสุด ' + SC_MAX + ' สไลด์', { icon: 'info' }); renderOnlineMenu(); return; } s.active = !!val; }
+  else if (field === 'target_type') { s.target_type = val; s.target_id = (val === 'NONE') ? null : s.target_id; }
+  else s[field] = val;
+  saveAll(); renderOnlineMenu();
+}
+async function scPickHero(i, file) {
+  if (!file) return;
+  try {
+    const raw = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    let img = raw; try { img = await compressImage(raw, 1280, 0.78); } catch (e) {}
+    const s = scSlots()[i]; if (s) { s.image = img; saveAll(); renderOnlineMenu(); }
+  } catch (e) { if (ui && ui.alert) ui.alert('เพิ่มรูปไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+function showcaseManagerHtml() {
+  const arr = scSlots();
+  const items = scMenuItems(), cats = scCategoriesList(), promos = scPromoList();
+  const activeCount = arr.filter(s => s.active).length;
+  const inp = 'width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:12.5px;margin-top:3px;';
+  const lbl = 'font-size:11px;color:var(--color-text-muted);display:block;';
+  const targetPicker = (s, i) => {
+    if (s.target_type === 'NONE') return '';
+    let opts = '', ph = '';
+    if (s.target_type === 'MENU_ITEM') { ph = '— เลือกเมนู —'; opts = items.map(x => `<option value="${esc(x.id)}"${s.target_id === x.id ? ' selected' : ''}>${esc(x.name)}</option>`).join(''); }
+    else if (s.target_type === 'CATEGORY') { ph = '— เลือกหมวด —'; opts = cats.map(c => `<option value="${esc(c)}"${s.target_id === c ? ' selected' : ''}>${esc(c)}</option>`).join(''); }
+    else if (s.target_type === 'PROMOTION') { ph = '— เลือกโปรโมชั่น —'; opts = promos.map(p => `<option value="${esc(p.id)}"${s.target_id === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join(''); }
+    return `<label style="${lbl}">เป้าหมาย<select onchange="scSet(${i},'target_id',this.value||null)" style="${inp}"><option value="">${ph}</option>${opts}</select></label>`;
+  };
+  const cards = arr.map((s, i) => {
+    const st = scSlotState(s), errs = scSlotErrors(s);
+    return `<div style="border:1px solid var(--border-soft);border-radius:12px;padding:10px;margin-top:8px;background:var(--surface-1);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <b style="font-size:12.5px;">สไลด์ ${i + 1}</b>
+        <span style="background:${st.bg};color:${st.color};font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;">${st.label}</span>
+        <label style="font-size:11.5px;display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:4px;"><input type="checkbox" ${s.active ? 'checked' : ''} onchange="scSet(${i},'active',this.checked)" style="width:15px;height:15px;"> เปิดแสดง</label>
+        <span style="flex:1;"></span>
+        <button class="btn btn-ghost btn-sm" style="font-size:12px;padding:2px 7px;" title="เลื่อนขึ้น" ${i === 0 ? 'disabled' : ''} onclick="scMoveSlot(${i},-1)">↑</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:12px;padding:2px 7px;" title="เลื่อนลง" ${i === arr.length - 1 ? 'disabled' : ''} onclick="scMoveSlot(${i},1)">↓</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:12px;padding:2px 7px;color:#dc2626;" title="ลบ" onclick="scRemoveSlot(${i})">✕</button>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+        <div style="flex:0 0 96px;">
+          ${s.image ? `<img src="${esc(s.image)}" style="width:96px;height:72px;object-fit:cover;border-radius:9px;border:1px solid var(--border-soft);">` : `<div style="width:96px;height:72px;border-radius:9px;border:1px dashed var(--border-soft);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--color-text-muted);text-align:center;">ไม่มีรูป</div>`}
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer;font-size:11px;margin-top:4px;display:block;text-align:center;">📷 รูป<input type="file" accept="image/*" onchange="scPickHero(${i},this.files[0]);this.value='';" style="display:none;"></label>
+        </div>
+        <div style="flex:1;min-width:180px;">
+          <label style="${lbl}">ประเภท<select onchange="scSet(${i},'type',this.value)" style="${inp}">${SC_TYPE_OPTS.map(([v, l]) => `<option value="${v}"${s.type === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label style="${lbl}">หัวข้อ<input value="${esc(s.title || '')}" oninput="scSet(${i},'title',this.value)" maxlength="120" placeholder="เช่น ลาเต้ประจำเดือน" style="${inp}"></label>
+        </div>
+      </div>
+      <label style="${lbl}margin-top:6px;">คำอธิบาย<textarea oninput="scSet(${i},'description',this.value)" rows="2" maxlength="400" placeholder="รายละเอียดสั้น ๆ (ไม่บังคับ)" style="${inp}resize:vertical;">${esc(s.description || '')}</textarea></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="${lbl}flex:1;min-width:110px;">ป้าย (ไม่บังคับ)<input value="${esc(s.badge || '')}" oninput="scSet(${i},'badge',this.value)" maxlength="40" placeholder="เช่น ใหม่, ลด 20%" style="${inp}"></label>
+        <label style="${lbl}flex:1;min-width:110px;">ข้อความปุ่ม (ไม่บังคับ)<input value="${esc(s.cta_label || '')}" oninput="scSet(${i},'cta_label',this.value)" maxlength="40" placeholder="เช่น สั่งเลย" style="${inp}"></label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="${lbl}flex:1;min-width:110px;">ปุ่มพาไปที่<select onchange="scSet(${i},'target_type',this.value)" style="${inp}">${SC_TARGET_OPTS.map(([v, l]) => `<option value="${v}"${s.target_type === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div style="flex:1;min-width:110px;">${targetPicker(s, i)}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="${lbl}flex:1;min-width:130px;">เริ่มแสดง (ไม่บังคับ)<input type="datetime-local" value="${esc((s.start_at || '').slice(0, 16))}" onchange="scSet(${i},'start_at',this.value||null)" style="${inp}"></label>
+        <label style="${lbl}flex:1;min-width:130px;">สิ้นสุด (ไม่บังคับ)<input type="datetime-local" value="${esc((s.end_at || '').slice(0, 16))}" onchange="scSet(${i},'end_at',this.value||null)" style="${inp}"></label>
+      </div>
+      ${errs.length ? `<div style="margin-top:6px;font-size:11px;color:#b91c1c;background:#fee2e2;border-radius:8px;padding:5px 9px;">⚠ ${errs.map(esc).join(' · ')}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:12px;border-top:1px dashed var(--border-soft);padding-top:10px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:700;">✨ หน้าโปรโมต / Showcase <span style="font-size:11px;color:var(--color-text-muted);font-weight:400;">— สไลด์ต้อนรับก่อนเข้าเมนู (สูงสุด ${SC_MAX})</span></div>
+      <span style="flex:1;"></span>
+      <span style="font-size:11px;color:var(--color-text-muted);">เปิดแสดง ${activeCount}/${SC_MAX}</span>
+      <button class="btn btn-ghost btn-sm" style="font-size:12px;" ${arr.length >= SC_MAX ? 'disabled' : ''} onclick="scAddSlot()">+ เพิ่มสไลด์</button>
+    </div>
+    ${arr.length ? cards : '<div style="font-size:11.5px;color:var(--color-text-muted);padding:8px 0;">ยังไม่มีสไลด์ — กด “เพิ่มสไลด์” เพื่อสร้างหน้าต้อนรับ (ถ้าไม่มีสไลด์เปิดอยู่ ลูกค้าจะเข้าเมนูตรง ๆ)</div>'}
+    <div style="font-size:11px;color:var(--color-text-muted);margin-top:6px;">นำเสนออย่างเดียว — ไม่คิดส่วนลด/ตัดสต๊อก · สไลด์ที่ปิด/ยังไม่ถึงเวลา/หมดอายุ หรือเป้าหมายไม่พบ จะไม่แสดงให้ลูกค้า</div>
+  </div>`;
+}
 function setKitchenTicketMode(mode) { settings.kitchenTicketMode = mode; saveAll(); if (typeof ui !== 'undefined' && ui.toast) ui.toast(mode === 'sticker' ? 'ใบหลังร้าน = สติกเกอร์ต่อแก้ว' : 'ใบหลังร้าน = ใบรวม 80mm'); renderOnlineMenu(); }
 
 // ============================================================
