@@ -1,6 +1,7 @@
 // M3: เมนูสาธารณะ + ลูกค้าสั่งเอง (ไม่ต้อง login) — เข้าถึงด้วย public_menu_token
 const express = require('express');
 const { query, tx } = require('../db');
+const { sanitizeForDisplay } = require('../menu-showcase');
 const router = express.Router();
 
 // หา shop จาก token (ต้องเปิดใช้ public menu)
@@ -40,6 +41,15 @@ router.get('/menu/:token', async (req, res) => {
     ];
     let menuCfg = shop.menu_config || {};
     if (typeof menuCfg === 'string') { try { menuCfg = JSON.parse(menuCfg); } catch (e) { menuCfg = {}; } }
+    // Marketing Showcase (first-load highlight) — presentation only. Sanitize server-side
+    // so the customer NEVER sees inactive / scheduled / expired / cross-shop / deleted-target
+    // slots. Targets are validated against THIS shop's own items/categories/promotions.
+    const itemIds = new Set(items.map(it => it.id));
+    const categories = Array.from(new Set(items.map(it => it.category).filter(Boolean)));
+    const promoIds = new Set((Array.isArray(menuCfg.promos) ? menuCfg.promos : []).map(p => p && p.id).filter(Boolean));
+    menuCfg = Object.assign({}, menuCfg, {
+      showcase_slots: sanitizeForDisplay(menuCfg.showcase_slots, { itemIds, categories, promoIds }, Date.now()),
+    });
     res.json({ shop_name: shop.name, logo: shop.logo_url || '', items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' }, menu: menuCfg });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
