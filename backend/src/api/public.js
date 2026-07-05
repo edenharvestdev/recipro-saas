@@ -2,6 +2,7 @@
 const express = require('express');
 const { query, tx } = require('../db');
 const { sanitizeForDisplay } = require('../menu-showcase');
+const { normalizeMode, isOrderingBlocked, blockedPayload, publicDisplay } = require('../display-mode');
 const router = express.Router();
 
 // หา shop จาก token (ต้องเปิดใช้ public menu)
@@ -47,9 +48,11 @@ router.get('/menu/:token', async (req, res) => {
     const itemIds = new Set(items.map(it => it.id));
     const categories = Array.from(new Set(items.map(it => it.category).filter(Boolean)));
     const promoIds = new Set((Array.isArray(menuCfg.promos) ? menuCfg.promos : []).map(p => p && p.id).filter(Boolean));
+    // Customer Display Mode — expose mode + promo/closed content (customer menu enforces the UI;
+    // order creation is blocked server-side below). Default ONLINE_ORDER when unset.
     menuCfg = Object.assign({}, menuCfg, {
       showcase_slots: sanitizeForDisplay(menuCfg.showcase_slots, { itemIds, categories, promoIds }, Date.now()),
-    });
+    }, publicDisplay(menuCfg));
     res.json({ shop_name: shop.name, logo: shop.logo_url || '', items, payment: { mode: shop.order_payment_mode, promptpay: shop.promptpay || '' }, menu: menuCfg });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -59,6 +62,11 @@ router.post('/order/:token', async (req, res) => {
   try {
     const shop = await shopByToken(req.params.token);
     if (!shop) return res.status(404).json({ error: 'menu not found or disabled' });
+    // Customer Display Mode enforcement (server-side, not CSS): block public orders unless ONLINE_ORDER.
+    let dmCfg = shop.menu_config || {};
+    if (typeof dmCfg === 'string') { try { dmCfg = JSON.parse(dmCfg); } catch (e) { dmCfg = {}; } }
+    const mode = normalizeMode(dmCfg);
+    if (isOrderingBlocked(mode)) return res.status(423).json(blockedPayload(mode));
     const { customer_name, customer_phone, items, note } = req.body || {};
     if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'no items' });
     const clean = items.filter(it => it && it.id && (Number(it.qty) || 0) > 0)
