@@ -3764,7 +3764,7 @@ function applyBootstrapData(data) {
       discountPresets: (() => { let p = sRow?.discount_presets; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
       staffPermissions: (() => { let p = sRow?.staff_permissions; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } } return (p && typeof p === 'object') ? p : {}; })(),
       posCategories: (() => { let p = sRow?.pos_categories; if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = []; } } return Array.isArray(p) ? p : []; })(),
-      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top', showcase_slots: Array.isArray(m.showcase_slots) ? m.showcase_slots : [], display_mode: (['ONLINE_ORDER', 'PROMOTION_DISPLAY', 'MENU_CLOSED'].indexOf(m.display_mode) !== -1 ? m.display_mode : 'ONLINE_ORDER'), promo_display: (m.promo_display && typeof m.promo_display === 'object') ? m.promo_display : {}, closed_display: (m.closed_display && typeof m.closed_display === 'object') ? m.closed_display : {} }; })(),
+      menuConfig: (() => { let m = sRow?.menu_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = (m && typeof m === 'object') ? m : {}; return { theme: m.theme || 'recipro', frame: m.frame || 'soft', promos: Array.isArray(m.promos) ? m.promos : [], showcaseOn: !!m.showcaseOn, kioskDefault: !!m.kioskDefault, bg: m.bg || '', accent: m.accent || '', tabPos: m.tabPos || 'top', showcase_slots: Array.isArray(m.showcase_slots) ? m.showcase_slots : [], display_mode: (['ONLINE_ORDER', 'PROMOTION_DISPLAY', 'MENU_CLOSED'].indexOf(m.display_mode) !== -1 ? m.display_mode : 'ONLINE_ORDER'), promo_display: (m.promo_display && typeof m.promo_display === 'object') ? m.promo_display : {}, closed_display: (m.closed_display && typeof m.closed_display === 'object') ? m.closed_display : {}, order_sound_preset: (['STANDARD', 'CUTE_BELL', 'URGENT_TICKS', 'DOUBLE_BEEP'].indexOf(m.order_sound_preset) !== -1 ? m.order_sound_preset : 'STANDARD') }; })(),
       memberConfig: (() => { let m = sRow?.member_config; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } } m = m || {}; return { discountPct: Number(m.discountPct) || 0, stampEvery: Number(m.stampEvery) || 0, stampItem: m.stampItem || '', rewards: Array.isArray(m.rewards) ? m.rewards : [] }; })()
     };
     serverFeatures = data.features || { deliveryEnabledForShop: false };
@@ -12715,11 +12715,12 @@ function renderOnlineMenu() {
             <option value="off"${!orderSoundOn() ? ' selected' : ''}>ปิด</option>
           </select>
           <span style="color:var(--color-text-muted);">เสียงเตือน:</span>
-          <select onchange="setOrderPreset(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          <select id="orderSoundSel" onchange="onPickOrderPreset(this.value)" style="font-size:12px;padding:4px 6px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
             ${Object.entries(ORDER_PRESETS).map(([k, v]) => `<option value="${k}"${orderPreset() === k ? ' selected' : ''}>${v.label}</option>`).join('')}
           </select>
           <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="previewOrderSound()"><span class="ico" data-icon="volume-2"></span> ทดลองเสียง</button>
-          <span style="font-size:10px;color:var(--color-text-muted);">(ตั้งแยกแต่ละเครื่อง)</span>
+          <button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="saveOrderPreset()">บันทึกเสียงร้าน</button>
+          <span style="font-size:10px;color:var(--color-text-muted);">(ค่าเริ่มต้นของทั้งร้าน)</span>
         </div>
       </div>
     </div>
@@ -13126,16 +13127,28 @@ const ORDER_PRESETS = {
   DOUBLE_BEEP:  { label: 'บิ๊บ บิ๊บ',          pattern: [{ f: 740, d: 0.12, t: 'square', gap: 0.09, g: 0.55 }, { f: 740, d: 0.12, t: 'square', gap: 0, g: 0.55 }] },
 };
 let _orderAudioCtx = null, _orderSoundBlockedNotified = false;
-function orderPreset() { const k = localStorage.getItem('recipro_order_preset'); return ORDER_PRESETS[k] ? k : 'STANDARD'; }   // legacy/unknown → STANDARD
-function setOrderPreset(k) { if (!ORDER_PRESETS[k]) k = 'STANDARD'; localStorage.setItem('recipro_order_preset', k); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เสียงเตือน: ' + ORDER_PRESETS[k].label); playOrderBeep(); if (typeof renderOnlineMenu === 'function') renderOnlineMenu(); }
+// เสียงเตือนเป็นค่า "ระดับร้าน" — เก็บใน menu_config.order_sound_preset (ไม่ใช่ localStorage)
+// ทุกเครื่องที่เปิดร้านนี้จะได้พรีเซ็ตเดียวกันหลัง bootstrap/รีเฟรชตั้งค่า · legacy localStorage ไม่ทับค่าร้าน
+let _pendingSoundPreset = null;   // ค่าที่เลือกใน dropdown แต่ยังไม่กดบันทึก (ใช้ทดลองเสียง)
+function orderPreset() { const k = _menuCfg().order_sound_preset; return ORDER_PRESETS[k] ? k : 'STANDARD'; }   // ค่าร้านที่บันทึกแล้ว (fallback STANDARD)
+function onPickOrderPreset(v) { _pendingSoundPreset = ORDER_PRESETS[v] ? v : 'STANDARD'; }   // เลือกใน UI (ยังไม่บันทึก)
+function saveOrderPreset() {
+  const sel = document.getElementById('orderSoundSel');
+  let k = (sel && ORDER_PRESETS[sel.value]) ? sel.value : (_pendingSoundPreset || orderPreset());
+  if (!ORDER_PRESETS[k]) k = 'STANDARD';
+  _menuCfg().order_sound_preset = k; _pendingSoundPreset = null; saveAll();
+  if (typeof ui !== 'undefined' && ui.toast) ui.toast('บันทึกเสียงเตือนของร้าน: ' + ORDER_PRESETS[k].label);
+  if (typeof renderOnlineMenu === 'function') renderOnlineMenu();
+}
 function _orderAC() { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; if (!_orderAudioCtx) _orderAudioCtx = new AC(); return _orderAudioCtx; }
 // เล่นพรีเซ็ตที่เลือก — คืน false ถ้าเบราว์เซอร์ยังบล็อกเสียง (ยังไม่มี user gesture)
-function playOrderBeep() {
+function playOrderBeep(overrideKey) {
   try {
     const ctx = _orderAC(); if (!ctx) return false;
     if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
     if (ctx.state === 'suspended') return false;
-    const preset = ORDER_PRESETS[orderPreset()] || ORDER_PRESETS.STANDARD;
+    const key = ORDER_PRESETS[overrideKey] ? overrideKey : orderPreset();   // preview override หรือค่าร้าน
+    const preset = ORDER_PRESETS[key] || ORDER_PRESETS.STANDARD;
     let at = ctx.currentTime + 0.02;
     preset.pattern.forEach(n => {
       const osc = ctx.createOscillator(), gain = ctx.createGain();
@@ -13151,8 +13164,13 @@ function playOrderBeep() {
     return true;
   } catch (e) { return false; }
 }
-// ทดลองเสียง — ปุ่มนี้เป็น user gesture จึงปลดล็อกและเล่นพรีเซ็ตที่เลือกได้เสมอ
-function previewOrderSound() { const ok = playOrderBeep(); if (ok === false && typeof ui !== 'undefined' && ui.alert) ui.alert('เบราว์เซอร์ยังบล็อกเสียงอยู่ — แตะหน้าจอหนึ่งครั้งแล้วกดทดลองเสียงอีกครั้ง', { icon: 'info' }); }
+// ทดลองเสียง — เล่นค่าที่เลือกใน UI ตอนนี้ (แม้ยังไม่กดบันทึก) · ปุ่มเป็น user gesture จึงปลดล็อกเสียงได้
+function previewOrderSound() {
+  const sel = document.getElementById('orderSoundSel');
+  const k = (sel && ORDER_PRESETS[sel.value]) ? sel.value : (_pendingSoundPreset || orderPreset());
+  const ok = playOrderBeep(k);
+  if (ok === false && typeof ui !== 'undefined' && ui.alert) ui.alert('เบราว์เซอร์ยังบล็อกเสียงอยู่ — แตะหน้าจอหนึ่งครั้งแล้วกดทดลองเสียงอีกครั้ง', { icon: 'info' });
+}
 // ปลดล็อกเสียงเมื่อผู้ใช้แตะหน้าจอครั้งแรก (นโยบาย autoplay ของเบราว์เซอร์)
 document.addEventListener('pointerdown', function () { try { const ctx = _orderAC(); if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {}); } catch (e) {} }, { passive: true });
 

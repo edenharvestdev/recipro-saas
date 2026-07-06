@@ -19,10 +19,18 @@ patterns are played in `frontend/index.html` via `AudioContext`.
 | URGENT_TICKS | ติ๊ดเร่งรับออเดอร์ | 4× 1200 Hz square pulses ("ติ๊ด ๆ ๆ") | ~0.38s |
 | DOUBLE_BEEP | บิ๊บ บิ๊บ | 2× 740 Hz square beeps | ~0.33s |
 
-- Settings: `ขาย & ออกบิล → ออนไลน์ (QR)` — preset selector + **ทดลองเสียง** button previews the *currently
-  selected* preset (no real order needed). Legacy stored tune ('1'/'2'/'3') migrates → STANDARD.
-- Alert trigger/order-state logic unchanged. Browser autoplay: AudioContext unlocks on first tap;
-  a Thai hint shows if still blocked. Per-device (`localStorage`).
+- **SHOP-SCOPED (Founder fix):** the default preset is stored in `menu_config.order_sound_preset`
+  (additive jsonb), NOT device localStorage. `resolveShopPreset(menu_config)` → valid key or STANDARD.
+  Persists across reload / logout-login / another device of the same shop (loaded via bootstrap). Each
+  shop is independent (Shop A CUTE_BELL vs Shop B URGENT_TICKS). A legacy device localStorage value can
+  never override the shop setting; missing/invalid shop value → STANDARD; localStorage is not auto-written
+  into the shop setting.
+- Settings: `ขาย & ออกบิล → ออนไลน์ (QR)` — preset selector + **ทดลองเสียง** (previews the *current UI
+  selection*, even before saving) + **บันทึกเสียงร้าน** (Save commits it to the shop via the existing
+  settings save flow). Selection stays selected after reload.
+- Order-alert playback uses the loaded shop setting (`orderPreset()` → `_menuCfg().order_sound_preset`),
+  no fetch per alert; fallback STANDARD. Alert trigger/order-state unchanged. AudioContext unlocks on
+  first tap; Thai hint if still blocked.
 
 ## B. Customer Display Mode
 

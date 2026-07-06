@@ -54,4 +54,11 @@ function resolvePresetKey(stored) {
   return ORDER_SOUND_PRESETS[stored] ? stored : 'STANDARD';
 }
 
-module.exports = { ORDER_SOUND_PRESETS, PRESET_KEYS, presetDuration, arePatternsDistinct, resolvePresetKey };
+// SHOP-SCOPED resolution: the shop's default order sound lives in menu_config.order_sound_preset.
+// Missing / invalid → STANDARD. This is the single source of truth (NOT device localStorage).
+function resolveShopPreset(menuConfig) {
+  const k = menuConfig && menuConfig.order_sound_preset;
+  return ORDER_SOUND_PRESETS[k] ? k : 'STANDARD';
+}
+
+module.exports = { ORDER_SOUND_PRESETS, PRESET_KEYS, presetDuration, arePatternsDistinct, resolvePresetKey, resolveShopPreset };

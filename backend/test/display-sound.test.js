@@ -4,7 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { DISPLAY_MODES, normalizeMode, isOrderingBlocked, blockedPayload, publicDisplay } = require('../src/display-mode');
-const { ORDER_SOUND_PRESETS, PRESET_KEYS, presetDuration, arePatternsDistinct, resolvePresetKey } = require('../src/order-sound-presets');
+const { ORDER_SOUND_PRESETS, PRESET_KEYS, presetDuration, arePatternsDistinct, resolvePresetKey, resolveShopPreset } = require('../src/order-sound-presets');
 
 let pass = 0, fail = 0;
 function t(name, fn) { try { fn(); pass++; console.log('  ok  ' + name); } catch (e) { fail++; console.log('FAIL  ' + name + ' — ' + e.message); } }
@@ -94,6 +94,35 @@ t('DS8 legacy tune value migrates to a valid preset', () => {
 t('DS9 frontend index.html references the 4 preset keys (sync check)', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../frontend/index.html'), 'utf8');
   ['STANDARD', 'CUTE_BELL', 'URGENT_TICKS', 'DOUBLE_BEEP'].forEach((k) => assert.ok(html.indexOf(k) !== -1, 'missing ' + k + ' in index.html'));
+});
+
+// ---------- SHOP-SCOPED SOUND SETTING (Founder fix) ----------
+t('DS10 missing preset → STANDARD', () => {
+  assert.strictEqual(resolveShopPreset({}), 'STANDARD');
+  assert.strictEqual(resolveShopPreset(undefined), 'STANDARD');
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: null }), 'STANDARD');
+});
+t('DS11 invalid preset → STANDARD', () => {
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: 'GARBAGE' }), 'STANDARD');
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: '1' }), 'STANDARD');   // legacy tune id is invalid here
+});
+t('DS12 saved CUTE_BELL / URGENT_TICKS / DOUBLE_BEEP persist', () => {
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: 'CUTE_BELL' }), 'CUTE_BELL');
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: 'URGENT_TICKS' }), 'URGENT_TICKS');
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: 'DOUBLE_BEEP' }), 'DOUBLE_BEEP');
+});
+t('DS13 shop A and shop B independent presets (shop-scoped, no shared state)', () => {
+  const shopA = { order_sound_preset: 'CUTE_BELL' };
+  const shopB = { order_sound_preset: 'URGENT_TICKS' };
+  assert.strictEqual(resolveShopPreset(shopA), 'CUTE_BELL');
+  assert.strictEqual(resolveShopPreset(shopB), 'URGENT_TICKS');
+  // switching shop loads the correct preset; A unaffected by reading B
+  assert.strictEqual(resolveShopPreset(shopA), 'CUTE_BELL');
+});
+t('DS14 resolution ignores device localStorage entirely (shop config is the only input)', () => {
+  // resolveShopPreset takes ONLY menu_config → a legacy localStorage value cannot override it
+  assert.strictEqual(resolveShopPreset({ order_sound_preset: 'DOUBLE_BEEP' }), 'DOUBLE_BEEP');
+  assert.strictEqual(resolveShopPreset({}), 'STANDARD');   // no shop value → STANDARD, never a device value
 });
 
 console.log(`\ndisplay-sound: ${pass} passed, ${fail} failed`);
