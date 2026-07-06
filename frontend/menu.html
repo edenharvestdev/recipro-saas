@@ -79,6 +79,18 @@
   #tocModal .toc-item .dot{width:9px;height:20px;border-radius:5px;background:linear-gradient(var(--m-accent2),var(--m-accent3))}
   /* ✨ ปุ่มเปิดไฮไลต์อีกครั้ง (อยู่ในหัวเมนู) */
   .hl-chip{display:inline-flex;align-items:center;gap:5px;margin-top:8px;border:none;background:linear-gradient(135deg,var(--m-accent2),var(--m-accent));color:#fff;font-size:12.5px;font-weight:800;padding:7px 14px;border-radius:20px;cursor:pointer;box-shadow:0 3px 10px rgba(124,58,237,.28)}
+  /* 🖥 โหมดหน้าลูกค้า (โปรโมชั่น / ปิดรับออเดอร์) — แทนการสั่งซื้อชั่วคราว */
+  #displayMode{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;overflow-y:auto;text-align:center}
+  #displayMode.promo{background:linear-gradient(160deg,var(--m-bg1),var(--m-bg2))}
+  #displayMode.closed{background:linear-gradient(160deg,#f4f2f7,#e7e4ee)}
+  #displayMode .dm-inner{width:100%;max-width:560px;display:flex;flex-direction:column;align-items:center;gap:14px}
+  #displayMode .dm-brand{font-size:16px;font-weight:900;color:var(--m-accent);letter-spacing:.3px}
+  #displayMode .dm-hero{width:100%;max-width:520px;border-radius:20px;box-shadow:0 10px 34px rgba(80,60,120,.18);display:block}
+  #displayMode .dm-tt{font-size:26px;font-weight:900;color:var(--m-text);line-height:1.25}
+  #displayMode .dm-ds{font-size:16px;color:#555;line-height:1.6;white-space:pre-line}
+  #displayMode .dm-cta{display:inline-block;background:linear-gradient(135deg,var(--m-accent2),var(--m-accent));color:#fff;font-size:16px;font-weight:900;padding:13px 30px;border-radius:16px;box-shadow:0 6px 18px rgba(124,58,237,.28)}
+  #displayMode .dm-note{font-size:13px;color:var(--m-muted);margin-top:2px}
+  #displayMode .dm-emoji{font-size:54px}
   /* 🎉 Marketing Showcase (สูงสุด 4 สไลด์) ก่อนเข้าเมนู */
   #showcase{position:fixed;inset:0;background:linear-gradient(180deg,var(--m-bg1),var(--m-bg2));z-index:30;display:none;flex-direction:column}
   #showcase.open{display:flex}
@@ -175,6 +187,7 @@
 </div>
 <div id="gridwrap"><div class="foldertabs" id="foldertabs" style="display:none"></div><div class="grid" id="grid" style="display:none"></div></div>
 <div id="showcase"></div>
+<div id="displayMode"></div>
 <div class="cartbar"><b id="cartSummary">ตะกร้า ฿0</b><button id="cartBtn" disabled onclick="openCart()">ดูตะกร้า</button></div>
 
 <div class="modal" id="cartModal"><div class="sheet" id="sheet"></div></div>
@@ -185,7 +198,7 @@ const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 const QS = new URLSearchParams(location.search);
 const KIOSK = QS.get('kiosk') === '1';
 let MENU = [], CART = [], PAYMENT = { mode: 'postpay', promptpay: '' };
-let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false, bg:'', accent:'', tabPos:'top', showcase_slots:[] };
+let CONFIG = { theme:'recipro', frame:'soft', promos:[], showcaseOn:false, bg:'', accent:'', tabPos:'top', showcase_slots:[], display_mode:'ONLINE_ORDER', promo_display:{}, closed_display:{} };
 let catFilter = '';   // '' = ทุกหมวด (แท็บโฟลเดอร์)
 let pendingItem = null, pendingSel = {}, LAST_ORDER = null;
 
@@ -217,7 +230,8 @@ async function load(){
     if (d.menu) applyConfig(d.menu);
     if (d.logo) { const l = document.getElementById('shopLogo'); l.src = d.logo; l.style.display = 'block'; }
     renderMenu();
-    maybeShowShowcase();
+    // โหมดหน้าลูกค้า: ถ้าไม่ใช่ "เปิดรับออเดอร์" → แสดงหน้าจอแทน + ปิดการสั่งซื้อ (บังคับฝั่งเซิร์ฟเวอร์ด้วย)
+    if (!renderDisplayMode()) maybeShowShowcase();
   }catch(e){ document.getElementById('shopName').textContent='โหลดเมนูไม่สำเร็จ'; hideLoader(); }
 }
 function hideLoader(){ const l=document.getElementById('loader'); if(l){ l.classList.add('hide'); setTimeout(()=>l.remove(),450); } }
@@ -421,6 +435,41 @@ function scCta(){
   enterMenu();   // NONE (หรืออื่น ๆ) → เข้าเมนู
 }
 function enterMenu(){ scMarkSeen(); const sc=document.getElementById('showcase'); if(sc) sc.classList.remove('open'); window.scrollTo({top:0}); }
+
+// ===== 🖥 โหมดหน้าลูกค้า — โปรโมชั่น / ปิดรับออเดอร์ (แทนการสั่งซื้อชั่วคราว) =====
+// คืน true ถ้าโหมดไม่ใช่ ONLINE_ORDER (แสดงหน้าจอ + ปิดการสั่งซื้อ). การสั่งซื้อถูกบล็อกฝั่งเซิร์ฟเวอร์อยู่แล้ว
+function renderDisplayMode(){
+  const mode = CONFIG.display_mode || 'ONLINE_ORDER';
+  if (mode !== 'PROMOTION_DISPLAY' && mode !== 'MENU_CLOSED') return false;
+  const isClosed = mode === 'MENU_CLOSED';
+  const c = (isClosed ? CONFIG.closed_display : CONFIG.promo_display) || {};
+  const title = c.title || (isClosed ? 'ปิดรับออเดอร์ชั่วคราว' : '');
+  const desc  = c.description || (isClosed ? 'กรุณาติดต่อพนักงานหน้าร้าน' : '');
+  const hero  = c.image ? `<img class="dm-hero" src="${esc(c.image)}" alt="">` : (isClosed ? '<div class="dm-emoji">🙏</div>' : '<div class="dm-emoji">✨</div>');
+  const cta   = (!isClosed && c.cta_label) ? `<div class="dm-cta">${esc(c.cta_label)}</div>` : '';
+  const shopName = document.getElementById('shopName').textContent || '';
+  const el = document.getElementById('displayMode');
+  el.className = isClosed ? 'closed' : 'promo';
+  el.innerHTML = `<div class="dm-inner">
+    <div class="dm-brand">${esc(shopName)}</div>
+    ${hero}
+    ${title?`<div class="dm-tt">${esc(title)}</div>`:''}
+    ${desc?`<div class="dm-ds">${esc(desc)}</div>`:''}
+    ${cta}
+    <div class="dm-note">${isClosed ? 'ขออภัย ขณะนี้งดรับออเดอร์ออนไลน์' : 'ขณะนี้ยังไม่เปิดรับออเดอร์ออนไลน์'}</div>
+  </div>`;
+  el.style.display = 'flex';
+  // ปิด UI การสั่งซื้อทั้งหมด (ไม่พึ่ง CSS อย่างเดียว — เซิร์ฟเวอร์บล็อก order ด้วย)
+  const cb = document.querySelector('.cartbar'); if (cb) cb.style.display = 'none';
+  const chip = document.getElementById('hlChip'); if (chip) chip.style.display = 'none';
+  const sc = document.getElementById('showcase'); if (sc) sc.classList.remove('open');
+  // ซ่อนเมนู/หนังสือ/แท็บด้านหลัง เพื่อไม่ให้เลื่อน/ล้นแนวนอน และเข้าถึงตะกร้าไม่ได้
+  ['bookView','gridwrap'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+  const vt = document.querySelector('.viewtoggle'); if (vt) vt.style.display = 'none';
+  document.body.style.overflow = 'hidden';
+  CART = []; try { updateBar(); } catch(e){}
+  return true;
+}
 function renderMenu(){ if(KIOSK) VIEW='grid'; renderGrid(); buildPages(); curPage=0; renderBook(); setView(VIEW); hideLoader(); }
 // ปัดนิ้ว + แตะขอบ + ปุ่มลูกศรคีย์บอร์ด
 (function(){
