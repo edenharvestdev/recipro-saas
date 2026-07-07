@@ -123,13 +123,43 @@ api.use('/admin', requireSuperadmin, require('./api/clone')); // /api/admin/{exp
 app.use('/api', api);
 
 // เสิร์ฟ frontend เป็น static + fallback
+const fs = require('fs');
+const crypto = require('crypto');
 const frontendDir = path.join(__dirname, '..', '..', 'frontend');
-app.use(express.static(frontendDir));
+
+// Cache-busting: version the SPA's static assets so a new deploy is picked up WITHOUT Ctrl+Shift+R.
+// Deterministic per build — prefer the Railway/git commit SHA; else a hash of the actual asset files
+// (size+mtime). The <link>/<script> URLs get ?v=<ASSET_VERSION>; the shell (index.html) is served
+// no-cache so returning browsers always revalidate and discover the new asset URLs. express.static
+// serves files by path and ignores the query string, so styles.css?v=xxx still resolves to styles.css.
+const VERSIONED_ASSETS = ['styles.css', 'icons.js', 'app-config.js', 'api.js'];
+const ASSET_VERSION = (() => {
+  const envSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA;
+  if (envSha) return String(envSha).slice(0, 12);
+  try {
+    const sig = VERSIONED_ASSETS.concat('index.html').map((f) => {
+      const st = fs.statSync(path.join(frontendDir, f)); return f + ':' + st.size + ':' + Math.round(st.mtimeMs);
+    }).join('|');
+    return crypto.createHash('sha1').update(sig).digest('hex').slice(0, 12);
+  } catch (e) { return 'v' + process.pid; }   // last-resort: stable for this process
+})();
+// Build the shell once at boot with versioned asset URLs (regex-free targeted replace).
+const INDEX_SHELL = (() => {
+  let html = fs.readFileSync(path.join(frontendDir, 'index.html'), 'utf8');
+  VERSIONED_ASSETS.forEach((f) => { html = html.split('./' + f + '"').join('./' + f + '?v=' + ASSET_VERSION + '"'); });
+  return html;
+})();
+function sendShell(res) {
+  res.set('Cache-Control', 'no-cache');   // always revalidate the shell → new asset URLs discovered on next visit
+  res.type('html').send(INDEX_SHELL);
+}
+
+app.use(express.static(frontendDir, { index: false }));   // index:false so '/' goes through the versioned shell
 // M3: หน้าเมนูสาธารณะสำหรับลูกค้า (เปิดจาก QR) — เสิร์ฟไฟล์แยก ไม่ใช่แอปหลัก
 app.get('/menu/:token', (req, res) => res.sendFile(path.join(frontendDir, 'menu.html')));
 app.get('*', (req, res, next) => {
   if (/^\/(api|auth|webhooks|public)\b/.test(req.path)) return next();
-  res.sendFile(path.join(frontendDir, 'index.html'));
+  sendShell(res);
 });
 
 // Sentry error handler — ต้องอยู่หลัง routes ทั้งหมด จับ unhandled error ส่ง Sentry

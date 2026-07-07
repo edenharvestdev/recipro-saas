@@ -994,8 +994,12 @@
         </div>
       </div>
 
-      <!-- ส่วนสำหรับพิมพ์เอกสารจริง -->
-      <div class="glass-card" style="margin-top:20px;">
+      <!-- Pattern B: พรีวิวเริ่มต้นแบบย่อ — ตัวแก้ไขบิลเป็นพื้นที่หลัก กดปุ่มเพื่อดูตัวอย่างเมื่อต้องการ -->
+      <div id="billPreviewBar" style="flex:0 0 auto;padding-top:10px;">
+        <button id="billPreviewToggle" class="btn btn-ghost btn-sm" onclick="toggleBillPreview()" style="width:auto;">👁 ดูตัวอย่างเอกสาร</button>
+      </div>
+      <!-- ส่วนสำหรับพิมพ์เอกสารจริง (ค่าเริ่มต้น = ย่อ ไม่กินพื้นที่) -->
+      <div class="glass-card bill-preview-card collapsed" id="billPreviewCard" style="margin-top:10px;">
         <h2><span class="ico" data-icon="eye"></span> พรีวิวหน้าเอกสารพิมพ์</h2>
         <div class="bill-stage">
           <div class="bill-document-preview" id="billDoc"></div>
@@ -7238,6 +7242,23 @@ function switchPosTab(tab) {
   if (isLog)   renderSalesLog();
   if (isOnline   && typeof renderOnlineMenu === 'function') renderOnlineMenu();
   if (isDelivery && serverFeatures.deliveryEnabledForShop && settings.useDelivery && can('delivery_entry')) dlvRefresh();
+  if (isBill) { _billPreviewOpen = false; applyBillPreviewState(); }   // entering เอกสารบิล → preview COLLAPSED (editor is primary)
+}
+
+// Pattern B: collapsible print preview. Editor/history is the primary workspace; the preview is
+// tertiary and stays collapsed by default so it never collapses the editor (P1-A). Session state only.
+let _billPreviewOpen = false;
+function applyBillPreviewState() {
+  const card = document.getElementById('billPreviewCard');
+  const btn = document.getElementById('billPreviewToggle');
+  if (!card || !btn) return;
+  card.classList.toggle('collapsed', !_billPreviewOpen);
+  btn.textContent = _billPreviewOpen ? '🙈 ซ่อนตัวอย่าง' : '👁 ดูตัวอย่างเอกสาร';
+}
+function toggleBillPreview() {
+  _billPreviewOpen = !_billPreviewOpen;
+  applyBillPreviewState();
+  if (_billPreviewOpen && typeof render === 'function') { try { render(); } catch (e) {} }   // refresh preview content on open
 }
 
 function dlvUpdatePosTabVisibility() {

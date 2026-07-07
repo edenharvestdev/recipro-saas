@@ -987,6 +987,11 @@ table.lst td .btn + .btn { margin-left: 6px; }
   border-radius: var(--r-medium);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
 }
+/* Pattern B: collapsible print preview. Default COLLAPSED → the preview reserves zero height
+   (display:none removes it from the bounded flex layout), so the editor/history .grid-2 uses the
+   full available workspace and the editor is primary. Expanding it re-enters the bounded flex rule
+   (#posBillingPanel > .glass-card) so a tall document scrolls internally without collapsing the editor. */
+.bill-preview-card.collapsed { display: none; }
 .bill-document-preview {
   background: #fff;
   color: #111;
