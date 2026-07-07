@@ -919,11 +919,11 @@
             </div>
             <div class="field">
               <label>ประเภทเอกสาร</label>
-              <div style="display:flex; gap:8px;">
-                <button class="btn btn-ghost btn-sm" id="dcDelivery" onclick="setDoc('delivery')" style="flex:1;">ใบส่งของ</button>
-                <button class="btn btn-ghost btn-sm" id="dcBilling" onclick="setDoc('billing')" style="flex:1;">ใบวางบิล</button>
-                <button class="btn btn-ghost btn-sm" id="dcReceipt" onclick="setDoc('receipt')" style="flex:1;">ใบเสร็จ</button>
-              </div>
+              <select id="dcSelect" onchange="setDoc(this.value)">
+                <option value="delivery">ใบส่งของ</option>
+                <option value="billing">ใบวางบิล</option>
+                <option value="receipt" selected>ใบเสร็จ</option>
+              </select>
             </div>
           </div>
 
@@ -7053,10 +7053,9 @@ function setStatus(s, silent) {
 
 function setDoc(d) {
   docType = d;
-  ['Delivery', 'Billing', 'Receipt'].forEach(k => {
-    $('dc' + k).classList.toggle('btn-primary', k.toLowerCase() === d);
-    $('dc' + k).classList.toggle('btn-ghost', k.toLowerCase() !== d);
-  });
+  // dropdown is the single control; keep it in sync for any programmatic setDoc() call
+  const sel = $('dcSelect');
+  if (sel && sel.value !== d) sel.value = d;
   render();
 }
 
