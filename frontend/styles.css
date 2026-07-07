@@ -2296,7 +2296,7 @@ table.bd tfoot td.r { text-align: right; }
     margin-top: 0;
   }
   #posBillingPanel:not(.hidden) > .grid-2 {
-    flex: 1 1 auto;
+    flex: 3 1 0;                    /* editor + history keep the larger share of the bounded height */
     min-height: 0;
     margin-bottom: 0 !important;   /* neutralise inline margin so the row fits the bounded height */
     align-items: stretch;
@@ -2304,6 +2304,16 @@ table.bd tfoot td.r { text-align: right; }
   #posBillingPanel:not(.hidden) > .grid-2 > .glass-card {
     min-height: 0;
     overflow-y: auto;              /* each card (editor / history) is its own scroll owner */
+    scrollbar-width: thin;
+  }
+  /* The always-visible print-preview card is the 2nd DIRECT child of #posBillingPanel (a sibling of
+     .grid-2). Without min-height:0 it keeps its intrinsic document height (600–700px) and collapses
+     the editor/history row to ~0. Give it a shrinkable flex share + its own vertical scroll so a tall
+     document scrolls internally instead of pushing the editor off-screen. */
+  #posBillingPanel:not(.hidden) > .glass-card {
+    flex: 2 1 0;
+    min-height: 0;
+    overflow-y: auto;
     scrollbar-width: thin;
   }
 }
