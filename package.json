@@ -9,7 +9,9 @@
     "migrate": "node backend/src/migrate.js",
     "bootstrap": "node backend/src/bootstrap.js",
     "cron": "node backend/src/cron.js",
-    "test:int": "node backend/test/integration.js"
+    "test:int": "node backend/test/integration.js",
+    "test": "node --test backend/test/*.test.js",
+    "release:preflight": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "@sentry/node": "^10.62.0",
