@@ -198,7 +198,7 @@ export function staticRuntimeManifestAudit(entryFiles, rootDeps) {
   }
 
   return {
-    ok: missing.length === 0,
+    ok: missing.length === 0 && unresolvedRelative.length === 0,
     missing,
     externalPackages: Array.from(externalRefs.keys()).sort(),
     visitedFiles: Array.from(visited),
@@ -441,9 +441,16 @@ log(`Files visited (entry + transitively reachable relative modules): ${manifest
 log(`External packages referenced: ${manifestAudit.externalPackages.length === 0 ? '(none)' : manifestAudit.externalPackages.join(', ')}`);
 
 if (manifestAudit.unresolvedRelative.length > 0) {
-  log(`Unresolved relative specifiers (skipped, not fatal): ${manifestAudit.unresolvedRelative.length}`);
+  log(`Runtime manifest audit: FAIL — production dependency graph could not be fully resolved.`);
+  log(`Unresolved relative module(s): ${manifestAudit.unresolvedRelative.length}`);
   manifestAudit.unresolvedRelative.forEach((u) => {
-    log(`  - "${u.spec}" from ${path.relative(REPO_ROOT, u.from)}`);
+    if (u.error) {
+      log(`  - unreadable file: ${path.relative(REPO_ROOT, u.from)} (${u.error})`);
+      notes.push(`Runtime manifest audit FAIL: unreadable file ${path.relative(REPO_ROOT, u.from)}: ${u.error}`);
+    } else {
+      log(`  - "${u.spec}" from ${path.relative(REPO_ROOT, u.from)}`);
+      notes.push(`Runtime manifest audit FAIL: unresolved relative specifier "${u.spec}" referenced by ${path.relative(REPO_ROOT, u.from)}`);
+    }
   });
 }
 
