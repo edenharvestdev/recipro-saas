@@ -13400,10 +13400,157 @@ function renderGroupChoices() {
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${isMeta ? ' checked' : ''} onchange="editGroupChoices[${ci}].isMetadataOnly=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> ข้อมูลเท่านั้น (ฟรี ไม่ตัดสต๊อก)</label>
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.enabled !== false ? ' checked' : ''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิดใช้</label>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;color:#4f46e5;" onclick="openStockEffects('${c.id || ''}')">⚙️ ผลกระทบต่อสต๊อก (หลายรายการ)</button>
       </div>
     </div>`;
   }).join('');
   renderIcons(el);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Option Stock Effect Engine V1 — Admin UI (Phase D). Multi-effect builder + searchable target
+// combobox + preview + legacy-binding display. Talks to /api/option-effects (mgmt only; live sale
+// deduction stays gated OFF by OPTION_STOCK_ENGINE_V1). Does not change any existing sale behavior.
+// ════════════════════════════════════════════════════════════════════════════
+const OSE_TT = [['MATERIAL','วัตถุดิบ'],['PRODUCED_ITEM','ของผลิต/ของกลาง'],['FINISHED_GOOD','สินค้าสำเร็จรูป'],['RECIPE_COMPONENT','ส่วนประกอบสูตร'],['PACKAGING','แพ็กเกจ/บรรจุภัณฑ์'],['NO_STOCK','ไม่มีผลต่อสต๊อก']];
+const OSE_ACT = [['ADD','เพิ่ม (ADD)'],['REMOVE','เอาออก (REMOVE)'],['REPLACE','เปลี่ยน (REPLACE)'],['MULTIPLY','คูณจำนวน (MULTIPLY)'],['NO_STOCK','ไม่มีผล (NO_STOCK)']];
+const OSE_MSG = { INVALID_TARGET_TYPE:'กรุณาเลือกประเภทเป้าหมาย', TARGET_REQUIRED:'กรุณาเลือกรายการที่จะตัดสต๊อก', AMOUNT_MUST_BE_POSITIVE:'จำนวนต้องมากกว่า 0', UNIT_MISMATCH:'หน่วยไม่เข้ากัน', CROSS_SHOP_TARGET:'รายการนี้ไม่อยู่ในร้านปัจจุบัน', CIRCULAR_RECIPE:'สูตรซ้อนกันเป็นวงจร', TARGET_NOT_FOUND:'ไม่พบรายการในระบบ', INVALID_ACTION:'การกระทำไม่ถูกต้อง', REPLACE_WITH_REQUIRED:'กรุณาเลือกรายการที่จะใส่แทน', REPLACE_FROM_REQUIRED:'กรุณาเลือกรายการเดิมที่จะเอาออก', NO_STOCK_MISMATCH:'NO_STOCK ต้องไม่มีเป้าหมาย', CHOICE_NOT_FOUND:'ไม่พบตัวเลือกในร้านนี้' };
+let _ose = null;   // { choiceId, effects:[], newRows:[], legacy:{...}|null }
+
+async function openStockEffects(choiceId) {
+  if (!choiceId) { ui.toast('บันทึกกลุ่มตัวเลือกก่อน แล้วจึงตั้งผลกระทบต่อสต๊อกแบบหลายรายการได้', 'warning'); return; }
+  let ov = document.getElementById('oseModal');
+  if (!ov) { ov = document.createElement('div'); ov.id='oseModal'; ov.className='modal-overlay'; ov.style.cssText='position:fixed;inset:0;z-index:10064;background:rgba(20,15,5,.5);display:flex;align-items:center;justify-content:center;padding:16px;'; ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); }; document.body.appendChild(ov); }
+  ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">กำลังโหลด...</div></div>';
+  // legacy binding (from in-memory optionGroups): a single-effect binding still present on this choice
+  let legacy = null;
+  (optionGroups||[]).forEach(g => (g.choices||[]).forEach(c => { if (c.id===choiceId && c.effectType && c.effectType!=='NONE' && !c.isMetadataOnly) legacy = { effectType:c.effectType, label:c.label }; }));
+  try {
+    const r = await API.get('/api/option-effects?choice_id=' + choiceId);
+    _ose = { choiceId, effects: (r.effects||[]).map(e=>({ ...e, _combo:'' })), newRows: [], legacy };
+    oseRender();
+    osePreview();
+  } catch (e) {
+    const code = (e && e.data && e.data.code) || (e && e.message) || '';
+    ov.innerHTML = '<div class="bmm-shell"><div class="bmm-scroll">โหลดไม่ได้: ' + esc(OSE_MSG[code]||code||'') + (e && e.status===403 ? ' (สิทธิ์ไม่เพียงพอ)' : '') + '</div><div class="bmm-foot" style="text-align:right;"><button class="btn btn-ghost" onclick="var o=document.getElementById(\'oseModal\');if(o)o.remove();">ปิด</button></div></div>';
+  }
+}
+function oseClose(){ const o=document.getElementById('oseModal'); if(o) o.remove(); _ose=null; }
+function oseTypeSel(val, on){ return '<select onchange="'+on+'" style="font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">'+OSE_TT.map(t=>'<option value="'+t[0]+'"'+(t[0]===val?' selected':'')+'>'+t[1]+'</option>').join('')+'</select>'; }
+function oseActSel(val, on){ return '<select onchange="'+on+'" style="font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">'+OSE_ACT.map(a=>'<option value="'+a[0]+'"'+(a[0]===val?' selected':'')+'>'+a[1]+'</option>').join('')+'</select>'; }
+// searchable combobox: input + results dropdown. key = 'r{idx}' + field ('t'|'from')
+function oseCombo(idx, field, tt, curId, curName){
+  const cid = 'oseC_'+idx+'_'+field;
+  const ph = field==='from' ? 'ค้นหารายการเดิม (นม/น้ำ/มัทฉะ/รหัส)…' : 'ค้นหา (พิมพ์ไทย/อังกฤษ/รหัส/SKU)…';
+  return '<div style="position:relative;min-width:180px;flex:1;">'
+    + '<input id="'+cid+'_in" value="'+esc(curName||'')+'" placeholder="'+ph+'" autocomplete="off" oninput="oseSearch('+idx+',\''+field+'\',\''+tt+'\',this.value)" onfocus="oseSearch('+idx+',\''+field+'\',\''+tt+'\',this.value)" style="width:100%;font-size:12px;padding:5px 7px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">'
+    + '<div id="'+cid+'_dd" style="display:none;position:absolute;z-index:5;left:0;right:0;top:100%;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:8px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.15);"></div></div>';
+}
+let _oseSearchTimer = null;
+function oseSearch(idx, field, tt, q){
+  clearTimeout(_oseSearchTimer);
+  const cid='oseC_'+idx+'_'+field; const dd=document.getElementById(cid+'_dd'); if(!dd) return;
+  if (tt==='NO_STOCK'){ dd.style.display='none'; return; }
+  _oseSearchTimer = setTimeout(async ()=>{
+    try{
+      const r = await API.get('/api/option-effects/targets/search?target_type='+encodeURIComponent(tt)+'&limit=20&q='+encodeURIComponent(q||''));
+      const rows = r.results||[];
+      if(!rows.length){ dd.innerHTML='<div style="padding:8px;font-size:12px;color:var(--color-text-muted);">ไม่พบรายการ</div>'; dd.style.display='block'; return; }
+      dd.innerHTML = rows.map(x=>'<div onclick="osePick('+idx+',\''+field+'\',\''+x.ref_id+'\','+JSON.stringify(esc(x.name)).replace(/"/g,'&quot;')+',\''+esc(x.unit||'')+'\')" style="padding:6px 9px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border-soft);">'+esc(x.name)+(x.code?' <span style="color:var(--color-text-muted);font-size:10px;">['+esc(x.code)+']</span>':'')+' <span style="color:var(--color-text-muted);font-size:10px;">คงเหลือ '+(x.stock==null?'-':x.stock)+' '+esc(x.unit||'')+'</span></div>').join('');
+      dd.style.display='block';
+    }catch(e){ dd.innerHTML='<div style="padding:8px;font-size:12px;color:#dc2626;">ค้นหาไม่ได้'+((e&&e.status===403)?' (สิทธิ์ไม่พอ)':'')+'</div>'; dd.style.display='block'; }
+  }, 180);
+}
+function osePick(idx, field, refId, name, unit){
+  const row = idx<_ose.effects.length ? _ose.effects[idx] : _ose.newRows[idx-_ose.effects.length];
+  if(!row) return;
+  if(field==='from'){ row.replace_ref_id=refId; row.replace_name=name; }
+  else { row.target_ref_id=refId; row.target_name=name; if(!row.unit && unit) row.unit=unit; }
+  const cid='oseC_'+idx+'_'+field; const inp=document.getElementById(cid+'_in'); if(inp) inp.value=name; const dd=document.getElementById(cid+'_dd'); if(dd) dd.style.display='none';
+  const ustr=document.getElementById('oseUnit_'+idx); if(ustr && row.unit) ustr.value=row.unit;
+}
+function oseAllRows(){ return [ ..._ose.effects.map((e,i)=>({e,idx:i,persisted:true})), ..._ose.newRows.map((e,i)=>({e,idx:_ose.effects.length+i,persisted:false})) ]; }
+function oseRowHtml(e, idx, persisted){
+  const tt=e.target_type||'MATERIAL'; const act=e.action||'ADD'; const isNo = tt==='NO_STOCK'||act==='NO_STOCK'; const isRep = act==='REPLACE';
+  const amtLabel = act==='MULTIPLY' ? 'ตัวคูณ' : 'จำนวน';
+  const targetFields = isNo ? '<input placeholder="หมายเหตุ (ไม่ตัดสต๊อก)" value="'+esc(e.note||'')+'" oninput="oseSet('+idx+',\'note\',this.value)" style="flex:1;min-width:160px;font-size:12px;padding:5px 7px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">'
+    : (isRep
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"><span style="font-size:11px;color:var(--color-text-muted);align-self:center;">จากเดิม:</span>'+oseCombo(idx,'from',tt,e.replace_ref_id,e.replace_name)+'<span style="font-size:11px;color:var(--color-text-muted);align-self:center;">เป็น:</span>'+oseCombo(idx,'t',tt,e.target_ref_id,e.target_name)+'</div>'
+        : oseCombo(idx,'t',tt,e.target_ref_id,e.target_name));
+  const qtyFields = isNo ? '' : '<input id="oseAmt_'+idx+'" type="number" step="any" value="'+(e.amount||0)+'" oninput="oseSet('+idx+',\'amount\',+this.value)" placeholder="'+amtLabel+'" title="'+amtLabel+'" style="width:74px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">'
+    + (act==='MULTIPLY'?'':'<input id="oseUnit_'+idx+'" value="'+esc(e.unit||'')+'" oninput="oseSet('+idx+',\'unit\',this.value)" placeholder="หน่วย" style="width:60px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">');
+  const status = e._err ? '<span style="font-size:11px;color:#dc2626;">⛔ '+esc(OSE_MSG[e._err]||e._err)+'</span>' : (persisted?'<span style="font-size:11px;color:#15803d;">✅ บันทึกแล้ว</span>':'<span style="font-size:11px;color:#b45309;">ยังไม่บันทึก</span>');
+  return '<div style="border:1px solid '+(e.enabled===false?'var(--border-soft)':'#c7d2fe')+';border-radius:9px;padding:9px;margin-bottom:8px;'+(e.enabled===false?'opacity:.5;':'')+'">'
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'+oseActSel(act,'oseSet('+idx+',\'action\',this.value)')+oseTypeSel(tt,'oseSet('+idx+',\'target_type\',this.value)')+targetFields+qtyFields+'</div>'
+    + '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:7px;">'
+    +   '<label style="font-size:11px;display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox"'+(e.strict_stock?' checked':'')+' onchange="oseSet('+idx+',\'strict_stock\',this.checked)" style="width:auto;margin:0;"> เช็คสต๊อกเข้ม</label>'
+    +   '<label style="font-size:11px;display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox"'+(e.enabled!==false?' checked':'')+' onchange="oseSet('+idx+',\'enabled\',this.checked)" style="width:auto;margin:0;"> เปิดใช้</label>'
+    +   status
+    +   '<span style="flex:1;"></span>'
+    +   '<button class="btn btn-primary btn-sm" style="font-size:11px;" onclick="oseSaveRow('+idx+')">บันทึกแถว</button>'
+    +   '<button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="oseDup('+idx+')">คัดลอกแถว</button>'
+    +   '<button class="btn btn-ghost btn-sm" style="font-size:11px;color:#dc2626;" onclick="oseRemove('+idx+')">ลบแถว</button>'
+    + '</div></div>';
+}
+function oseRender(){
+  const ov=document.getElementById('oseModal'); if(!ov||!_ose) return;
+  const rows = oseAllRows();
+  const legacyHtml = _ose.legacy ? '<div style="border:1px solid #f59e0b;background:#fffbeb;border-radius:9px;padding:9px;margin-bottom:10px;font-size:12px;">'
+      + '<b style="color:#b45309;">การผูกแบบเดิม (Legacy Binding)</b> — ประเภท '+esc(_ose.legacy.effectType)+' · เทียบเท่า: ADD/แก้ไข วัตถุดิบตามการตั้งค่าเดิม<br>'
+      + '<span style="color:var(--color-text-muted);">ยังทำงานตามเดิม จะไม่ถูกนำมาคำนวณซ้ำกับรายการด้านล่าง — เจ้าของสามารถย้ายมาเป็น Stock Effects เองภายหลัง (ยังไม่เปิดปุ่มแปลงอัตโนมัติเพื่อความปลอดภัย)</span></div>' : '';
+  ov.innerHTML = '<div class="bmm-shell">'
+    + '<div class="bmm-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><h2 style="margin:0;font-size:15px;">⚙️ ผลกระทบต่อสต๊อก (หลายรายการต่อ 1 ตัวเลือก)</h2><button class="btn btn-ghost btn-sm" onclick="oseClose()">ปิด</button></div>'
+    + '<div class="bmm-scroll">'
+    +   legacyHtml
+    +   (rows.length ? rows.map(r=>oseRowHtml(r.e,r.idx,r.persisted)).join('') : '<p style="font-size:12px;color:var(--color-text-muted);">ตัวเลือกนี้ยังไม่มีผลต่อสต๊อก — กด "เพิ่มผลกระทบ"</p>')
+    +   '<button class="btn btn-ghost btn-sm" style="font-size:12px;margin-top:4px;" onclick="oseAdd()">+ เพิ่มผลกระทบ</button>'
+    +   '<div style="font-weight:700;font-size:13px;margin:14px 0 4px;">ผลการตัดสต๊อกต่อการเลือก 1 ครั้ง</div>'
+    +   '<div id="osePreviewBox" style="font-size:12px;color:var(--color-text-muted);">กำลังคำนวณ…</div>'
+    + '</div>'
+    + '<div class="bmm-foot" style="display:flex;justify-content:flex-end;gap:8px;"><span style="flex:1;font-size:11px;color:var(--color-text-muted);align-self:center;">การตั้งค่านี้ยังไม่ตัดสต๊อกจริง จนกว่าจะเปิดใช้เอนจิน (Founder อนุมัติ)</span><button class="btn btn-ghost" onclick="oseClose()">ปิด</button></div>'
+    + '</div>';
+}
+function oseSet(idx, field, val){
+  const list = idx<_ose.effects.length ? _ose.effects : _ose.newRows; const i = idx<_ose.effects.length ? idx : idx-_ose.effects.length;
+  if(!list[i]) return; list[i][field]=val; list[i]._err=null;
+  if(field==='action'||field==='target_type') oseRender();   // structural change → re-render (fields differ)
+}
+function oseAdd(){ _ose.newRows.push({ target_type:'MATERIAL', action:'ADD', amount:1, unit:'', enabled:true }); oseRender(); }
+function oseDup(idx){ const list = idx<_ose.effects.length ? _ose.effects : _ose.newRows; const i = idx<_ose.effects.length ? idx : idx-_ose.effects.length; const src=list[i]; if(!src) return; _ose.newRows.push({ target_type:src.target_type, action:src.action, amount:src.amount, unit:src.unit, target_ref_id:src.target_ref_id, target_name:src.target_name, replace_ref_id:src.replace_ref_id, replace_name:src.replace_name, target_role:src.target_role, strict_stock:src.strict_stock, enabled:true }); oseRender(); }
+async function oseRemove(idx){
+  if(idx<_ose.effects.length){ const e=_ose.effects[idx]; if(!(await ui.confirm('ปิดการใช้งานผลกระทบนี้? (เก็บประวัติไว้ ไม่ลบถาวร)',{okText:'ปิดใช้',danger:true}))) return; try{ await API.patch('/api/option-effects/'+e.id+'/disable',{}); }catch(err){ ui.toast('ทำไม่ได้',(err&&err.status===403)?'warning':'error'); return; } _ose.effects.splice(idx,1); } else { _ose.newRows.splice(idx-_ose.effects.length,1); }
+  oseRender(); osePreview();
+}
+async function oseSaveRow(idx){
+  const persisted = idx<_ose.effects.length; const list = persisted?_ose.effects:_ose.newRows; const i=persisted?idx:idx-_ose.effects.length; const e=list[i]; if(!e) return;
+  const body = { choice_id:_ose.choiceId, target_type:e.target_type, target_ref_id:e.target_ref_id||null, action:e.action, amount:e.amount||0, unit:e.unit||null, replace_ref_id:e.replace_ref_id||null, target_role:e.target_role||null, strict_stock:!!e.strict_stock, enabled:e.enabled!==false, note:e.note||null };
+  try{
+    const r = persisted ? await API.patch('/api/option-effects/'+e.id, body) : await API.post('/api/option-effects', body);
+    // reload authoritative state
+    const rr = await API.get('/api/option-effects?choice_id='+_ose.choiceId);
+    _ose.effects = (rr.effects||[]).map(x=>({...x})); _ose.newRows = persisted ? _ose.newRows : _ose.newRows.filter((_,k)=>k!==i);
+    ui.toast('บันทึกแล้ว'); oseRender(); osePreview();
+  }catch(err){
+    const code=(err&&err.data&&err.data.code)||(err&&err.message)||''; e._err=code; oseRender();
+    ui.toast((err&&err.status===403)?'สิทธิ์ไม่เพียงพอ':(OSE_MSG[code]||'บันทึกไม่ได้: '+code), (err&&err.status===403)?'warning':'error');
+  }
+}
+async function osePreview(){
+  const box=document.getElementById('osePreviewBox'); if(!box||!_ose) return;
+  try{
+    const r = await API.get('/api/option-effects/preview?choice_id='+_ose.choiceId);
+    if(r.note==='OPTION_HAS_NO_STOCK_EFFECT'){ box.innerHTML='<span style="color:#b45309;">ตัวเลือกนี้ยังไม่มีผลต่อสต๊อก</span>'; return; }
+    const rows = (r.effects||[]).map(e=>{
+      if(e.action==='NO_STOCK') return '• <b>NO_STOCK</b> — ไม่มีผลต่อสต๊อก';
+      const tn = e.target_name||'(ยังไม่เลือก)'; const code=e.target_code?' ['+esc(e.target_code)+']':'';
+      const rep = e.action==='REPLACE' ? ('จาก '+esc(e.replace_name||'?')+' → '+esc(tn)) : esc(tn);
+      const amt = e.action==='MULTIPLY' ? ('× '+(e.amount||0)) : ((e.amount||0)+' '+esc(e.unit||''));
+      const warn = (!e.target_name && e.action!=='NO_STOCK') ? ' <span style="color:#dc2626;">⚠️ ยังไม่เลือกเป้าหมาย</span>':'';
+      return '• <b>'+esc(e.action)+'</b> '+esc((OSE_TT.find(t=>t[0]===e.target_type)||[])[1]||e.target_type)+' — '+rep+code+' '+amt+(e.enabled===false?' <span style="color:var(--color-text-muted);">(ปิด)</span>':'')+warn;
+    });
+    box.innerHTML = '<div style="line-height:1.9;">'+(rows.join('<br>')||'—')+'</div>'
+      + (r.engine_enabled ? '' : '<div style="color:var(--color-text-muted);margin-top:6px;font-size:11px;">* เอนจินยังปิดอยู่ — การขายจริงยังไม่ใช้ผลกระทบนี้</div>');
+  }catch(e){ box.innerHTML='<span style="color:#dc2626;">คำนวณตัวอย่างไม่ได้</span>'; }
 }
 
 // เปลี่ยน effect ของตัวเลือก — ถ้าเป็น ADD/REPLACE ให้ขึ้นช่องเลือกวัตถุดิบ 1 แถวทันที (กัน "ขึ้นไม่ครบ")

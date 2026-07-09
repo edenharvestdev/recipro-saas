@@ -109,6 +109,7 @@ api.use(require('./api/preview'));     // GET /api/preview/verify/:token — adm
 api.use(require('./api/coupons'));     // free-item coupon redemption: /api/coupons/{validate,apply,redemptions,import}
 api.use(require('./api/permissions')); // A1: per-user permissions /api/permissions/{catalog,me,members,member/:id,dry-run}
 api.use(require('./api/printers'));    // Track B: printer registry /api/printers/{,:id,:id/test,:id/set-default,capabilities}
+api.use(require('./api/option-effects')); // Option Stock Effect Engine V1 (mgmt only; live deduction gated OFF)
 // Delivery MVP Release A — default OFF. Set DELIVERY_ENABLED=1 to activate globally.
 // Per-shop allowlist enforcement is inside the delivery router (delivery-feature.js).
 const deliveryRouter = require('./api/delivery');
