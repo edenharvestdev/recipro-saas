@@ -11803,6 +11803,15 @@ let _dlvBillView      = 'queue'; // 'queue' | 'bill'
 let _dlvCatFilter     = '';      // category filter for menu search
 let _dlvMenuSearch    = '';      // text filter for menu search
 let _dlvSelectedDate  = null;    // sales_date chosen for opening bills (null → today)
+// Mobile-entry fix state: these used to be uncontrolled DOM inputs that got wiped
+// every time dlvShowBill() rebuilt the whole panel. Now they're the source of truth
+// so a sub-region re-render (menu grid / option area) never loses what staff typed.
+let _dlvAddQty        = 1;       // quantity for the item currently being added
+let _dlvAddPrice      = '';      // platform price override text ('' = use menu price)
+let _dlvAddOrderNo    = '';      // order-number text for the item being added
+let _dlvMissingGroups = [];      // option-group ids currently flagged as missing-required (validation highlight)
+let _dlvAddInFlight   = false;   // guards dlvAddItem against double-submit
+let _dlvCurrentBill   = null;    // { bill, items, movements } last fetched by dlvShowBill — reused by sub-renders (no refetch)
 
 const DLV_STATUS_COLOR = {
   open: '#f59e0b', pending_review: '#6366f1',
@@ -12071,7 +12080,8 @@ async function dlvOpenBill(platform, dateStr) {
     const r = await API.post('/api/delivery/bill/open', { platform, sales_date: dateStr });
     _dlvActiveBillId = r.bill.id;
     _dlvBillView = 'bill';
-    _dlvSelectedMenu = null; _dlvChosenOptions = {}; _dlvCatFilter = ''; _dlvMenuSearch = '';
+    _dlvCatFilter = ''; _dlvMenuSearch = '';
+    dlvResetAddState();
     await dlvShowBill(r.bill.id);
   } catch (e) { ui.toast('เปิดบิลไม่ได้: ' + (e && e.message || ''), 'error'); }
 }
@@ -12085,9 +12095,11 @@ async function dlvShowBill(billId) {
   el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">กำลังโหลด...</div></div>';
   try {
     const r = await API.get('/api/delivery/bill/' + billId);
+    _dlvCurrentBill = { bill: r.bill, items: r.items || [], movements: r.movements || [] };
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;">' + dlvBillHtml(r.bill, r.items || [], r.movements || []) + '</div>';
     renderIcons(el);
   } catch (e) {
+    _dlvCurrentBill = null;
     el.innerHTML = '<div class="glass-card" style="margin-bottom:14px;"><p style="color:var(--color-danger,#e53e3e);font-size:13px;">โหลดบิลไม่ได้: ' + esc(e && e.message || '') + '</p></div>';
   }
 }
@@ -12099,7 +12111,7 @@ function dlvBillHtml(b, items, movements) {
 
   // ── Bill header ─────────────────────────────────────────────────────────
   const header = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'
-    + '<button class="btn btn-ghost btn-sm" onclick="_dlvBillView=\'queue\';_dlvActiveBillId=null;_dlvSelectedMenu=null;dlvRefresh();">' + icon('arrow-left') + '</button>'
+    + '<button class="btn btn-ghost btn-sm" onclick="_dlvBillView=\'queue\';_dlvActiveBillId=null;dlvResetAddState();dlvRefresh();">' + icon('arrow-left') + '</button>'
     + '<div style="flex:1;min-width:0;">'
     + '<div style="font-size:16px;font-weight:700;">' + icon('truck') + ' ' + esc(b.platform) + ' &nbsp;' + dlvBadge(b.status) + '</div>'
     + (function(){
@@ -12156,55 +12168,27 @@ function dlvBillHtml(b, items, movements) {
     : '<p style="font-size:12px;color:var(--color-text-muted);padding:8px 0;margin:0 0 12px;">ยังไม่มีรายการ — เพิ่มเมนูด้านล่าง</p>';
 
   // ── POS-like menu selector (editable only) ──────────────────────────────
+  // Sub-regions (#dlvCatBtns / #dlvMenuGrid / #dlvOptArea / #dlvAddBtn) are re-rendered
+  // in isolation by dlvRenderCatBtns/dlvRenderMenuGrid/dlvRenderOptArea/dlvRenderAddBtn —
+  // see those + dlvPickMenu/dlvChooseOpt/dlvFilterCat/dlvMenuSearch below. This function
+  // (dlvBillHtml) only runs on initial load / after a server mutation, never on every keystroke.
   let addForm = '';
   if (isEditable) {
-    const allItems = deliverySellable();
-    const cats = [...new Set(allItems.map(s => s.category || 'อื่นๆ'))];
-    const catBtns = ['ทั้งหมด', ...cats].map(c =>
-      '<button class="btn btn-ghost btn-sm" onclick="dlvFilterCat(\'' + esc(c) + '\')" style="font-size:11px;border-radius:6px;padding:3px 8px;' + (_dlvCatFilter === c || (!_dlvCatFilter && c === 'ทั้งหมด') ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(c) + '</button>'
-    ).join('');
-
-    const filteredItems = _dlvCatFilter
-      ? allItems.filter(s => (s.category || 'อื่นๆ') === _dlvCatFilter)
-      : allItems;
-    const searchedItems = _dlvMenuSearch
-      ? filteredItems.filter(s => s.name.toLowerCase().includes(_dlvMenuSearch.toLowerCase()))
-      : filteredItems;
-
-    const menuCards = searchedItems.slice(0, 40).map(s => {
-      const sel = _dlvSelectedMenu && _dlvSelectedMenu.id === s.id;
-      return '<div onclick="dlvPickMenu(\'' + s.refType + '|' + s.id + '|' + esc(s.name).replace(/'/g,"&#39;") + '|' + s.price + '\')" style="cursor:pointer;border-radius:8px;padding:7px 8px;border:2px solid ' + (sel ? 'var(--color-primary,#3b82f6)' : 'var(--border-soft)') + ';background:' + (sel ? 'rgba(59,130,246,.08)' : 'transparent') + ';user-select:none;">'
-        + '<div style="font-size:12px;font-weight:600;margin-bottom:2px;">' + esc(s.name) + '</div>'
-        + '<div style="font-size:11px;color:var(--color-text-muted);">' + dlvFmt(s.price) + '</div>'
-        + '</div>';
-    }).join('');
-
-    // If a menu is selected and has option groups, render pickers
-    let optPickers = '';
-    if (_dlvSelectedMenu && _dlvSelectedMenu.optGroups && _dlvSelectedMenu.optGroups.length) {
-      optPickers = '<div style="margin:6px 0;">' + _dlvSelectedMenu.optGroups.map(g =>
-        '<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:600;color:var(--color-text-muted);margin-bottom:3px;">' + esc(g.name) + '</div>'
-        + '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + g.options.map(o =>
-          '<button class="btn btn-ghost btn-sm" onclick="dlvChooseOpt(\'' + g.id + '\',\'' + o.id + '\')" style="font-size:11px;padding:2px 8px;' + (_dlvChosenOptions[g.id] === o.id ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(o.name) + (o.price_delta ? ' +฿' + o.price_delta : '') + '</button>'
-        ).join('') + '</div></div>'
-      ).join('') + '</div>';
-    }
-
-    addForm = '<div style="border-top:1px solid var(--border-soft);padding-top:12px;margin-top:4px;">'
+    addForm = '<div id="dlvAddForm" style="border-top:1px solid var(--border-soft);padding-top:12px;margin-top:4px;">'
       + '<div style="font-size:11px;font-weight:700;color:var(--color-text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">เพิ่มเมนูในบิล</div>'
-      + '<input type="text" placeholder="ค้นหาเมนู..." value="' + esc(_dlvMenuSearch) + '" oninput="dlvMenuSearch(this.value)" style="width:100%;padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);font-size:12px;margin-bottom:6px;">'
-      + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">' + catBtns + '</div>'
-      + '<div class="dlv-menu-grid" style="margin-bottom:8px;">' + (menuCards || '<span style="font-size:12px;color:var(--color-text-muted);">ไม่พบเมนู</span>') + '</div>'
-      + optPickers
+      + '<input type="text" id="dlvMenuSearchInp" placeholder="ค้นหาเมนู..." value="' + esc(_dlvMenuSearch) + '" oninput="dlvMenuSearch(this.value)" style="width:100%;padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);font-size:12px;margin-bottom:6px;">'
+      + '<div id="dlvCatBtns" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">' + dlvCatBtnsHtml() + '</div>'
+      + '<div id="dlvMenuGrid" class="dlv-menu-grid" style="margin-bottom:8px;">' + dlvMenuGridHtml() + '</div>'
+      + '<div id="dlvOptArea">' + dlvOptAreaHtml(_dlvMissingGroups) + '</div>'
       + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<label style="font-size:11px;color:var(--color-text-muted);">จำนวน</label>'
       + '<button class="btn btn-ghost btn-sm" onclick="dlvAdjQty(-1)" style="padding:2px 8px;">-</button>'
-      + '<input type="number" id="dlvAddQtyInp" value="1" min="1" style="width:52px;text-align:center;padding:4px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
+      + '<input type="number" id="dlvAddQtyInp" value="' + esc(_dlvAddQty) + '" min="1" oninput="_dlvAddQty=Math.max(1,parseInt(this.value)||1)" style="width:52px;text-align:center;padding:4px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
       + '<button class="btn btn-ghost btn-sm" onclick="dlvAdjQty(1)" style="padding:2px 8px;">+</button>'
       + '<label style="font-size:11px;color:var(--color-text-muted);">ราคา Platform (฿)</label>'
-      + '<input type="number" id="dlvAddPriceInp" step="any" placeholder="' + (_dlvSelectedMenu ? _dlvSelectedMenu.price : '0') + '" style="width:80px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
+      + '<input type="number" id="dlvAddPriceInp" step="any" value="' + esc(_dlvAddPrice) + '" placeholder="' + (_dlvSelectedMenu ? _dlvSelectedMenu.price : '0') + '" oninput="_dlvAddPrice=this.value" style="width:80px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:13px;">'
       + '<label style="font-size:11px;color:var(--color-text-muted);">เลขออเดอร์</label>'
-      + '<input type="text" id="dlvAddOrderNo" placeholder="ไม่บังคับ" style="width:90px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
+      + '<input type="text" id="dlvAddOrderNo" placeholder="ไม่บังคับ" value="' + esc(_dlvAddOrderNo) + '" oninput="_dlvAddOrderNo=this.value" style="width:90px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;">'
       + '</div>'
       + (function(){
           // Owner-only stock-mode selector — only for HISTORICAL bills (coverage decisions).
@@ -12226,8 +12210,8 @@ function dlvBillHtml(b, items, movements) {
             +   '<input type="text" id="dlvSourcePosBill" placeholder="เลขบิล POS (ถ้ามี)" style="width:110px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-soft);font-size:12px;"></span>'
             + '</div>';
         })()
-      + '<button class="btn btn-primary btn-sm" style="width:100%;" onclick="dlvAddItem()" ' + (!_dlvSelectedMenu ? 'disabled' : '') + '>'
-      + icon('plus') + ' เพิ่ม' + (_dlvSelectedMenu ? ' ' + esc(_dlvSelectedMenu.name) : ' (เลือกเมนูก่อน)') + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="dlvAddBtn" style="width:100%;" onclick="dlvAddItem()" ' + (!_dlvSelectedMenu ? 'disabled' : '') + '>'
+      + dlvAddBtnHtml() + '</button>'
       + '</div>';
   }
 
@@ -12249,8 +12233,90 @@ function dlvBillHtml(b, items, movements) {
   return header + stats + itemsHtml + addForm + actionArea + settlePanel;
 }
 
+// ── sub-region HTML builders — pure functions of in-memory state, no fetch ──
+// Shared by dlvBillHtml's initial render AND the dlvRender*() functions below,
+// so a menu/option/category/search interaction never needs to hit the API or
+// rebuild the whole panel (which used to wipe qty/price/order-no + flash 'กำลังโหลด...').
+function dlvCatBtnsHtml() {
+  const allItems = deliverySellable();
+  const cats = [...new Set(allItems.map(s => s.category || 'อื่นๆ'))];
+  return ['ทั้งหมด', ...cats].map(c =>
+    '<button class="btn btn-ghost btn-sm" onclick="dlvFilterCat(\'' + esc(c) + '\')" style="font-size:11px;border-radius:6px;padding:3px 8px;' + (_dlvCatFilter === c || (!_dlvCatFilter && c === 'ทั้งหมด') ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(c) + '</button>'
+  ).join('');
+}
+
+function dlvMenuGridHtml() {
+  const allItems = deliverySellable();
+  const filteredItems = _dlvCatFilter
+    ? allItems.filter(s => (s.category || 'อื่นๆ') === _dlvCatFilter)
+    : allItems;
+  const searchedItems = _dlvMenuSearch
+    ? filteredItems.filter(s => s.name.toLowerCase().includes(_dlvMenuSearch.toLowerCase()))
+    : filteredItems;
+  const menuCards = searchedItems.slice(0, 40).map(s => {
+    const sel = _dlvSelectedMenu && _dlvSelectedMenu.id === s.id;
+    return '<div onclick="dlvPickMenu(\'' + s.refType + '|' + s.id + '|' + esc(s.name).replace(/'/g,"&#39;") + '|' + s.price + '\')" style="cursor:pointer;border-radius:8px;padding:7px 8px;border:2px solid ' + (sel ? 'var(--color-primary,#3b82f6)' : 'var(--border-soft)') + ';background:' + (sel ? 'rgba(59,130,246,.08)' : 'transparent') + ';user-select:none;">'
+      + '<div style="font-size:12px;font-weight:600;margin-bottom:2px;">' + esc(s.name) + '</div>'
+      + '<div style="font-size:11px;color:var(--color-text-muted);">' + dlvFmt(s.price) + '</div>'
+      + '</div>';
+  }).join('');
+  return menuCards || '<span style="font-size:12px;color:var(--color-text-muted);">ไม่พบเมนู</span>';
+}
+
+// missingGroupIds: option-group ids that failed required-option validation (dlvAddItem) —
+// rendered with a red border + "*ต้องเลือก" marker so staff can see exactly what's missing.
+function dlvOptAreaHtml(missingGroupIds) {
+  if (!_dlvSelectedMenu || !_dlvSelectedMenu.optGroups || !_dlvSelectedMenu.optGroups.length) return '';
+  missingGroupIds = missingGroupIds || [];
+  return '<div style="margin:6px 0;">' + _dlvSelectedMenu.optGroups.map(g => {
+    const missing = missingGroupIds.includes(g.id);
+    return '<div data-dlv-group="' + esc(g.id) + '" style="margin-bottom:6px;' + (missing ? 'border:1px solid #dc2626;border-radius:8px;padding:5px;background:rgba(220,38,38,.06);' : '') + '">'
+      + '<div style="font-size:11px;font-weight:600;color:' + (missing ? '#dc2626' : 'var(--color-text-muted)') + ';margin-bottom:3px;">' + esc(g.name) + (g.required ? ' <span style="color:#dc2626;">*ต้องเลือก</span>' : '') + '</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + g.options.map(o =>
+        '<button class="btn btn-ghost btn-sm" onclick="dlvChooseOpt(\'' + g.id + '\',\'' + o.id + '\')" style="font-size:11px;padding:2px 8px;' + (_dlvChosenOptions[g.id] === o.id ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(o.name) + (o.price_delta ? ' +฿' + o.price_delta : '') + '</button>'
+      ).join('') + '</div></div>';
+  }).join('') + '</div>';
+}
+
+function dlvAddBtnHtml() {
+  return icon('plus') + ' เพิ่ม' + (_dlvSelectedMenu ? ' ' + esc(_dlvSelectedMenu.name) : ' (เลือกเมนูก่อน)');
+}
+
+// ── sub-region re-renders — touch ONLY the named container, everything else
+// (search input focus/caret, qty/price/order-no inputs) is left untouched ──
+function dlvRenderCatBtns() {
+  const wrap = $('dlvCatBtns');
+  if (wrap) wrap.innerHTML = dlvCatBtnsHtml();
+}
+function dlvRenderMenuGrid() {
+  const grid = $('dlvMenuGrid');
+  if (grid) grid.innerHTML = dlvMenuGridHtml();
+}
+function dlvRenderOptArea(missingGroupIds) {
+  const area = $('dlvOptArea');
+  if (area) area.innerHTML = dlvOptAreaHtml(missingGroupIds);
+}
+function dlvRenderAddBtn() {
+  const btn = $('dlvAddBtn');
+  if (!btn) return;
+  btn.disabled = !_dlvSelectedMenu;
+  btn.innerHTML = dlvAddBtnHtml();
+}
+
+// Resets the "add item" working state (selected menu/options/qty/price/order-no).
+// Called after a successful add and when leaving/opening a bill — NOT on every
+// interaction, so mid-entry state otherwise survives menu/option/filter/search changes.
+function dlvResetAddState() {
+  _dlvSelectedMenu = null; _dlvChosenOptions = {}; _dlvMissingGroups = [];
+  _dlvAddQty = 1; _dlvAddPrice = ''; _dlvAddOrderNo = '';
+}
+
 function dlvPickMenu(val) {
-  if (!val) { _dlvSelectedMenu = null; _dlvChosenOptions = {}; if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId); return; }
+  if (!val) {
+    dlvResetAddState();
+    dlvRenderMenuGrid(); dlvRenderOptArea(_dlvMissingGroups); dlvRenderAddBtn();
+    return;
+  }
   const parts = val.split('|');
   const refType = parts[0], id = parts[1];
   const linkedGroups = refType === 'recipe'
@@ -12264,25 +12330,47 @@ function dlvPickMenu(val) {
     }))
   };
   _dlvChosenOptions = {};
-  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
-  else {
+  _dlvMissingGroups = [];
+  // Default the price field to the menu's price only if staff hasn't already typed one —
+  // never clobber a price they entered before switching menus.
+  if (!_dlvAddPrice) {
+    _dlvAddPrice = String(_dlvSelectedMenu.price);
     const priceInp = $('dlvAddPriceInp');
-    if (priceInp && !priceInp.value) priceInp.value = _dlvSelectedMenu.price;
+    if (priceInp) priceInp.value = _dlvAddPrice;
   }
+  // Re-render only the affected sub-regions — no refetch, no full-panel rebuild.
+  dlvRenderMenuGrid();
+  dlvRenderOptArea(_dlvMissingGroups);
+  dlvRenderAddBtn();
 }
 
 function dlvAdjQty(delta) {
+  _dlvAddQty = Math.max(1, (parseInt(_dlvAddQty) || 1) + delta);
   const inp = $('dlvAddQtyInp');
-  if (!inp) return;
-  inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
+  if (inp) inp.value = _dlvAddQty;
 }
 
 async function dlvAddItem(override) {
   if (!_dlvSelectedMenu) { ui.toast('เลือกเมนูก่อน'); return; }
-  const qty = parseInt(($('dlvAddQtyInp') || {}).value) || 1;
-  const priceInp = ($('dlvAddPriceInp') || {}).value;
-  const price = priceInp ? parseFloat(priceInp) : _dlvSelectedMenu.price;
-  const orderNo = (($('dlvAddOrderNo') || {}).value || '').trim() || null;
+  if (_dlvAddInFlight) return; // guard against double-submit while a request is already in flight
+
+  // ── Part 1: client-side required-option validation — runs BEFORE any POST.
+  // This used to be checked only by the backend, which returned a bare 400
+  // REQUIRED_OPTION_MISSING that staff saw as an unhelpful technical toast.
+  const requiredGroups = (_dlvSelectedMenu.optGroups || []).filter(g => g.required);
+  const missingGroups = requiredGroups.filter(g => !_dlvChosenOptions[g.id]);
+  if (missingGroups.length) {
+    _dlvMissingGroups = missingGroups.map(g => g.id);
+    dlvRenderOptArea(_dlvMissingGroups);
+    ui.toast('กรุณาเลือกตัวเลือกที่จำเป็น: ' + missingGroups.map(g => g.name).join(', '), 'warning');
+    const firstGroupEl = document.querySelector('[data-dlv-group="' + missingGroups[0].id + '"]');
+    if (firstGroupEl && firstGroupEl.scrollIntoView) firstGroupEl.scrollIntoView({ block: 'center' });
+    return; // no API call — selected menu, chosen options, qty/price/order-no are all preserved
+  }
+
+  const qty = Math.max(1, parseInt(_dlvAddQty) || 1);
+  const price = (_dlvAddPrice !== '' && _dlvAddPrice != null) ? parseFloat(_dlvAddPrice) : _dlvSelectedMenu.price;
+  const orderNo = (_dlvAddOrderNo || '').trim() || null;
   // Collect chosen options in backend format { group_id, choice_id }
   const chosenOpts = Object.entries(_dlvChosenOptions).map(([gId, oId]) => ({ group_id: gId, choice_id: oId }));
   const body = {
@@ -12304,9 +12392,10 @@ async function dlvAddItem(override) {
     if (src) body.source_pos_bill_no = src;
     if (modeEl.value === 'DEDUCT_REMAINDER') body.covered_quantity = parseFloat(($('dlvCoveredQty') || {}).value) || 0;
   }
+  _dlvAddInFlight = true;
   try {
     await API.post('/api/delivery/bill/' + _dlvActiveBillId + '/item', body);
-    _dlvSelectedMenu = null; _dlvChosenOptions = {};
+    dlvResetAddState();
     await dlvShowBill(_dlvActiveBillId);
     ui.toast('เพิ่มรายการแล้ว');
   } catch (e) {
@@ -12318,7 +12407,12 @@ async function dlvAddItem(override) {
     else if (msg.includes('STOCK_MODE_REQUIRES_OWNER')) ui.toast('โหมดสต๊อกนี้ต้องให้เจ้าของร้านยืนยัน', 'warning');
     else if (msg.includes('COVERAGE_REASON_REQUIRED')) ui.toast('กรุณาระบุเหตุผลของโหมดสต๊อก', 'warning');
     else if (msg.includes('INVALID_COVERED_QUANTITY')) ui.toast('จำนวนที่ POS ตัดไปแล้วต้องอยู่ระหว่าง 0 ถึงจำนวนรวม', 'warning');
+    // Fallback safety net — the client-side validation above should normally prevent this
+    // from ever reaching the backend; kept in case option groups changed after selection.
+    else if (msg.includes('REQUIRED_OPTION_MISSING')) ui.toast('กรุณาเลือกตัวเลือกที่จำเป็นให้ครบก่อนเพิ่มรายการ', 'warning');
     else ui.toast('เพิ่มไม่ได้: ' + msg, 'error');
+  } finally {
+    _dlvAddInFlight = false;
   }
 }
 
@@ -12535,17 +12629,26 @@ async function dlvSetPendingReview() {
 
 function dlvFilterCat(cat) {
   _dlvCatFilter = cat === 'ทั้งหมด' ? '' : cat;
-  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+  // Re-render only the category buttons + menu grid — no refetch, no full rebuild.
+  dlvRenderCatBtns();
+  dlvRenderMenuGrid();
 }
 
 function dlvMenuSearch(val) {
   _dlvMenuSearch = val || '';
-  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+  // Re-render ONLY #dlvMenuGrid — the search <input> itself is left untouched so
+  // focus + caret position survive every keystroke (this used to refetch + rebuild
+  // the whole panel, dropping focus on every character typed).
+  dlvRenderMenuGrid();
 }
 
 function dlvChooseOpt(groupId, optionId) {
   _dlvChosenOptions[groupId] = optionId;
-  if (_dlvActiveBillId) dlvShowBill(_dlvActiveBillId);
+  // Choosing an option clears that group's missing-required highlight, if any.
+  _dlvMissingGroups = _dlvMissingGroups.filter(id => id !== groupId);
+  // Re-render only the option area + Add button label — no refetch, form state preserved.
+  dlvRenderOptArea(_dlvMissingGroups);
+  dlvRenderAddBtn();
 }
 
 // Legacy stubs
