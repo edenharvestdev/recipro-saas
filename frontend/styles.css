@@ -1145,6 +1145,14 @@ table.bd tfoot td.r { text-align: right; }
   #posBillingPanel:not(.hidden) {
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
+  /* The editor/history .grid-2 collapses to one column on mobile (generic .grid-2 rule), but its
+     grid ITEMS (.glass-card) default to min-width:auto, so the history card can't shrink below the
+     history table's min-content width (.table-scroll > table.lst { min-width:460px }). That forced
+     the single column to ~506px and the editor (status/doc-type/Save/Print) got clipped by
+     body{overflow-x:hidden}. min-width:0 lets the cards shrink to the viewport; the history table
+     then scrolls INSIDE its own .table-scroll (overflow-x:auto) instead of widening the card. */
+  #posBillingPanel > .grid-2 { grid-template-columns: 1fr; }
+  #posBillingPanel > .grid-2 > .glass-card { min-width: 0; }
 
   .grid-2, .grid-3, .grid-4, .dash-grid { grid-template-columns: 1fr; }
   #dashKpiRow { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
