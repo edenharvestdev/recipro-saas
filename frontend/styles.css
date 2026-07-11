@@ -737,6 +737,24 @@ body.theme-dark .brand-logo-area img { filter: drop-shadow(0 0 2px rgba(244,122,
 @media (min-width: 1440px) {
   .grid-2.stock-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Bill editor item row (renderBillRows(), #posBillingPanel) — product select + qty + price +
+   delete. Flex children default to min-width:auto (= content min-width), so the product
+   <select> (sized to its widest "[code] name" option) can't shrink below its own min-content
+   width. That forced the whole row to ~460-500px, which cascaded up through .grid-2 and got
+   clipped on mobile (body/html has overflow-x:hidden). min-width:0 lets every child shrink to
+   fit the viewport instead of forcing it wider; below 480px the select also gets its own row
+   so it stays legible instead of being squeezed to a sliver next to qty/price/delete. */
+.bill-item-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.bill-item-row .bir-select { flex: 2; min-width: 0; }
+.bill-item-row .bir-qty { flex: 1; min-width: 0; }
+.bill-item-row .bir-price { flex: 1.2; min-width: 0; }
+.bill-item-row .bir-del { flex: none; width: auto; padding: 10px 12px; }
+@media (max-width: 480px) {
+  .bill-item-row { flex-wrap: wrap; }
+  .bill-item-row .bir-select { flex: 1 1 100%; }
+}
+
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 
@@ -1115,6 +1133,18 @@ table.bd tfoot td.r { text-align: right; }
   .top-bar { margin-bottom: 14px; gap: 10px; padding-top: env(safe-area-inset-top); }
   #currentPageTitle { font-size: 18px; }
   .topbar-right .sync-indicator { display: none; }   /* ประหยัดพื้นที่บนจอเล็ก */
+
+  /* POS sub-tabs (ขายด่วน/เอกสารบิล/ประวัติ/ออนไลน์/Delivery/ร่างแก้ไข): the base rule is
+     overflow-x:auto (scroll to reach later tabs), which on narrow phones leaves the last
+     tabs off-screen and reachable only by horizontal scroll. Wrap to a 2nd row instead so
+     every tab stays visible/tappable without horizontal scrolling or widening the page. */
+  .pos-subtab-bar { flex-wrap: wrap; overflow-x: visible; }
+
+  /* Bill editor (#posBillingPanel): make sure the last fields + Save/Print row clear the
+     fixed bottom-dock (~53px) instead of being covered by it, incl. iPhone safe-area inset. */
+  #posBillingPanel:not(.hidden) {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
 
   .grid-2, .grid-3, .grid-4, .dash-grid { grid-template-columns: 1fr; }
   #dashKpiRow { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
