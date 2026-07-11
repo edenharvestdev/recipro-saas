@@ -7078,14 +7078,14 @@ function delBillItem(i) {
 
 function renderBillRows() {
   $('billRows').innerHTML = currentBill.items.map((it, i) => `
-    <div style="display:flex; gap:10px; align-items:center; margin-bottom:8px;">
-      <select style="flex:2;" onchange="currentBill.items[${i}].recipeId=this.value; currentBill.items[${i}].price=recById(this.value)?.sell||0; render();">
+    <div class="bill-item-row">
+      <select class="bir-select" onchange="currentBill.items[${i}].recipeId=this.value; currentBill.items[${i}].price=recById(this.value)?.sell||0; render();">
         <option value="">— เลือกสินค้า —</option>
         ${recipes.map(r => `<option value="${r.id}" ${r.id === it.recipeId ? 'selected' : ''}>[${r.code || '-'}] ${r.name}</option>`).join('')}
       </select>
-      <input type="number" value="${it.qty}" style="flex:1;" oninput="currentBill.items[${i}].qty=+this.value||1; render();" placeholder="จำนวน">
-      <input type="number" value="${it.price}" style="flex:1.2;" oninput="currentBill.items[${i}].price=+this.value||0; render();" placeholder="ราคา/ชิ้น">
-      <button class="btn btn-danger" onclick="delBillItem(${i})" style="flex:none; width:auto; padding:10px 12px;" title="ลบ">${icon('trash-2')}</button>
+      <input type="number" value="${it.qty}" class="bir-qty" oninput="currentBill.items[${i}].qty=+this.value||1; render();" placeholder="จำนวน">
+      <input type="number" value="${it.price}" class="bir-price" oninput="currentBill.items[${i}].price=+this.value||0; render();" placeholder="ราคา/ชิ้น">
+      <button class="btn btn-danger bir-del" onclick="delBillItem(${i})" title="ลบ">${icon('trash-2')}</button>
     </div>
   `).join('');
 }
@@ -7372,6 +7372,33 @@ function posCatAssign(type, id, value) {
   saveAll(); renderPosGrid();
 }
 
+// ── Shared POS/Delivery category ordering (keeps the two views from drifting) ──
+// Managed categories (settings.posCategories) sort by their configured index first;
+// non-managed categories sort Thai-alphabetically after them; uncategorized (POS_NOCAT
+// sentinel / empty) always sorts last. Used by renderPosGrid AND the Delivery menu
+// (dlvCatBtnsHtml / dlvMenuGridHtml) so category order + grouping can never diverge.
+const POS_NOCAT = '￿';
+function posCategoryRank(catName) {
+  const c = (catName == null || catName === '') ? POS_NOCAT : catName;
+  if (c === POS_NOCAT) return 1e6;
+  const managed = (Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : []).map(s => String(s).trim());
+  const idxMap = new Map();
+  managed.forEach((m, i) => { if (!idxMap.has(m)) idxMap.set(m, i); const lc = m.toLowerCase(); if (!idxMap.has(lc)) idxMap.set(lc, i); });
+  const t = String(c).trim();
+  const i = idxMap.has(t) ? idxMap.get(t) : (idxMap.has(t.toLowerCase()) ? idxMap.get(t.toLowerCase()) : -1);
+  return i >= 0 ? i : 1e5;
+}
+function posSortItemsByCategory(items) {
+  return items.slice().sort((a, b) => {
+    const ca = (a.category || '').trim() || POS_NOCAT;
+    const cb = (b.category || '').trim() || POS_NOCAT;
+    const ra = posCategoryRank(ca), rb = posCategoryRank(cb);
+    if (ra !== rb) return ra - rb;
+    if (ca !== cb) return ca.localeCompare(cb, 'th');
+    return (a.name || '').localeCompare(b.name || '', 'th');
+  });
+}
+
 function renderPosGrid() {
   renderPosCategoryBar();
   const grid = $('posProductGrid');
@@ -7384,15 +7411,9 @@ function renderPosGrid() {
     sellable = sellable.filter(r => (r.name || '').toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q));
     mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
   }
-  // จัดกลุ่มตามหมวด (กันหมวดกระโดดในมุมมอง "ทุกหมวด") — เรียงหมวด ก-ฮ แล้วชื่อ
-  const POS_NOCAT = '￿';
-  const posCatSort = (a, b) => {
-    const ca = (a.category || '').trim() || POS_NOCAT, cb = (b.category || '').trim() || POS_NOCAT;
-    if (ca !== cb) return ca.localeCompare(cb, 'th');
-    return (a.name || '').localeCompare(b.name || '', 'th');
-  };
-  sellable.sort(posCatSort);
-  mats.sort(posCatSort);
+  // จัดกลุ่มตามหมวด (กันหมวดกระโดดในมุมมอง "ทุกหมวด") — ใช้ shared helper (posSortItemsByCategory)
+  sellable = posSortItemsByCategory(sellable);
+  mats = posSortItemsByCategory(mats);
   if (!sellable.length && !mats.length) {
     grid.innerHTML = `<p style="color:var(--color-text-muted); text-align:center; grid-column:1/-1; padding:40px 0;">${posCategoryFilter ? 'ไม่มีสินค้าในหมวดนี้' : 'ยังไม่มีสินค้า — เพิ่มสูตรในหน้า สูตร/เมนู หรือตั้งวัตถุดิบเป็น "ขายได้เลย"'}</p>`;
     return;
@@ -7478,10 +7499,7 @@ function renderPosGrid() {
   sellable.forEach(r => pushItem(catOf(r), recCardHtml(r)));
   mats.forEach(m => pushItem(catOf(m), matCardHtml(m)));
   // เรียงหัวข้อหมวดให้ตรงลำดับชิปด้านบน (หมวดที่ร้านจัดไว้ posCategories) — หมวดนอกรายการเรียง ก-ฮ, ไม่ระบุหมวดท้ายสุด
-  const _managed = (Array.isArray(settings.posCategories) ? settings.posCategories.filter(Boolean) : []).map(s => String(s).trim());
-  const _idxMap = new Map(); _managed.forEach((c, i) => { if (!_idxMap.has(c)) _idxMap.set(c, i); const lc = c.toLowerCase(); if (!_idxMap.has(lc)) _idxMap.set(lc, i); });
-  const _catIdx = c => { if (c === POS_NOCAT) return 1e6; const t = String(c).trim(); const i = _idxMap.has(t) ? _idxMap.get(t) : (_idxMap.has(t.toLowerCase()) ? _idxMap.get(t.toLowerCase()) : -1); return i >= 0 ? i : 1e5; };
-  const cats = [...groups.keys()].sort((a, b) => { const d = _catIdx(a) - _catIdx(b); return d !== 0 ? d : a.localeCompare(b, 'th'); });
+  const cats = [...groups.keys()].sort((a, b) => { const d = posCategoryRank(a) - posCategoryRank(b); return d !== 0 ? d : a.localeCompare(b, 'th'); });
   const showHeaders = !posCategoryFilter && !posSearch && cats.length > 1;
   let html = '';
   cats.forEach(cat => {
@@ -11460,8 +11478,8 @@ const DELIVERY_PLATFORMS = ['Grab', 'LINE MAN', 'Foodpanda', 'Robinhood', 'Shope
 let dlvLines = [];   // เมนูที่ขาย delivery วันนั้น (สำหรับตัดสต๊อก)
 function deliverySellable() {
   const out = [];
-  (recipes || []).forEach(r => { if (!r.isRaw && Number(r.sell) > 0) out.push({ refType: 'recipe', id: r.id, name: r.name, price: Number(r.sell) || 0 }); });
-  (materials || []).forEach(m => { if (m.saleType === 'SELLABLE' || m.itemType === 'SALE') out.push({ refType: 'material', id: m.id, name: m.name, price: Number(m.sellPrice || m.price) || 0 }); });
+  (recipes || []).forEach(r => { if (!r.isRaw && Number(r.sell) > 0) out.push({ refType: 'recipe', id: r.id, name: r.name, price: Number(r.sell) || 0, category: r.category || '' }); });
+  (materials || []).forEach(m => { if (m.saleType === 'SELLABLE' || m.itemType === 'SALE') out.push({ refType: 'material', id: m.id, name: m.name, price: Number(m.sellPrice || m.price) || 0, category: m.category || '' }); });
   return out;
 }
 
@@ -12239,7 +12257,12 @@ function dlvBillHtml(b, items, movements) {
 // rebuild the whole panel (which used to wipe qty/price/order-no + flash 'กำลังโหลด...').
 function dlvCatBtnsHtml() {
   const allItems = deliverySellable();
-  const cats = [...new Set(allItems.map(s => s.category || 'อื่นๆ'))];
+  // Same managed→ก-ฮ→อื่นๆ-last order as POS (posCategoryRank), so the two menus never drift.
+  const cats = [...new Set(allItems.map(s => (s.category || '').trim() || 'อื่นๆ'))].sort((a, b) => {
+    const ra = posCategoryRank(a === 'อื่นๆ' ? POS_NOCAT : a);
+    const rb = posCategoryRank(b === 'อื่นๆ' ? POS_NOCAT : b);
+    return ra !== rb ? ra - rb : a.localeCompare(b, 'th');
+  });
   return ['ทั้งหมด', ...cats].map(c =>
     '<button class="btn btn-ghost btn-sm" onclick="dlvFilterCat(\'' + esc(c) + '\')" style="font-size:11px;border-radius:6px;padding:3px 8px;' + (_dlvCatFilter === c || (!_dlvCatFilter && c === 'ทั้งหมด') ? 'background:var(--color-primary,#3b82f6);color:#fff;' : '') + '">' + esc(c) + '</button>'
   ).join('');
@@ -12253,7 +12276,9 @@ function dlvMenuGridHtml() {
   const searchedItems = _dlvMenuSearch
     ? filteredItems.filter(s => s.name.toLowerCase().includes(_dlvMenuSearch.toLowerCase()))
     : filteredItems;
-  const menuCards = searchedItems.slice(0, 40).map(s => {
+  // Same category+name ordering as POS (posSortItemsByCategory) so items group/order identically.
+  const orderedItems = posSortItemsByCategory(searchedItems);
+  const menuCards = orderedItems.slice(0, 40).map(s => {
     const sel = _dlvSelectedMenu && _dlvSelectedMenu.id === s.id;
     return '<div onclick="dlvPickMenu(\'' + s.refType + '|' + s.id + '|' + esc(s.name).replace(/'/g,"&#39;") + '|' + s.price + '\')" style="cursor:pointer;border-radius:8px;padding:7px 8px;border:2px solid ' + (sel ? 'var(--color-primary,#3b82f6)' : 'var(--border-soft)') + ';background:' + (sel ? 'rgba(59,130,246,.08)' : 'transparent') + ';user-select:none;">'
       + '<div style="font-size:12px;font-weight:600;margin-bottom:2px;">' + esc(s.name) + '</div>'
