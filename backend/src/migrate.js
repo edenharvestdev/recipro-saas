@@ -57,6 +57,7 @@ const files = [
   '../db/schema-coupon-redemption.sql',
   '../db/schema-permissions.sql',
   '../db/schema-printers.sql',
+  '../db/schema-conditional-flow.sql',
   '../db/seed.sql',
 ];
 
