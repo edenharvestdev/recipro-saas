@@ -4601,7 +4601,7 @@ const MATERIAL_BEHAVIOR_FIELD_MAP = {
   B: { itemType: 'PACKAGING', saleType: 'INGREDIENT_ONLY', isConsumable: false },
   C: { itemType: 'SUPPLIES', saleType: 'INGREDIENT_ONLY', isConsumable: true },
   F: { itemType: 'SALE', saleType: 'SELLABLE', isConsumable: false },
-  G: { itemType: 'ASSET', saleType: 'SELLABLE', isConsumable: false }
+  G: { itemType: 'SERVICE', saleType: 'SELLABLE', isConsumable: false }
 };
 // Legacy derivation (read-only, NEVER persists) — used only to preselect the radio
 // for a material whose behavior_type is still NULL (pre-V2 / never saved by this form).
@@ -4609,7 +4609,8 @@ function deriveBehaviorType(m) {
   m = m || {};
   if (m.isConsumable) return 'C';
   if (m.itemType === 'PACKAGING') return 'B';
-  if (m.itemType === 'ASSET') return 'G';
+  if (m.itemType === 'SERVICE') return 'G';
+  if (m.itemType === 'ASSET') return 'G'; // legacy display fallback: pre-ARCH-2 Type G rows were stored as ASSET
   if (m.itemType === 'SALE' && m.saleType === 'SELLABLE') return 'F';
   return 'A'; // RAW/COMPOUND/PREP/SEMI/NULL/ambiguous → A
 }
@@ -5155,6 +5156,7 @@ const DEFAULT_ITEM_CATEGORIES = [
   { code:'PACKAGING', name_th:'บรรจุภัณฑ์',        name_en:'Packaging Material',    is_stock_deducted:true,  deduct_event:'on_sale' },
   { code:'SUPPLIES',  name_th:'ของใช้สิ้นเปลือง',  name_en:'Operational Supplies',  is_stock_deducted:true,  deduct_event:'daily_or_manual' },
   { code:'ASSET',     name_th:'ของใช้ถาวร',        name_en:'Asset',                 is_stock_deducted:false, deduct_event:'none' },
+  { code:'SERVICE',   name_th:'บริการ',            name_en:'Service',               is_stock_deducted:false, deduct_event:'none' },
 ];
 function itemCategories() {
   return (window.ITEM_CATEGORIES && window.ITEM_CATEGORIES.length) ? window.ITEM_CATEGORIES : DEFAULT_ITEM_CATEGORIES;
@@ -5268,9 +5270,9 @@ function matTypeBadge(m) {
   const c = itemCategories().find(x => x.code === m.itemType);
   const nm = c ? c.name_th : m.itemType;
   const nested = ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
-  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET';
-  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : '#854F0B';
-  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : '#FAEEDA';
+  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET', service = m.itemType === 'SERVICE';
+  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : service ? '#5B4FA5' : '#854F0B';
+  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : service ? '#EEEBFA' : '#FAEEDA';
   return `<span style="display:inline-block;font-size:10px;padding:1px 8px;border-radius:999px;background:${bg};color:${col};margin-left:6px;">${esc(nm)}${nested ? ' · ซ้อนสูตร' : ''}</span>`;
 }
 // เซลล์คอลัมน์ "หมวดสินค้า" — ของที่ยังไม่จัดจะขึ้น "ยังไม่ระบุ" ให้เห็นชัด
@@ -5279,9 +5281,9 @@ function matTypeCell(m) {
   const c = itemCategories().find(x => x.code === m.itemType);
   const nm = c ? c.name_th : m.itemType;
   const nested = ['COMPOUND', 'PREP', 'SEMI'].includes(m.itemType);
-  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET';
-  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : '#854F0B';
-  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : '#FAEEDA';
+  const sale = m.itemType === 'SALE', asset = m.itemType === 'ASSET', service = m.itemType === 'SERVICE';
+  const col = sale ? '#185FA5' : (nested || m.itemType === 'RAW') ? '#0F6E56' : asset ? '#5F5E5A' : service ? '#5B4FA5' : '#854F0B';
+  const bg = sale ? '#E6F1FB' : (nested || m.itemType === 'RAW') ? '#E1F5EE' : asset ? '#F1EFE8' : service ? '#EEEBFA' : '#FAEEDA';
   return `<span style="display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:${bg};color:${col};white-space:nowrap;">${esc(nm)}${nested ? ' · ซ้อนสูตร' : ''}</span>`;
 }
 function matMatchesType(m) {
@@ -5549,11 +5551,11 @@ function renderMatList() {
       <td>${matTypeCell(m)}</td>
       <td>${m.category ? `<span class="cat-badge">${esc(m.category)}</span>` : '<span style="color:var(--color-text-muted); font-size:12px;">—</span>'}</td>
       <td class="r">${money(m.price)}</td>
-      <td class="r" style="color:var(--green);">${(m.itemType === 'SALE' && m.sellPrice) ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
+      <td class="r" style="color:var(--green);">${((m.itemType === 'SALE' || m.itemType === 'SERVICE') && m.sellPrice) ? money(m.sellPrice) : '<span style="color:var(--color-text-muted)">—</span>'}</td>
       <td class="r" style="font-size:12px; color:var(--color-text-muted);">${costPerBase} / ${baseU(m)}</td>
       <td style="font-size:12px;">${sp ? esc(sp.name) : '<span style="color:var(--color-text-muted)">—</span>'}${m.orderUrl ? ` <a href="${m.orderUrl}" target="_blank" title="ลิงก์สั่งซื้อ" style="color:var(--brand);">${icon('external-link')}</a>` : ''}</td>
       <td>
-        ${m.itemType !== 'SALE' ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="padding:6px 10px;color:var(--green,#16a34a);" title="ตั้งเป็นสินค้าขาย">${icon('tag')}</button>` : `<span title="ขายบน POS แล้ว" style="color:var(--green,#16a34a);font-size:11px;padding:0 4px;">●ขาย</span>`}
+        ${(m.itemType !== 'SALE' && m.itemType !== 'SERVICE') ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="padding:6px 10px;color:var(--green,#16a34a);" title="ตั้งเป็นสินค้าขาย">${icon('tag')}</button>` : `<span title="ขายบน POS แล้ว" style="color:var(--green,#16a34a);font-size:11px;padding:0 4px;">●ขาย</span>`}
         <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="padding:6px 10px;" title="แก้ไข">${icon('pencil')}</button>
         <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="padding:6px 10px;" title="ลบ">${icon('trash-2')}</button>
       </td>
@@ -5584,11 +5586,11 @@ function renderMatList() {
         </div>
         <div class="item-card-stats">
           <div class="item-card-stat"><span>ต้นทุน/หน่วยย่อย</span><b>${costPerBase}/${baseU(m)}</b></div>
-          ${(m.itemType === 'SALE' && m.sellPrice) ? `<div class="item-card-stat"><span>ราคาขาย</span><b style="color:var(--green)">${money(m.sellPrice)}</b></div>` : ''}
+          ${((m.itemType === 'SALE' || m.itemType === 'SERVICE') && m.sellPrice) ? `<div class="item-card-stat"><span>ราคาขาย</span><b style="color:var(--green)">${money(m.sellPrice)}</b></div>` : ''}
           ${m.orderUrl ? `<a href="${m.orderUrl}" target="_blank" class="item-card-stat" style="color:var(--color-primary);text-decoration:none;"><span>สั่งซื้อ</span><b>${icon('external-link')}</b></a>` : ''}
         </div>
         <div class="item-card-actions">
-          ${m.itemType !== 'SALE' ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="flex:1;color:var(--green,#16a34a);">${icon('tag')} ตั้งขาย</button>` : ''}
+          ${(m.itemType !== 'SALE' && m.itemType !== 'SERVICE') ? `<button class="btn btn-ghost btn-sm" onclick="openQuickSell('${m.id}')" style="flex:1;color:var(--green,#16a34a);">${icon('tag')} ตั้งขาย</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="editMat('${m.id}')" style="flex:1;">${icon('pencil')} แก้ไข</button>
           <button class="btn btn-danger btn-sm" onclick="delMat('${m.id}')" style="flex:1;">${icon('trash-2')} ลบ</button>
         </div>
@@ -5675,7 +5677,8 @@ function renderRecipeForm() {
   const catDl = $('rCategoryList');
   if (catDl) catDl.innerHTML = [...new Set(recipes.map(r => r.category).filter(Boolean))].sort().map(c => `<option value="${esc(c)}"></option>`).join('');
   const cats = itemCategories();
-  const nonCons = materials.filter(m => !m.isConsumable);
+  // SERVICE (behavior G) is sellable but must never appear as a recipe ingredient or its own tab.
+  const nonCons = materials.filter(m => !m.isConsumable && m.itemType !== 'SERVICE');
   const presentCodes = new Set(nonCons.filter(m => m.itemType).map(m => m.itemType));
   const hasBlank = nonCons.some(m => !m.itemType);
   const catOptions = (sel) => {
