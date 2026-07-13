@@ -9,6 +9,12 @@
 // SAME materialResolver.js consumed by the frontend (PR-1, unmodified),
 // cross-checked against the item_categories / stockEngine.js deduction
 // rules that the chosen behavior_type maps onto.
+//
+// ARCH-2 update: Type G (behavior 'G') now maps to the first-class
+// item_type='SERVICE' (backend/db/schema-service-type.sql), not the ASSET
+// proxy used pre-ARCH-2. itemType==='ASSET' is kept as a read-only legacy
+// display fallback in deriveBehaviorType() only — genuine assets
+// (behavior_type IS NULL) are never remapped.
 const R = require('../../frontend/materialResolver.js');
 
 let passed = 0, failed = 0;
@@ -20,16 +26,18 @@ function round3(n) { return n == null ? n : Math.round(n * 1000) / 1000; }
 
 // -------------------------------------------------------------------------
 // (a) Legacy derivation mirror — MUST match frontend/index.html's
-// deriveBehaviorType(m) exactly (is_consumable→C; PACKAGING→B; ASSET→G;
-// SALE+SELLABLE→F; RAW/NULL/ambiguous→A). Read-only: this function never
-// persists anything — it only preselects the radio for materials whose
+// deriveBehaviorType(m) exactly (is_consumable→C; PACKAGING→B; SERVICE→G
+// (ARCH-2); ASSET→G legacy display fallback; SALE+SELLABLE→F;
+// RAW/NULL/ambiguous→A). Read-only: this function never persists
+// anything — it only preselects the radio for materials whose
 // behavior_type is still NULL.
 // -------------------------------------------------------------------------
 function deriveBehaviorType(m) {
   m = m || {};
   if (m.isConsumable) return 'C';
   if (m.itemType === 'PACKAGING') return 'B';
-  if (m.itemType === 'ASSET') return 'G';
+  if (m.itemType === 'SERVICE') return 'G';
+  if (m.itemType === 'ASSET') return 'G'; // legacy display fallback: pre-ARCH-2 Type G rows were stored as ASSET
   if (m.itemType === 'SALE' && m.saleType === 'SELLABLE') return 'F';
   return 'A';
 }
@@ -43,7 +51,8 @@ console.log('--- (a) Legacy derivation: the 10 behavior cases ---');
   check('is_consumable=true → C', deriveBehaviorType({ isConsumable: true }) === 'C');
   check('is_consumable=true wins even with itemType set → C', deriveBehaviorType({ isConsumable: true, itemType: 'RAW' }) === 'C');
   check('itemType=PACKAGING → B', deriveBehaviorType({ itemType: 'PACKAGING' }) === 'B');
-  check('itemType=ASSET → G', deriveBehaviorType({ itemType: 'ASSET' }) === 'G');
+  check('itemType=SERVICE → G (ARCH-2)', deriveBehaviorType({ itemType: 'SERVICE' }) === 'G');
+  check('itemType=ASSET → G (legacy display fallback, pre-ARCH-2)', deriveBehaviorType({ itemType: 'ASSET' }) === 'G');
   check('itemType=SALE + saleType=SELLABLE → F', deriveBehaviorType({ itemType: 'SALE', saleType: 'SELLABLE' }) === 'F');
   check('itemType=SALE but saleType=INGREDIENT_ONLY (inconsistent legacy data) → A (falls through, does not guess F)',
     deriveBehaviorType({ itemType: 'SALE', saleType: 'INGREDIENT_ONLY' }) === 'A');
@@ -139,23 +148,27 @@ console.log('\n--- (b) The 7 HIBI acceptance fixtures ---');
 }
 
 // 7. Service item — behavior G, no purchase/conversion, POS-visible, never stock-deducted
+// ARCH-2: item_type=SERVICE is now the first-class mapping for behavior G
+// (backend/db/schema-service-type.sql); itemType=ASSET is kept only as a
+// read-only legacy display fallback for materials saved before ARCH-2.
 {
-  check('7 Service item behavior = G (itemType=ASSET)', deriveBehaviorType({ itemType: 'ASSET' }) === 'G');
+  check('7 Service item behavior = G (itemType=SERVICE)', deriveBehaviorType({ itemType: 'SERVICE' }) === 'G');
+  check('7 Service item behavior = G (itemType=ASSET, legacy fallback)', deriveBehaviorType({ itemType: 'ASSET' }) === 'G');
   // Behavior→field mapping for G (mirrors MATERIAL_BEHAVIOR_FIELD_MAP.G in frontend/index.html):
-  //   item_type=ASSET, sale_type=SELLABLE, show_in_pos=true, is_consumable=false, no purchase/conversion fields.
-  const gMapping = { itemType: 'ASSET', saleType: 'SELLABLE', showInPos: true, isConsumable: false };
-  check('7 Service item maps to item_type=ASSET', gMapping.itemType === 'ASSET');
+  //   item_type=SERVICE, sale_type=SELLABLE, show_in_pos=true, is_consumable=false, no purchase/conversion fields.
+  const gMapping = { itemType: 'SERVICE', saleType: 'SELLABLE', showInPos: true, isConsumable: false };
+  check('7 Service item maps to item_type=SERVICE', gMapping.itemType === 'SERVICE');
   check('7 Service item maps to sale_type=SELLABLE (POS-visible)', gMapping.saleType === 'SELLABLE');
   check('7 Service item is POS-visible (show_in_pos=true)', gMapping.showInPos === true);
-  // item_categories.ASSET: is_stock_deducted=false, deduct_event='none' (backend/db/schema-item-master.sql)
-  const assetCat = { is_stock_deducted: false, deduct_event: 'none' };
-  check('7 Service item (ASSET) is NOT stock-deducted per item_categories', assetCat.is_stock_deducted === false);
+  // item_categories.SERVICE: is_stock_deducted=false, deduct_event='none' (backend/db/schema-service-type.sql)
+  const serviceCat = { is_stock_deducted: false, deduct_event: 'none' };
+  check('7 Service item (SERVICE) is NOT stock-deducted per item_categories', serviceCat.is_stock_deducted === false);
   // deductMaterial() skip logic (stockEngine.js:166-169): cat.deducted===false and item_type !== 'SALE'
   // → always skipped regardless of defaultCcat/isDirectSale — no stock movement is ever written for G.
-  const cat = { deducted: assetCat.is_stock_deducted, event: assetCat.deduct_event };
+  const cat = { deducted: serviceCat.is_stock_deducted, event: serviceCat.deduct_event };
   for (const isDirectSale of [true, false]) {
-    const skipped = (cat && cat.deducted === false && !('ASSET' === 'SALE' && isDirectSale));
-    check('7 Service item (ASSET) deductMaterial() skips regardless of sale mode (isDirectSale=' + isDirectSale + ')', skipped === true, { skipped });
+    const skipped = (cat && cat.deducted === false && !('SERVICE' === 'SALE' && isDirectSale));
+    check('7 Service item (SERVICE) deductMaterial() skips regardless of sale mode (isDirectSale=' + isDirectSale + ')', skipped === true, { skipped });
   }
   // No resolver cost is computed for G — the purchase/conversion section is hidden in Material Form V2
   // (applyMaterialFormV2Sections: showPurchase = !isRecipeRow && code !== 'G'), so there is nothing to
