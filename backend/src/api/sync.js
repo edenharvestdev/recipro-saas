@@ -52,7 +52,7 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type', 'img_data'],
+        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type', 'img_data', 'behavior_type', 'behavior_version'],
         withShop(b.materials), 'id', true, ['price']);   // A1: null price (redacted for no-cost users) preserves the stored cost
 
       await upsertRows(client, 'recipes',

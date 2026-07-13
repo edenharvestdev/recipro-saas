@@ -132,7 +132,7 @@ const frontendDir = path.join(__dirname, '..', '..', 'frontend');
 // (size+mtime). The <link>/<script> URLs get ?v=<ASSET_VERSION>; the shell (index.html) is served
 // no-cache so returning browsers always revalidate and discover the new asset URLs. express.static
 // serves files by path and ignores the query string, so styles.css?v=xxx still resolves to styles.css.
-const VERSIONED_ASSETS = ['styles.css', 'icons.js', 'app-config.js', 'api.js'];
+const VERSIONED_ASSETS = ['styles.css', 'icons.js', 'app-config.js', 'api.js', 'materialResolver.js'];
 const ASSET_VERSION = (() => {
   const envSha = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA;
   if (envSha) return String(envSha).slice(0, 12);
