@@ -17,6 +17,8 @@
 <script src="./icons.js"></script>
 <script src="./app-config.js"></script>
 <script src="./api.js"></script>
+<!-- Material Engine V2 (PR-2): pure resolver, runtime-inert unless the shop's flag is on -->
+<script src="./materialResolver.js"></script>
 <!-- Google Fonts: IBM Plex Sans Thai (Thai-first) + Inter (Latin/numerals) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2139,6 +2141,16 @@
       <button class="drawer-close" onclick="closeDrawer()" title="ปิด" aria-label="ปิด"><span class="ico" data-icon="x"></span></button>
     </div>
     <div class="drawer-body">
+      <!-- Material Engine V2 (PR-2): behavior-type radio group — hidden unless settings.material_engine_v2_enabled -->
+      <div id="mBehaviorWrap" style="display:none; margin-bottom:14px;">
+        <label style="font-weight:700; font-size:13px; margin-bottom:6px; display:block;">
+          ประเภทของรายการ <span style="color:var(--color-text-muted); font-size:11px; font-weight:400;">— เลือกให้ตรงกับพฤติกรรมตัดสต๊อก/การขาย</span>
+        </label>
+        <div id="mBehaviorTypeOptions" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+        <p id="mBehaviorRecipeHint" style="display:none; font-size:12px; color:var(--color-secondary); margin:8px 0 0; background:var(--surface-2); border-radius:8px; padding:8px 10px;">
+          จัดการประเภทนี้ในเมนูสูตร (Recipe)
+        </p>
+      </div>
       <div class="grid-2" style="margin-bottom: 12px;">
         <div class="field">
           <label>รหัสสินค้า (SKU)</label>
@@ -2160,7 +2172,7 @@
           <datalist id="catDatalist"></datalist>
         </div>
       </div>
-      <div class="grid-3" style="margin-bottom: 12px;">
+      <div class="grid-3" id="mPurchaseWrap" style="margin-bottom: 12px;">
         <div class="field">
           <label>หน่วยซื้อ</label>
           <select id="mUnit" onchange="updateMatCostPreview()">
@@ -2186,7 +2198,7 @@
         </div>
       </div>
       <!-- Unit conversion section -->
-      <div style="background:var(--surface-2);border-radius:10px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--border-soft);">
+      <div id="mConvWrap" style="background:var(--surface-2);border-radius:10px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--border-soft);">
         <div style="font-size:12px;font-weight:700;color:var(--color-text-muted);margin-bottom:8px;"><span class="ico" data-icon="repeat"></span> การแปลงหน่วย <span style="font-weight:400;">(สำหรับ ขวด/แพ็ค/ถุง ที่ต้องตัดสต๊อกเป็นหน่วยย่อย)</span></div>
         <div class="grid-2" style="margin-bottom:6px;">
           <div class="field">
@@ -2208,7 +2220,7 @@
         <option value="INGREDIENT_ONLY">INGREDIENT_ONLY</option>
         <option value="SELLABLE">SELLABLE</option>
       </select>
-      <div class="field" style="margin-bottom:12px;">
+      <div class="field" id="mItemTypeFieldWrap" style="margin-bottom:12px;">
         <label><b>หมวดสินค้า</b> <span style="color:var(--color-text-muted);font-size:11px;">— เลือกอันเดียวพอ คุมทั้งการขาย + การตัดสต๊อก</span></label>
         <select id="mItemType" onchange="updateItemTypeHint()">
           <option value="">— ยังไม่ระบุ —</option>
@@ -2508,6 +2520,9 @@ const perBase = m => {
 };
 
 function updateMatCostPreview() {
+  // Material Engine V2 (PR-2): when the shop's flag is ON, the resolver drives the preview instead.
+  // Flag OFF → fall through untouched to the original code path below (byte-for-byte as before PR-2).
+  if (typeof matEngineV2Enabled === 'function' && matEngineV2Enabled()) { updateMatCostPreviewV2(); return; }
   const price = +$('mPrice')?.value || 0;
   const qty = +$('mQty')?.value || 1;
   const convQty = +$('mConvQty')?.value || 0;
@@ -3722,7 +3737,9 @@ function applyBootstrapData(data) {
       saleType: m.sale_type || 'INGREDIENT_ONLY', showInPos: !!m.show_in_pos,
       salePrice2: m.sale_price_2 != null ? Number(m.sale_price_2) : null,
       itemType: m.item_type || '',
-      imgData: m.img_data || ''
+      imgData: m.img_data || '',
+      behaviorType: m.behavior_type || null,                                        // PR-2: null = legacy/derived
+      behaviorVersion: m.behavior_version != null ? Number(m.behavior_version) : null // PR-2: 2 = V2-saved
     }));
     const itemsGroup = data.recipe_items || [];
     recipes = (data.recipes || []).map(r => ({
@@ -3755,6 +3772,7 @@ function applyBootstrapData(data) {
       logoData: sRow?.logo_url || '', theme: sRow?.theme || 'recipro',
       categories: Array.isArray(sRow?.categories) ? sRow.categories : DEFAULT_CATEGORIES.slice(),
       makeToOrder: sRow?.make_to_order || false,
+      materialEngineV2Enabled: !!sRow?.material_engine_v2_enabled,   // PR-2: per-shop flag, default OFF
       usePettyCash: sRow?.use_petty_cash || false,
       publicMenuToken: sRow?.public_menu_token || '',
       publicMenuEnabled: sRow?.public_menu_enabled || false,
@@ -4150,7 +4168,9 @@ async function syncToSupabase() {
       is_consumable: m.isConsumable || false,
       sale_type: m.saleType || 'INGREDIENT_ONLY', show_in_pos: m.showInPos || false, sale_price_2: m.salePrice2 || null,
       item_type: m.itemType || null,
-      img_data: m.imgData || null
+      img_data: m.imgData || null,
+      behavior_type: m.behaviorType || null,
+      behavior_version: m.behaviorVersion != null ? m.behaviorVersion : null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
@@ -4538,6 +4558,12 @@ function openMatForm() {
   renderItemTypeOptions('');
   setMatImgPreview('');
   if ($('mUnit').options.length) $('mUnit').selectedIndex = 0;
+  applyMaterialEngineV2FormVisibility();
+  if (matEngineV2Enabled()) {
+    const code = deriveBehaviorType({});   // new material, no legacy signal → A
+    renderBehaviorTypeRadios(code);
+    applyMaterialFormV2Sections(code);
+  }
   $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   openDrawer('matDrawer');
 }
@@ -4545,6 +4571,145 @@ function openMatForm() {
 function toggleSaleFields() {
   const sellable = $('mSaleType') && $('mSaleType').value === 'SELLABLE';
   if ($('mSaleFields')) $('mSaleFields').style.display = sellable ? 'block' : 'none';
+}
+
+// ============================================================
+// Material Engine V2 (PR-2): Product Behavior Model + Material Form V2 UI
+// Fully gated on settings.material_engine_v2_enabled (per-shop, default OFF).
+// Flag OFF → matEngineV2Enabled() is false everywhere → no visual/behavioral
+// change vs. today. Flag ON → behavior radio drives the existing item_type /
+// sale_type / is_consumable fields (reusing renderItemTypeOptions /
+// updateItemTypeHint / toggleSaleFields machinery) and saveMat() additionally
+// stamps behavior_type + behavior_version=2 on the material row.
+// ============================================================
+function matEngineV2Enabled() { return !!(settings && settings.materialEngineV2Enabled); }
+
+// 7 behavior options — A/B/C/F/G are materials-form writes; D/E are recipe-row
+// (shown for orientation only, materials form does not write their fields).
+const MATERIAL_BEHAVIOR_TYPES = [
+  { code: 'A', label: 'วัตถุดิบ', helper: 'ซื้อมาใช้ในสูตร ไม่ขายตรง' },
+  { code: 'B', label: 'บรรจุภัณฑ์', helper: 'แก้ว ฝา หลอด ถุง — ตัดสต๊อกเมื่อขาย' },
+  { code: 'C', label: 'ของใช้สิ้นเปลือง', helper: 'ทิชชู่ ถุงมือ น้ำยา — ไม่รวมในต้นทุนสูตร' },
+  { code: 'D', label: 'สินค้าที่ผลิตแล้วเก็บสต๊อก', helper: 'ทำเป็นล็อตเก็บไว้ขาย', note: 'จัดการในเมนูสูตร' },
+  { code: 'E', label: 'เมนูจากสูตร', helper: 'ตัดวัตถุดิบตามสูตรเมื่อขาย', note: 'จัดการในเมนูสูตร' },
+  { code: 'F', label: 'สินค้าซื้อมาขายต่อ', helper: 'ซื้อมาขายตรง ไม่ผ่านสูตร' },
+  { code: 'G', label: 'บริการ/รายการไม่ตัดสต๊อก', helper: 'ค่าบริการ/ค่าจัดส่ง ไม่ตัดสต๊อก' }
+];
+// Behavior → existing-field mapping written on save (A/B/C/F/G only — D/E are informational, no field writes).
+const MATERIAL_BEHAVIOR_FIELD_MAP = {
+  A: { itemType: '', saleType: 'INGREDIENT_ONLY', isConsumable: false },
+  B: { itemType: 'PACKAGING', saleType: 'INGREDIENT_ONLY', isConsumable: false },
+  C: { itemType: 'SUPPLIES', saleType: 'INGREDIENT_ONLY', isConsumable: true },
+  F: { itemType: 'SALE', saleType: 'SELLABLE', isConsumable: false },
+  G: { itemType: 'ASSET', saleType: 'SELLABLE', isConsumable: false }
+};
+// Legacy derivation (read-only, NEVER persists) — used only to preselect the radio
+// for a material whose behavior_type is still NULL (pre-V2 / never saved by this form).
+function deriveBehaviorType(m) {
+  m = m || {};
+  if (m.isConsumable) return 'C';
+  if (m.itemType === 'PACKAGING') return 'B';
+  if (m.itemType === 'ASSET') return 'G';
+  if (m.itemType === 'SALE' && m.saleType === 'SELLABLE') return 'F';
+  return 'A'; // RAW/COMPOUND/PREP/SEMI/NULL/ambiguous → A
+}
+
+function renderBehaviorTypeRadios(selected) {
+  const wrap = $('mBehaviorTypeOptions');
+  if (!wrap) return;
+  wrap.innerHTML = MATERIAL_BEHAVIOR_TYPES.map(b => {
+    const on = b.code === selected;
+    return `<label style="flex:1 1 200px; min-width:0; display:flex; flex-direction:column; gap:2px; overflow-wrap:break-word; border:1px solid ${on ? 'var(--color-primary)' : 'var(--border-soft)'}; background:${on ? 'var(--surface-2)' : 'var(--surface-1)'}; border-radius:10px; padding:8px 10px; cursor:pointer;">
+      <span style="display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px;">
+        <input type="radio" name="mBehaviorType" value="${b.code}" onchange="onBehaviorTypeChange()" ${on ? 'checked' : ''} style="width:auto; margin:0; flex-shrink:0;">
+        ${b.code}. ${esc(b.label)}
+      </span>
+      <span style="font-size:11px; color:var(--color-text-muted); padding-left:20px;">${esc(b.helper)}</span>
+      ${b.note ? `<span style="font-size:11px; color:var(--color-secondary); padding-left:20px;">${esc(b.note)}</span>` : ''}
+    </label>`;
+  }).join('');
+}
+
+function selectedBehaviorType() {
+  const radios = document.getElementsByName('mBehaviorType');
+  for (const r of radios) if (r.checked) return r.value;
+  return '';
+}
+
+// Show/hide purchase+conversion / sale-price sections per selected behavior, and (for
+// A/B/C/F/G) drive the underlying legacy fields via the existing machinery so saveMat()
+// keeps reading item_type/sale_type off the same DOM elements it always has.
+function applyMaterialFormV2Sections(code) {
+  const isRecipeRow = (code === 'D' || code === 'E');
+  const showPurchase = !isRecipeRow && code !== 'G';
+  const showSale = (code === 'F' || code === 'G');
+  const purchaseWrap = $('mPurchaseWrap'); if (purchaseWrap) purchaseWrap.style.display = showPurchase ? '' : 'none';
+  const convWrap = $('mConvWrap'); if (convWrap) convWrap.style.display = showPurchase ? '' : 'none';
+  const hint = $('mBehaviorRecipeHint'); if (hint) hint.style.display = isRecipeRow ? 'block' : 'none';
+  const preview = $('matCostPreview'); if (preview && (code === 'G' || isRecipeRow)) preview.innerHTML = '';
+
+  const map = MATERIAL_BEHAVIOR_FIELD_MAP[code];
+  if (map) {
+    if ($('mItemType')) $('mItemType').value = map.itemType;
+    if (typeof updateItemTypeHint === 'function') updateItemTypeHint();     // sets hint text (its own sale-type guess is overridden right after)
+    if ($('mSaleType')) $('mSaleType').value = map.saleType;                // authoritative — fixes G (ASSET item_type but SELLABLE)
+    if (typeof toggleSaleFields === 'function') toggleSaleFields();
+  }
+  if (showSale && $('mSaleFields')) $('mSaleFields').style.display = 'block';
+  if (matEngineV2Enabled()) updateMatCostPreview();
+}
+
+function onBehaviorTypeChange() {
+  const code = selectedBehaviorType();
+  renderBehaviorTypeRadios(code);   // refresh selected-card styling
+  applyMaterialFormV2Sections(code);
+}
+
+// Toggle Material Form V2 chrome on/off per-shop flag. Called every time the material
+// drawer opens (new + edit). Flag OFF → wrap stays hidden, #mItemType field stays as today.
+function applyMaterialEngineV2FormVisibility() {
+  const on = matEngineV2Enabled();
+  const wrap = $('mBehaviorWrap'); if (wrap) wrap.style.display = on ? 'block' : 'none';
+  const itemTypeWrap = $('mItemTypeFieldWrap'); if (itemTypeWrap) itemTypeWrap.style.display = on ? 'none' : '';
+}
+
+const MATERIAL_RESOLVER_WARNINGS_TH = {
+  MAT_UNIT_AMBIGUOUS_NO_CONVERSION: 'ยังไม่ทราบหน่วยตัดสต๊อก กรุณาระบุการแปลงหน่วย (บันทึกได้ แต่ยังไม่มีต้นทุน)',
+  MAT_KGL_OVERRIDE_UNCONFIRMED: 'ค่าที่กรอกไม่ตรงมาตรฐาน กก./ลิตร กรุณายืนยัน',
+  MAT_INVALID_QUANTITY: 'จำนวน/ราคายังไม่ครบ คำนวณต้นทุนไม่ได้'
+};
+// Resolver-driven preview — only reached when matEngineV2Enabled() is true (see
+// updateMatCostPreview() guard above). Validation is warn+allow: never blocks Save.
+function updateMatCostPreviewV2() {
+  const el = $('matCostPreview');
+  if (!el) return;
+  const code = selectedBehaviorType();
+  if (code === 'G' || code === 'D' || code === 'E') { el.innerHTML = ''; return; }   // no purchase → no cost preview
+  if (!window.MaterialResolver) { el.innerHTML = ''; return; }
+  const price = +$('mPrice')?.value || 0;
+  if (!price) { el.innerHTML = ''; return; }
+  const qty = +$('mQty')?.value || 0;
+  const unit = $('mUnit')?.value || '';
+  const convQtyStr = $('mConvQty')?.value;
+  const convQty = (convQtyStr === undefined || convQtyStr === '') ? null : +convQtyStr;
+  const stockUnit = ($('mStockUnit')?.value || '').trim();
+  const confirmEl = $('mKglConfirm');
+  const confirmed = !!(confirmEl && confirmEl.checked);
+
+  const res = window.MaterialResolver.resolveMaterialCost({ price, qty, unit, conv_qty: convQty, stock_unit: stockUnit, confirmed });
+  const su = res.stockUnit || stockUnit || unit || '';
+  const badge = res.health === 'GREEN' ? '🟢' : (res.health === 'YELLOW' ? '🟡' : '🔴');
+  let html = '';
+  if (res.costPerStockUnit != null) {
+    html += `<div>ต้นทุนต่อ 1 ${esc(su)} = ${res.costPerStockUnit.toFixed(2)} บาท</div>`;
+    html += `<div>ใช้ในสูตร 10 ${esc(su)} = ${(res.costPerStockUnit * 10).toFixed(2)} บาท</div>`;
+  }
+  html += `<div>${badge}${res.warningCode && MATERIAL_RESOLVER_WARNINGS_TH[res.warningCode] ? ' ' + esc(MATERIAL_RESOLVER_WARNINGS_TH[res.warningCode]) : ''}</div>`;
+  if (res.warningCode === 'MAT_KGL_OVERRIDE_UNCONFIRMED') {
+    html += `<label style="display:flex; align-items:center; gap:6px; margin-top:4px; font-weight:400;">`
+      + `<input type="checkbox" id="mKglConfirm" style="width:auto; margin:0;" onchange="updateMatCostPreview()" ${confirmed ? 'checked' : ''}> ยืนยันค่าที่กรอก</label>`;
+  }
+  el.innerHTML = html;
 }
 
 // ============================================================
@@ -4939,12 +5104,24 @@ function saveMat() {
   if (!Array.isArray(settings.categories)) settings.categories = DEFAULT_CATEGORIES.slice();
   if (category && !settings.categories.includes(category)) settings.categories.push(category);
 
+  // Material Engine V2 (PR-2): flag OFF → v2Fields stays {} → Object.assign is a no-op,
+  // so the saved shape is byte-for-byte identical to pre-PR-2 behavior.
+  let v2Fields = {};
+  if (matEngineV2Enabled()) {
+    const code = selectedBehaviorType();
+    if (code) {
+      v2Fields = { behaviorType: code, behaviorVersion: 2 };
+      const map = MATERIAL_BEHAVIOR_FIELD_MAP[code];
+      if (map) v2Fields.isConsumable = map.isConsumable;   // e.g. C → true; only A/B/C/F/G carry a mapping (D/E are informational only)
+    }
+  }
+
   if (editMatId) {
-    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2, itemType, imgData });
+    Object.assign(matById(editMatId), { sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, saleType, showInPos, salePrice2, itemType, imgData }, v2Fields);
     editMatId = null;
     $('mSaveBtn').innerHTML = icon('save') + ' บันทึกวัตถุดิบ';
   } else {
-    materials.push({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2, itemType, imgData });
+    materials.push(Object.assign({ id: uid(), sku, name, qty, unit, price, sellPrice, supId, orderUrl, category, convQty, stockUnit, stock: 0, lowStock: 0, saleType, showInPos, salePrice2, itemType, imgData }, v2Fields));
   }
 
   saveAll();
@@ -5031,6 +5208,13 @@ function editMat(id) {
   renderCatDatalist();
   renderItemTypeOptions(m.itemType || '');
   setMatImgPreview(m.imgData || '');
+  applyMaterialEngineV2FormVisibility();
+  if (matEngineV2Enabled()) {
+    // V2-saved (behaviorVersion===2) → trust the stored value as-is; else derive read-only from legacy fields (never persists here).
+    const code = m.behaviorType || deriveBehaviorType(m);
+    renderBehaviorTypeRadios(code);
+    applyMaterialFormV2Sections(code);
+  }
   updateMatCostPreview();
   $('mSaveBtn').innerHTML = icon('pencil') + ' อัปเดตวัตถุดิบ';
   openDrawer('matDrawer');
