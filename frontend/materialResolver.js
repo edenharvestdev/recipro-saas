@@ -13,8 +13,15 @@
 // material's cost-per-stock-unit and its data-quality "health" — replacing
 // any ad-hoc unit-conversion math scattered elsewhere.
 //
+// source values returned by resolveMaterialCost:
+//   'explicit'          — material carries an explicit conv_qty + stock_unit
+//   'standard_fallback' — recognized kg/L family, auto-converted with factor 1000
+//   'identity'          — recognized same-unit inventory (gram/ml/piece/egg),
+//                         trusted 1:1 with factor 1 (no conversion needed)
+//   'ambiguous'         — unknown/packaging unit with no conversion; not trusted
+//
 // Public API (returned by the factory below):
-//   { resolveMaterialCost, STANDARD_UNITS }
+//   { resolveMaterialCost, STANDARD_UNITS, IDENTITY_UNITS }
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory();                 // Node / CommonJS
@@ -44,6 +51,25 @@
     'liter': { base: 'มิลลิลิตร', factor: 1000 },
     'litre': { base: 'มิลลิลิตร', factor: 1000 },
     'liters': { base: 'มิลลิลิตร', factor: 1000 }
+  };
+
+  // Trusted identity units: same-unit inventory that needs NO conversion
+  // (factor 1). The purchase unit already IS the stock unit, so cost is
+  // computed directly. Keys are normalized (trimmed, lowercased) aliases;
+  // `base` is the canonical stock-unit label. These are trusted GREEN when
+  // price/qty are valid — they are NOT ambiguous. Packaging units
+  // (ถุง/กล่อง/แพ็ค/ลัง/ถาด/แผง) and a bare ขวด are deliberately EXCLUDED here
+  // and remain ambiguous unless the material supplies an explicit conversion.
+  var IDENTITY_UNITS = {
+    // gram family
+    'กรัม': 'กรัม', 'g': 'กรัม', 'gram': 'กรัม', 'grams': 'กรัม',
+    // milliliter family
+    'มล.': 'มิลลิลิตร', 'มล': 'มิลลิลิตร', 'มิลลิลิตร': 'มิลลิลิตร',
+    'ml': 'มิลลิลิตร', 'milliliter': 'มิลลิลิตร', 'millilitre': 'มิลลิลิตร', 'milliliters': 'มิลลิลิตร',
+    // piece family
+    'ชิ้น': 'ชิ้น', 'piece': 'ชิ้น', 'pieces': 'ชิ้น', 'pcs': 'ชิ้น', 'pc': 'ชิ้น',
+    // egg family
+    'ฟอง': 'ฟอง', 'egg': 'ฟอง', 'eggs': 'ฟอง'
   };
 
   // computeCost: never returns Infinity or NaN — returns null instead when
@@ -118,9 +144,21 @@
         needsConfirmation: false,
         receivingBlocked: false
       };
+    } else if (IDENTITY_UNITS[unit.toLowerCase()]) {
+      // Branch 3: no explicit conversion, but the unit is a recognized
+      // same-unit inventory (gram/ml/piece/egg) — trusted 1:1, factor 1.
+      result = {
+        costPerStockUnit: computeCost(price, qty, 1),
+        stockUnit: IDENTITY_UNITS[unit.toLowerCase()],
+        source: 'identity',
+        health: 'GREEN',
+        warningCode: null,
+        needsConfirmation: false,
+        receivingBlocked: false
+      };
     } else {
-      // Branch 3: no explicit conversion and not a recognized standard unit
-      // — we cannot safely compute a per-stock-unit cost.
+      // Branch 4: no explicit conversion and not a recognized standard or
+      // identity unit — we cannot safely compute a per-stock-unit cost.
       result = {
         costPerStockUnit: null,
         stockUnit: stockUnit || unit || null,
@@ -147,6 +185,7 @@
 
   return {
     resolveMaterialCost: resolveMaterialCost,
-    STANDARD_UNITS: STANDARD_UNITS
+    STANDARD_UNITS: STANDARD_UNITS,
+    IDENTITY_UNITS: IDENTITY_UNITS
   };
 });

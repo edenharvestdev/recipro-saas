@@ -59,6 +59,87 @@ function round2(n) { return Math.round(n * 100) / 100; }
   check('D Ambiguous costPerStockUnit is not a number', typeof res.costPerStockUnit !== 'number', typeof res.costPerStockUnit);
 }
 
+// --- Identity units (same-unit inventory, factor 1) ---------------------
+
+// 1. Gram identity
+{
+  const res = R.resolveMaterialCost({ price: 100, qty: 500, unit: 'กรัม' });
+  check('Identity gram source=identity', res.source === 'identity', res.source);
+  check('Identity gram health=GREEN', res.health === 'GREEN', res.health);
+  check('Identity gram receiving allowed', res.receivingBlocked === false, res.receivingBlocked);
+  check('Identity gram costPerStockUnit = 0.20', round2(res.costPerStockUnit) === 0.20, res.costPerStockUnit);
+}
+// 2. Piece identity
+{
+  const res = R.resolveMaterialCost({ price: 120, qty: 12, unit: 'ชิ้น' });
+  check('Identity piece source=identity', res.source === 'identity', res.source);
+  check('Identity piece health=GREEN', res.health === 'GREEN', res.health);
+  check('Identity piece receiving allowed', res.receivingBlocked === false, res.receivingBlocked);
+  check('Identity piece costPerStockUnit = 10.00', round2(res.costPerStockUnit) === 10.00, res.costPerStockUnit);
+}
+// 3. Egg identity
+{
+  const res = R.resolveMaterialCost({ price: 150, qty: 30, unit: 'ฟอง' });
+  check('Identity egg source=identity', res.source === 'identity', res.source);
+  check('Identity egg health=GREEN', res.health === 'GREEN', res.health);
+  check('Identity egg receiving allowed', res.receivingBlocked === false, res.receivingBlocked);
+  check('Identity egg costPerStockUnit = 5.00', round2(res.costPerStockUnit) === 5.00, res.costPerStockUnit);
+}
+// 4. Milliliter identity
+{
+  const res = R.resolveMaterialCost({ price: 80, qty: 1000, unit: 'มล.' });
+  check('Identity ml source=identity', res.source === 'identity', res.source);
+  check('Identity ml health=GREEN', res.health === 'GREEN', res.health);
+  check('Identity ml receiving allowed', res.receivingBlocked === false, res.receivingBlocked);
+  check('Identity ml costPerStockUnit = 0.08', round2(res.costPerStockUnit) === 0.08, res.costPerStockUnit);
+}
+// English identity aliases behave the same
+{
+  const g = R.resolveMaterialCost({ price: 100, qty: 500, unit: 'g' });
+  const pcs = R.resolveMaterialCost({ price: 120, qty: 12, unit: 'pcs' });
+  check('Identity alias "g" = identity/GREEN', g.source === 'identity' && g.health === 'GREEN', g);
+  check('Identity alias "pcs" = identity/GREEN', pcs.source === 'identity' && pcs.health === 'GREEN', pcs);
+}
+
+// --- Ambiguous packaging must NOT be auto-trusted -----------------------
+
+// 5. Bare bag remains ambiguous/RED/blocked/null
+{
+  const res = R.resolveMaterialCost({ price: 50, qty: 1, unit: 'ถุง' });
+  check('Bare bag source=ambiguous', res.source === 'ambiguous', res.source);
+  check('Bare bag health=RED', res.health === 'RED', res.health);
+  check('Bare bag receivingBlocked===true', res.receivingBlocked === true, res.receivingBlocked);
+  check('Bare bag costPerStockUnit===null', res.costPerStockUnit === null, res.costPerStockUnit);
+}
+// Other packaging units also stay ambiguous
+{
+  for (const u of ['กล่อง', 'แพ็ค', 'ลัง', 'ถาด', 'แผง', 'สุ่มมั่ว-custom']) {
+    const res = R.resolveMaterialCost({ price: 50, qty: 1, unit: u });
+    check('Packaging "' + u + '" stays ambiguous/RED/blocked/null',
+      res.source === 'ambiguous' && res.health === 'RED' && res.receivingBlocked === true && res.costPerStockUnit === null, res);
+  }
+}
+
+// --- Bottle rule: bare ขวด ambiguous; explicit relationship trusted -----
+
+// 6. Bare bottle remains ambiguous
+{
+  const bare = R.resolveMaterialCost({ price: 60, qty: 1, unit: 'ขวด' });
+  check('Bare bottle source=ambiguous', bare.source === 'ambiguous', bare.source);
+  check('Bare bottle receivingBlocked===true', bare.receivingBlocked === true, bare.receivingBlocked);
+  check('Bare bottle costPerStockUnit===null', bare.costPerStockUnit === null, bare.costPerStockUnit);
+
+  // explicit 1 ขวด = 1 ขวด → trusted 1:1
+  const same = R.resolveMaterialCost({ price: 60, qty: 1, unit: 'ขวด', conv_qty: 1, stock_unit: 'ขวด' });
+  check('Bottle explicit 1:1 source=explicit/GREEN', same.source === 'explicit' && same.health === 'GREEN', same);
+  check('Bottle explicit 1:1 cost = 60.00', round2(same.costPerStockUnit) === 60.00, same.costPerStockUnit);
+
+  // explicit 1 ขวด = 2000 มล. → trusted, cost per ml
+  const toMl = R.resolveMaterialCost({ price: 60, qty: 1, unit: 'ขวด', conv_qty: 2000, stock_unit: 'มิลลิลิตร' });
+  check('Bottle explicit 2000ml source=explicit/GREEN', toMl.source === 'explicit' && toMl.health === 'GREEN', toMl);
+  check('Bottle explicit 2000ml cost/ml = 0.03', round2(toMl.costPerStockUnit) === 0.03, toMl.costPerStockUnit);
+}
+
 // --- English-alias robustness -------------------------------------------
 
 {
