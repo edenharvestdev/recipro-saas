@@ -19,5 +19,3 @@ npm-debug.log*
 # misc
 *.tmp
 
-# Founder-owned Source-of-Truth working documents (interview-authored, not code)
-docs/product/

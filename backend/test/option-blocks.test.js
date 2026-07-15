@@ -355,5 +355,17 @@ console.log('\n--- 14. Incomplete draft → enabled=false contract ---');
   check('14c a fully-specified choice with a resolvable unit validates ok', v2.ok === true, v2.items);
 }
 
+// --- Blocker 2: RECIPE_VARIANT is publication-blocked until an approved recipe version exists ---
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../../frontend/index.html'), 'utf8');
+  // isolate the RECIPE_VARIANT branch of ogValidateChoice
+  const m = src.match(/bt === 'RECIPE_VARIANT'\)\s*\{([\s\S]*?)\n\s*\}/);
+  const branch = m ? m[1] : '';
+  check('B2a source has the RECIPE_VARIANT publication-block Thai message', src.includes('ยังไม่สามารถใช้งานได้จนกว่าสูตรนี้จะมีเวอร์ชันที่อนุมัติแล้ว'));
+  check('B2b the block line is an ok:false push inside the RECIPE_VARIANT branch (never completes → never publishes)',
+    /items\.push\(\{\s*ok:\s*false,\s*label:\s*'ยังไม่สามารถใช้งานได้จนกว่าสูตรนี้จะมีเวอร์ชันที่อนุมัติแล้ว'/.test(branch));
+  check('B2c the block is unconditional (fires even when a recipe is selected)', branch.indexOf('ยังไม่สามารถใช้งานได้จนกว่า') > branch.indexOf('เลือกสูตรที่ใช้แทนแล้ว'));
+}
+
 console.log('\n=== Results: ' + passed + ' passed, ' + failed + ' failed ===');
 process.exit(failed > 0 ? 1 : 0);

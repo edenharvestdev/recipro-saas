@@ -14103,6 +14103,10 @@ function ogValidateChoice(c) {
   } else if (bt === 'RECIPE_VARIANT') {
     if (!c.variantRecipeId) items.push({ ok: false, label: 'ยังไม่ได้เลือกสูตรที่จะใช้แทน' });
     else items.push({ ok: true, label: 'เลือกสูตรที่ใช้แทนแล้ว' });
+    // Blocker-2 safety: no Recipe/BOM approval lifecycle (DRAFT/APPROVED/RETIRED) exists yet,
+    // so RECIPE_VARIANT may be authored/draft-saved but NEVER completed→published (never enabled on
+    // POS/Delivery sheets) until an approved recipe version can be guaranteed. Publication-blocking.
+    items.push({ ok: false, label: 'ยังไม่สามารถใช้งานได้จนกว่าสูตรนี้จะมีเวอร์ชันที่อนุมัติแล้ว' });
   }
   // INSTRUCTION_ONLY: no ingredient/price fields exist to validate (V2 structural) — the name check above suffices.
 
