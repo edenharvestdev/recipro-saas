@@ -357,8 +357,9 @@ router.post('/selective-clone', async (req, res) => {
               continue;
             } else if (conflictStrategy === 'update') {
               await c.query(
-                `update option_groups set label=$1, select_type=$2, required=$3, min_select=$4, max_select=$5, sort=$6, enabled=$7, visible_on_pos=$8, visible_on_receipt=$9, visible_on_kitchen=$10, visible_on_online=$11 where id=$12`,
-                [g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online, conf.dst_id]
+                `update option_groups set label=$1, select_type=$2, required=$3, min_select=$4, max_select=$5, sort=$6, enabled=$7, visible_on_pos=$8, visible_on_receipt=$9, visible_on_kitchen=$10, visible_on_online=$11, label_customer=$13, label_kitchen=$14, channel_pos=$15, channel_qr=$16, channel_delivery=$17, start_at=$18, end_at=$19 where id=$12`,
+                [g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online, conf.dst_id,
+                 g.label_customer || null, g.label_kitchen || null, g.channel_pos ?? true, g.channel_qr ?? true, g.channel_delivery ?? true, g.start_at || null, g.end_at || null]
               );
               grpMap.set(g.id, conf.dst_id);
               updatedGroupIds.add(g.id);  // reconcile choices by label match
@@ -374,9 +375,10 @@ router.post('/selective-clone', async (req, res) => {
           usedGroupLabels.add(label);
           grpMap.set(g.id, id);
           await c.query(
-            `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled, visible_on_pos, visible_on_receipt, visible_on_kitchen, visible_on_online)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-            [id, dstShopId, label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online]
+            `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled, visible_on_pos, visible_on_receipt, visible_on_kitchen, visible_on_online, label_customer, label_kitchen, channel_pos, channel_qr, channel_delivery, start_at, end_at)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            [id, dstShopId, label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled, g.visible_on_pos, g.visible_on_receipt, g.visible_on_kitchen, g.visible_on_online,
+             g.label_customer || null, g.label_kitchen || null, g.channel_pos ?? true, g.channel_qr ?? true, g.channel_delivery ?? true, g.start_at || null, g.end_at || null]
           );
           logs.push(`Created option group "${label}"`);
           counts.option_groups++;
@@ -409,8 +411,8 @@ router.post('/selective-clone', async (req, res) => {
             const matched = dstChoices.find(ec => ec.label.trim().toLowerCase() === ch.label.trim().toLowerCase());
             if (matched) {
               await c.query(
-                `update option_choices set price_add=$1, effect_type=$2, enabled=$3, is_default=$4, sort=$5, max_qty=$6, target_role=$7, target_material_id=$8, variant_recipe_id=$9, is_metadata_only=$10, amount=$11 where id=$12`,
-                [ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, matched.id]
+                `update option_choices set price_add=$1, effect_type=$2, enabled=$3, is_default=$4, sort=$5, max_qty=$6, target_role=$7, target_material_id=$8, variant_recipe_id=$9, is_metadata_only=$10, amount=$11, block_type=$13, kitchen_note=$14 where id=$12`,
+                [ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, matched.id, ch.block_type || null, ch.kitchen_note || null]
               );
               choMap.set(ch.id, matched.id);
               counts.option_choices++;
@@ -418,9 +420,9 @@ router.post('/selective-clone', async (req, res) => {
               const id = await genUUID(c);
               choMap.set(ch.id, id);
               await c.query(
-                `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-                [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount]
+                `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, block_type, kitchen_note)
+                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, ch.block_type || null, ch.kitchen_note || null]
               );
               counts.option_choices++;
             }
@@ -431,9 +433,9 @@ router.post('/selective-clone', async (req, res) => {
           const id = await genUUID(c);
           choMap.set(ch.id, id);
           await c.query(
-            `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-            [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount]
+            `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, block_type, kitchen_note)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+            [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, ch.block_type || null, ch.kitchen_note || null]
           );
           counts.option_choices++;
         }
@@ -614,10 +616,11 @@ async function importIntoShop(c, dstShopId, data, opts = {}) {
   for (const g of data.option_groups || []) {
     const id = await genUUID(c); grpMap.set(g.id, id);
     await c.query(
-      `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled, visible_on_pos, visible_on_receipt, visible_on_kitchen, visible_on_online)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      `insert into option_groups (id, shop_id, label, select_type, required, min_select, max_select, sort, enabled, visible_on_pos, visible_on_receipt, visible_on_kitchen, visible_on_online, label_customer, label_kitchen, channel_pos, channel_qr, channel_delivery, start_at, end_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
       [id, dstShopId, g.label, g.select_type, g.required, g.min_select, g.max_select, g.sort, g.enabled,
-       g.visible_on_pos ?? true, g.visible_on_receipt ?? true, g.visible_on_kitchen ?? true, g.visible_on_online ?? true]);
+       g.visible_on_pos ?? true, g.visible_on_receipt ?? true, g.visible_on_kitchen ?? true, g.visible_on_online ?? true,
+       g.label_customer || null, g.label_kitchen || null, g.channel_pos ?? true, g.channel_qr ?? true, g.channel_delivery ?? true, g.start_at || null, g.end_at || null]);
     out.option_groups++;
   }
   for (const ch of data.option_choices || []) {
@@ -625,11 +628,11 @@ async function importIntoShop(c, dstShopId, data, opts = {}) {
     if (!group_id) continue;
     const id = await genUUID(c); choMap.set(ch.id, id);
     await c.query(
-      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, block_type, kitchen_note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [id, group_id, ch.label, ch.price_add ?? 0, ch.effect_type || 'NONE', ch.enabled ?? true, ch.is_default ?? false, ch.sort ?? 0, ch.max_qty ?? 1,
        ch.target_role || '', ch.target_material_id ? (matMap.get(ch.target_material_id) || null) : null,
-       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0]);
+       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0, ch.block_type || null, ch.kitchen_note || null]);
     out.option_choices++;
   }
   for (const l of data.option_choice_links || []) {

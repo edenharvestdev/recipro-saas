@@ -41,6 +41,17 @@ router.post('/sync', async (req, res) => {
       if (b._base_version != null && Number(b._base_version) !== current) {
         const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
       }
+      // RC-3 (narrow, scoped to pos_categories): production clients always send _base_version
+      // alongside shop_settings (frontend/index.html syncToSupabase() sets _base_version: dataVersion
+      // on every payload). A payload that writes shop_settings.pos_categories but omits _base_version
+      // is a stale/hand-crafted client — never treat "no version sent" as "no conflict possible" for
+      // the exact field the RC-1/RC-2 fixes protect; reject the same way as a real version mismatch.
+      // Scoped to pos_categories (not shop_settings as a whole) so legacy partial-payload syncs that
+      // never touch pos_categories (e.g. permission-only or single-field settings syncs) keep working
+      // unchanged — see backend/test/permissions.test.js PA3/PA7/PA17 (legacy full-sync compatibility).
+      if (b.shop_settings && b.shop_settings.pos_categories !== undefined && b._base_version == null) {
+        const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
+      }
       newVersion = current + 1;
 
       // A0: enforce field-level permissions BEFORE any write. Staff cannot elevate their own
@@ -174,18 +185,20 @@ router.post('/sync', async (req, res) => {
 
       // option_groups
       await upsertRows(client, 'option_groups',
-        ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled', 'visible_on_pos', 'visible_on_receipt', 'visible_on_kitchen', 'visible_on_online'],
+        ['id', 'shop_id', 'label', 'select_type', 'required', 'min_select', 'max_select', 'sort', 'enabled', 'visible_on_pos', 'visible_on_receipt', 'visible_on_kitchen', 'visible_on_online',
+         'label_customer', 'label_kitchen', 'channel_pos', 'channel_qr', 'channel_delivery', 'start_at', 'end_at'],
         withShop(b.option_groups || []), 'id');
 
       // option_choices
       for (const c of (b.option_choices || [])) {
         await client.query(
-          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only,amount,target_material_id)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12,$13,(select id from materials where id = $14))
-           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12,amount=$13,target_material_id=(select id from materials where id = $14)`,
+          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only,amount,target_material_id,block_type,kitchen_note)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12,$13,(select id from materials where id = $14),$15,$16)
+           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12,amount=$13,target_material_id=(select id from materials where id = $14),block_type=$15,kitchen_note=$16`,
           [c.id, c.group_id, c.label, c.price_add ?? 0, c.effect_type || 'NONE',
            c.enabled ?? true, c.is_default ?? false, c.sort ?? 0, c.max_qty ?? 1,
-           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false, c.amount ?? 0, c.target_material_id || null]);
+           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false, c.amount ?? 0, c.target_material_id || null,
+           c.block_type || null, c.kitchen_note || null]);
       }
 
       // option_choice_links: delete+reinsert for all groups synced
