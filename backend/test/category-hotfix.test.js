@@ -70,6 +70,10 @@ const FRONT_FNS = [
   'posCatStatusHtml', 'posCatSetStatus',
   'posCatAdd', 'posCatRemove', 'posCatDeleteUnplaced', 'posCatReassign',
   'posCatMove', 'posCatReorder', 'posCatRename', 'posCatArchive', 'posCatUnarchive',
+  // Phase 2: search / create are now separate components (the incident's root cause
+  // was one input doing both), plus product placement routed through posCatCommit.
+  'posCatSearchInput', 'posCatSearchKeydown', 'posCatFilteredIdx',
+  'posCatCreateStart', 'posCatCreateCancel', 'posCatAssign',
 ];
 const F = {};
 for (const n of FRONT_FNS) F[n] = extractFn(INDEX_SRC, n, 'frontend/index.html');
@@ -99,12 +103,15 @@ function build(opts) {
   const preamble = `
     let _posCatEditingIdx = null, _posCatSuppressBlur = false;
     let _posCatStatus = null, _posCatStatusTimer = null, _posCatInlineSave = false;
+    let _posCatCreating = false, _posCatSearch = '';
     const POS_CAT_STATUS_TEXT = ${POS_CAT_STATUS_TEXT_SRC};
     const POS_CAT_AUDIT_ACTIONS = ${POS_CAT_AUDIT_ACTIONS_SRC};
     let posCategoryFilter = '';
     let syncTimeout = null;
     const window = { _categoryAuditQueue: [] };
-    const document = { getElementById: (id) => ((id === 'newPosCat' && ENV.hasInput) ? ENV.input : null) };
+    // Only the dedicated CREATE input exists in the DOM stub — there is no
+    // search-or-create input any more, which is the whole point of Phase 2.
+    const document = { getElementById: (id) => ((id === 'posCatCreateInput' && ENV.hasInput) ? ENV.input : null) };
     const ui = { toast: (msg, kind) => ENV.toasts.push({ msg, kind }) };
     const setTimeout = () => 0;
     const clearTimeout = () => {};
@@ -112,8 +119,12 @@ function build(opts) {
     const recipes = ENV.recipes;
     const materials = ENV.materials;
     function posSellableMats() { return materials.filter(m => m.showInPos && m.saleType === 'SELLABLE'); }
+    function recById(id) { return recipes.find(r => r.id === id); }
+    function matById(id) { return materials.find(m => m.id === id); }
     function renderPosCatManagerBody() {}
+    function renderPosCatManagerRows() {}
     function renderPosCategoryBar() {}
+    function renderPosGrid() {}
     function handleSyncConflict() { ENV.conflictHandled = true; }
     async function syncToSupabase() {
       ENV.saveCalls++;
@@ -130,11 +141,44 @@ function build(opts) {
       ${FRONT_FNS.join(', ')},
       getStatus: () => _posCatStatus,
       getQueue: () => window._categoryAuditQueue,
+      getSearch: () => _posCatSearch,
+      isCreating: () => _posCatCreating,
     };
   `);
   const api = factory(env);
   api.ENV = env;
   return api;
+}
+
+// ---------------------------------------------------------------------------
+// Round-trip helpers. These mirror the two real shipped expressions, and are
+// asserted against the live source below so they cannot drift out of sync with
+// the code they stand in for.
+// ---------------------------------------------------------------------------
+// mirrors syncToSupabase()'s shop_settings.pos_categories expression
+function payloadPosCategories(s) {
+  return s._posCategoriesRaw ? s._posCategoriesRaw : (Array.isArray(s.posCategories) ? s.posCategories : []);
+}
+// mirrors applyBootstrapData()'s pos_categories parse
+function bootstrapPosCategories(raw) {
+  let p = raw;
+  if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { return []; } }
+  return Array.isArray(p) ? p : [];
+}
+{
+  const syncFnSrc = extractFn(INDEX_SRC, 'syncToSupabase', 'frontend/index.html');
+  if (!/pos_categories: settings\._posCategoriesRaw \? settings\._posCategoriesRaw : \(Array\.isArray\(settings\.posCategories\) \? settings\.posCategories : \[\]\)/.test(syncFnSrc)) {
+    throw new Error('payloadPosCategories() mirror has drifted from syncToSupabase() — update the test helper');
+  }
+}
+
+// Pull the markup for a single form field (the <label>+<input> around an id).
+function fieldMarkup(src, id) {
+  const at = src.indexOf('id="' + id + '"');
+  if (at === -1) throw new Error('cannot find field ' + id);
+  const from = src.lastIndexOf('<label', at);
+  const to = src.indexOf('>', src.indexOf('<input', at));
+  return src.slice(from === -1 ? at : from, to + 1);
 }
 
 // Server-side normalizer, rebuilt from the real sync.js source (no DB import).
@@ -185,16 +229,22 @@ function buildNormalizer() {
   // F2 — Enter cannot replace the list (preventDefault contract)
   // -------------------------------------------------------------------------
   {
-    const managerSrc = extractFn(INDEX_SRC, 'openPosCatManager', 'frontend/index.html');
-    check('F2 newPosCat Enter handler calls preventDefault before posCatAdd (no submit/reload)',
-      /onkeydown="if\(event\.key==='Enter'\)\{event\.preventDefault\(\);posCatAdd\(\);\}"/.test(managerSrc));
-    const renameRow = extractFn(INDEX_SRC, 'renderPosCatManagerBody', 'frontend/index.html');
+    // Phase 2 structure: the dual-purpose search-or-create input is gone. Enter may
+    // confirm ONLY inside the dedicated creation mode.
+    check('F2 the dual-purpose newPosCat input no longer exists anywhere in the markup',
+      !/id="newPosCat"/.test(INDEX_SRC));
+    const createRow = extractFn(INDEX_SRC, 'posCatCreateRowHtml', 'frontend/index.html');
+    check('F2 Enter inside creation mode preventDefaults before confirming',
+      /if\(event\.key==='Enter'\)\{event\.preventDefault\(\);posCatCreateConfirm\(\);\}/.test(createRow));
+    check('F2 Escape inside creation mode preventDefaults and cancels',
+      /event\.key==='Escape'\)\{event\.preventDefault\(\);posCatCreateCancel\(\);\}/.test(createRow));
+    const rowsSrc = extractFn(INDEX_SRC, 'posCatRowsHtml', 'frontend/index.html');
     check('F2 inline rename Enter/Escape also preventDefault (never submits the page)',
-      /if\(event\.key==='Enter'\)\{event\.preventDefault\(\);/.test(renameRow) &&
-      /event\.key==='Escape'\)\{event\.preventDefault\(\);/.test(renameRow));
+      /if\(event\.key==='Enter'\)\{event\.preventDefault\(\);/.test(rowsSrc) &&
+      /event\.key==='Escape'\)\{event\.preventDefault\(\);/.test(rowsSrc));
     const api = build({ settings: { posCategories: ['กาแฟ', 'ชา'], menuConfig: {} } });
-    await api.posCatAdd();   // no #newPosCat element → must be an inert no-op
-    check('F2 add with no input element leaves the list untouched',
+    await api.posCatAdd();   // no create input present → must be an inert no-op
+    check('F2 add with no creation input leaves the list untouched',
       JSON.stringify(api.ENV.settings.posCategories) === JSON.stringify(['กาแฟ', 'ชา']) && api.ENV.saveCalls === 0);
   }
 
@@ -639,6 +689,245 @@ function buildNormalizer() {
       failRow.detail.result === 'failed' && failRow.detail.reason === 'version_conflict');
     check('F15 a success row never carries a stale failure reason',
       norm([{ action: 'category.delete', old: 'A', result: 'ok', reason: 'should_be_dropped' }])[0].detail.reason === null);
+  }
+
+  // =========================================================================
+  // Phase 2 (Founder UX correction): search and creation are separate
+  // components. The incident was reachable because ONE input both searched
+  // existing categories and created new ones on Enter.
+  // =========================================================================
+  console.log('\n--- Phase 2: search/create separation + placement (U1-U7) ---\n');
+
+  // -------------------------------------------------------------------------
+  // U1 — search Enter never creates or replaces categories
+  // -------------------------------------------------------------------------
+  {
+    check('U1 search handler preventDefaults on Enter and then does nothing',
+      /if \(e\.key !== 'Enter'\) return;/.test(F.posCatSearchKeydown) &&
+      /e\.preventDefault\(\);/.test(F.posCatSearchKeydown));
+    // The strongest form of the contract: the search path cannot even reach a writer.
+    const WRITERS = /posCatAdd|posCatRename|posCatCommit|posCatRemove|saveAll|syncToSupabase|posCategories\s*=/;
+    check('U1 search keydown handler contains no write/create call at all',
+      !WRITERS.test(F.posCatSearchKeydown), F.posCatSearchKeydown);
+    check('U1 search input handler only filters (no write/create call)',
+      !WRITERS.test(F.posCatSearchInput), F.posCatSearchInput);
+    check('U1 search filter is read-only (posCatFilteredIdx never assigns to posCategories)',
+      !/posCategories\s*=[^=]/.test(F.posCatFilteredIdx));
+    // Behavioural: typing a brand-new name into search + Enter must change nothing.
+    const api = build({ settings: { posCategories: ['กาแฟ', 'ชา'], menuConfig: {} } });
+    api.posCatSearchInput('หมวดใหม่เอี่ยม');
+    let prevented = false;
+    api.posCatSearchKeydown({ key: 'Enter', preventDefault: () => { prevented = true; } });
+    check('U1 Enter in search calls preventDefault (never submits a parent form)', prevented);
+    check('U1 Enter in search created nothing and replaced nothing',
+      JSON.stringify(api.ENV.settings.posCategories) === JSON.stringify(['กาแฟ', 'ชา']) &&
+      api.ENV.saveCalls === 0 && api.getQueue().length === 0);
+    check('U1 the search term is never written into the category list',
+      !api.ENV.settings.posCategories.includes('หมวดใหม่เอี่ยม'));
+    // Non-Enter keys are left entirely alone.
+    let prevented2 = false;
+    api.posCatSearchKeydown({ key: 'a', preventDefault: () => { prevented2 = true; } });
+    check('U1 non-Enter keys in search are not intercepted', prevented2 === false);
+    // Filtering hides rows only — the underlying data is untouched.
+    api.posCatSearchInput('กาแฟ');
+    check('U1 search filters the visible rows', JSON.stringify(api.posCatFilteredIdx()) === JSON.stringify([0]));
+    check('U1 filtering does not remove anything from the stored list',
+      JSON.stringify(api.ENV.settings.posCategories) === JSON.stringify(['กาแฟ', 'ชา']));
+    check('U1 filtered rows carry the REAL index (a filtered delete cannot hit the wrong row)',
+      JSON.stringify(build({ settings: { posCategories: ['A', 'B', 'C'], menuConfig: {} } }).posCatFilteredIdx()) === JSON.stringify([0, 1, 2]));
+    const api2 = build({ settings: { posCategories: ['A', 'B', 'C'], menuConfig: {} } });
+    api2.posCatSearchInput('C');
+    check('U1 filtering to the 3rd item yields its true index 2, not 0',
+      JSON.stringify(api2.posCatFilteredIdx()) === JSON.stringify([2]));
+  }
+
+  // -------------------------------------------------------------------------
+  // U2 — "+ เพิ่มหมวด" appends exactly one category
+  // -------------------------------------------------------------------------
+  {
+    check('U2 creation is a mode you must open explicitly (not an always-open input)',
+      /_posCatCreating = true/.test(F.posCatCreateStart) && /_posCatCreating = false/.test(F.posCatCreateCancel));
+    const createRow = extractFn(INDEX_SRC, 'posCatCreateRowHtml', 'frontend/index.html');
+    check('U2 collapsed state shows a "+ เพิ่มหมวด" button that opens creation mode',
+      /onclick="posCatCreateStart\(\)"/.test(createRow) && /เพิ่มหมวด/.test(createRow));
+    check('U2 creation mode has explicit บันทึก / ยกเลิก buttons',
+      /onclick="posCatCreateConfirm\(\)"/.test(createRow) && /บันทึก/.test(createRow) &&
+      /onclick="posCatCreateCancel\(\)"/.test(createRow) && /ยกเลิก/.test(createRow));
+    check('U2 posCatAdd takes the name as an argument (not bound to a shared DOM input)',
+      /function posCatAdd\(nameRaw\)/.test(F.posCatAdd));
+    // Exactly one record appended per confirm.
+    const api = build({ inputValue: 'ขนม', settings: { posCategories: ['กาแฟ', 'ชา'], menuConfig: {} } });
+    const before = api.ENV.settings.posCategories.length;
+    const r = await api.posCatAdd('ขนม');
+    check('U2 creating appends exactly one record', r && r.ok === true &&
+      api.ENV.settings.posCategories.length === before + 1, api.ENV.settings.posCategories);
+    check('U2 the appended record is the typed name, in last position',
+      api.ENV.settings.posCategories[api.ENV.settings.posCategories.length - 1] === 'ขนม');
+    check('U2 exactly one create audit event was emitted',
+      api.ENV.sentQueues[0].filter(x => x.action === 'category.create').length === 1);
+    // The add path only ever pushes — it must never assign the whole array.
+    check('U2 posCatAdd pushes a single item and never assigns the whole list',
+      /settings\.posCategories\.push\(name\)/.test(F.posCatAdd) &&
+      !/settings\.posCategories\s*=\s*[^[]/.test(stripComments(F.posCatAdd).replace(/settings\.posCategories = \[\];/, '')));
+  }
+
+  // -------------------------------------------------------------------------
+  // U3 — existing categories remain after add, and survive a reload round-trip
+  // -------------------------------------------------------------------------
+  {
+    const api = build({ settings: { posCategories: ['กาแฟ', 'ชา', 'ขนม'], menuConfig: {} } });
+    await api.posCatAdd('น้ำผลไม้');
+    check('U3 every pre-existing category is still present after an add',
+      ['กาแฟ', 'ชา', 'ขนม'].every(c => api.ENV.settings.posCategories.includes(c)));
+    check('U3 order of the pre-existing categories is unchanged',
+      JSON.stringify(api.ENV.settings.posCategories.slice(0, 3)) === JSON.stringify(['กาแฟ', 'ชา', 'ขนม']));
+    // Round-trip: what the payload builder sends must survive the bootstrap parse.
+    const sent = payloadPosCategories(api.ENV.settings);
+    const reloaded = bootstrapPosCategories(JSON.stringify(sent));
+    check('U3 add survives a save→reload round-trip with no loss',
+      JSON.stringify(reloaded) === JSON.stringify(['กาแฟ', 'ชา', 'ขนม', 'น้ำผลไม้']), reloaded);
+  }
+
+  // -------------------------------------------------------------------------
+  // U4 — drag ordering persists through a save→reload round-trip
+  // -------------------------------------------------------------------------
+  {
+    const api = build({ settings: { posCategories: ['A', 'B', 'C', 'D'], menuConfig: {} } });
+    await api.posCatReorder(3, 0);   // drag D to the top
+    check('U4 reorder applied in memory',
+      JSON.stringify(api.ENV.settings.posCategories) === JSON.stringify(['D', 'A', 'B', 'C']));
+    const sent = payloadPosCategories(api.ENV.settings);
+    const reloaded = bootstrapPosCategories(JSON.stringify(sent));
+    check('U4 the dragged order survives save→reload byte-for-byte',
+      JSON.stringify(reloaded) === JSON.stringify(['D', 'A', 'B', 'C']), reloaded);
+    check('U4 the reorder was actually persisted (save invoked)', api.ENV.saveCalls === 1);
+    check('U4 a reorder audit event records the move',
+      api.ENV.sentQueues[0].some(x => x.action === 'category.reorder' && x.old === '3' && x.new === '0'));
+  }
+
+  // -------------------------------------------------------------------------
+  // U5 — category management is reachable from the Sales/POS page
+  // -------------------------------------------------------------------------
+  {
+    const barSrc = extractFn(INDEX_SRC, 'renderPosCategoryBar', 'frontend/index.html');
+    check('U5 the POS category bar renders a จัดการหมวด control',
+      /จัดการหมวด/.test(barSrc));
+    check('U5 that control opens the category manager',
+      /onclick="openPosCatManager\(\)"/.test(barSrc));
+    check('U5 it sits alongside the ทั้งหมด chip + category chips on the Sales page',
+      /ทั้งหมด/.test(barSrc) && /pos-cat-chip/.test(barSrc) && /posCategoryBar/.test(barSrc));
+    check('U5 the manage control is owner/superadmin gated (canManage)',
+      /const canManage = \(USER_ROLE === 'owner' \|\| USER_ROLE === 'superadmin'\)/.test(barSrc) &&
+      /canManage \?/.test(barSrc));
+  }
+
+  // -------------------------------------------------------------------------
+  // U6 — recipe editing is NOT the primary category-management location
+  // -------------------------------------------------------------------------
+  {
+    const inertEnter = /onkeydown="if\(event\.key==='Enter'\)\{event\.preventDefault\(\);return false;\}"/;
+    const rCat = fieldMarkup(INDEX_SRC, 'rCategory');
+    const mCat = fieldMarkup(INDEX_SRC, 'mCat');
+    check('U6 rCategory Enter is inert (preventDefault, no submit, no create)', inertEnter.test(rCat), rCat);
+    check('U6 mCat Enter is inert (preventDefault, no submit, no create)', inertEnter.test(mCat), mCat);
+    check('U6 neither compatibility field can call a category writer on Enter',
+      !/posCatAdd|posCatCommit|posCatRename/.test(rCat) && !/posCatAdd|posCatCommit|posCatRename/.test(mCat));
+    check('U6 both fields point the operator at the real manager',
+      /openPosCatManager\(\)/.test(rCat) && /openPosCatManager\(\)/.test(mCat));
+    check('U6 both are labelled as compatibility views of this item only',
+      /มุมมองความเข้ากันได้/.test(rCat) && /มุมมองความเข้ากันได้/.test(mCat));
+    check('U6 the recipe field states that the recipe does not own the category',
+      /สูตรไม่ได้เป็นเจ้าของหมวด/.test(rCat));
+    // The fields must still exist — deleting them would break existing edit flows.
+    check('U6 the fields still exist (compatibility preserved, not removed)',
+      /id="rCategory"/.test(INDEX_SRC) && /id="mCat"/.test(INDEX_SRC));
+  }
+
+  // -------------------------------------------------------------------------
+  // U7 — rename / archive / restore / delete are explicit separate actions
+  // -------------------------------------------------------------------------
+  {
+    const actions = {
+      rename: 'posCatRename', archive: 'posCatArchive',
+      restore: 'posCatUnarchive', delete: 'posCatRemove', create: 'posCatAdd',
+    };
+    for (const [label, fn] of Object.entries(actions)) {
+      check(`U7 "${label}" is its own named function (${fn})`,
+        new RegExp('(?:^|\\n)(?:async )?function ' + fn + '\\s*\\(').test(INDEX_SRC));
+    }
+    // Each action emits its own distinct audit kind — no shared catch-all writer.
+    const kinds = ['category.create', 'category.rename', 'category.reorder',
+      'category.archive', 'category.restore', 'category.delete', 'category.assignment_change'];
+    check('U7 each action has its own audit kind', kinds.every(k => INDEX_SRC.includes(`'${k}'`)));
+    // No free-text whole-list write path: nothing may assign posCategories from a
+    // user-typed string. The only permitted assignments are the merge (RC-1),
+    // lazy init, and posCatCommit's snapshot restore.
+    const assigns = [];
+    stripComments(INDEX_SRC).split('\n').forEach((line, i) => {
+      const m = /settings\.posCategories\s*=\s*(.+)$/.exec(line);
+      if (m) assigns.push({ line: i + 1, rhs: m[1].trim() });
+    });
+    const ALLOWED = [
+      /^mergePosCategories\(settings\.posCategories, wizState\.cats\);$/,  // RC-1 merge
+      /^\[\];?$/,                                                          // lazy init
+      /^snapCats\.slice\(\);$/,                                            // posCatCommit restore
+      /^_posCatParsed,?$/,                                                 // bootstrap parse result
+    ];
+    const bad = assigns.filter(a => !ALLOWED.some(re => re.test(a.rhs)));
+    check('U7 no code path assigns the whole category list from free text',
+      bad.length === 0, bad);
+    // Delete must not secretly reuse rename/archive. (Note: posCatRemove does call
+    // posCatArchivedList() to clear a stale hide-flag for the deleted category —
+    // that is bookkeeping, not the archive ACTION, hence the `(` in the patterns.)
+    check('U7 the delete path is separate from rename/archive and gated on assignments',
+      /reason: 'has_products'/.test(F.posCatRemove) &&
+      !/posCatRename\(/.test(F.posCatRemove) && !/posCatArchive\(/.test(F.posCatRemove) &&
+      !/posCatUnarchive\(/.test(F.posCatRemove));
+    check('U7 archive and restore are distinct inverse actions',
+      /arch\.push\(name\)/.test(F.posCatArchive) && /arch\.splice\(idx, 1\)/.test(F.posCatUnarchive));
+  }
+
+  // -------------------------------------------------------------------------
+  // U3b — product placement is restored and safe (regression guard)
+  // -------------------------------------------------------------------------
+  {
+    check('U3b posCatAssign has real call sites again (placement UI exists)',
+      (INDEX_SRC.match(/posCatAssign\('rec'/g) || []).length === 1 &&
+      (INDEX_SRC.match(/posCatAssign\('mat'/g) || []).length === 1);
+    const placement = extractFn(INDEX_SRC, 'posCatPlacementHtml', 'frontend/index.html');
+    check('U3b placement uses a <select> of existing categories, not a free-text input',
+      /<select/.test(placement) && !/<input/.test(placement));
+    check('U3b placement offers an explicit "ไม่มีหมวด" option',
+      /ไม่มีหมวด/.test(placement) && /<option value=""/.test(placement));
+    check('U3b placement lists menu recipes and sellable materials',
+      /menuRecs/.test(placement) && /posSellableMats\(\)/.test(placement));
+    check('U3b placement sources its options from visiblePosCategories()',
+      /visiblePosCategories\(\)/.test(placement));
+    // Behaviour: assignment routes through posCatCommit → status + audit + rollback.
+    const recipes = [{ id: 'r1', name: 'ชาเย็น', category: 'ชา', isRaw: false, sell: 45, items: [{ matId: 'm9' }] }];
+    const api = build({ settings: { posCategories: ['ชา', 'กาแฟ'], menuConfig: {} }, recipes });
+    const r = await api.posCatAssign('rec', 'r1', 'กาแฟ');
+    check('U3b assigning a product persists and reports success', r && r.ok === true && recipes[0].category === 'กาแฟ');
+    check('U3b assignment emits category.assignment_change with old→new and count',
+      api.ENV.sentQueues[0].some(x => x.action === 'category.assignment_change' &&
+        x.old === 'ชา' && x.new === 'กาแฟ' && x.count === 1), api.ENV.sentQueues[0]);
+    check('U3b assignment only touched the category string',
+      recipes[0].sell === 45 && JSON.stringify(recipes[0].items) === JSON.stringify([{ matId: 'm9' }]));
+    check('U3b clearing to "ไม่มีหมวด" is allowed and audited',
+      (await (async () => {
+        const a2 = build({ settings: { posCategories: ['ชา'], menuConfig: {} }, recipes: [{ id: 'r1', category: 'ชา', isRaw: false }] });
+        const rr = await a2.posCatAssign('rec', 'r1', '');
+        return rr.ok === true && a2.ENV.sentQueues[0].some(x => x.action === 'category.assignment_change' && x.new === null);
+      })()));
+    // A failed assignment must roll the product back (H).
+    const recipes2 = [{ id: 'r1', category: 'ชา', isRaw: false }];
+    const apiFail = build({ settings: { posCategories: ['ชา', 'กาแฟ'], menuConfig: {} }, recipes: recipes2, saveMode: 'fail' });
+    const rf = await apiFail.posCatAssign('rec', 'r1', 'กาแฟ');
+    check('U3b a failed assignment rolls the product back and reports failure',
+      rf && rf.ok === false && recipes2[0].category === 'ชา' && apiFail.getStatus() === 'failed');
+    check('U3b a no-op assignment does not save',
+      (await build({ settings: { posCategories: ['ชา'], menuConfig: {} }, recipes: [{ id: 'r1', category: 'ชา', isRaw: false }] })
+        .posCatAssign('rec', 'r1', 'ชา')).reason === 'unchanged');
   }
 
   console.log(`\ncategory-hotfix: ${passed} passed, ${failed} failed`);

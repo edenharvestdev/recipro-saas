@@ -2167,8 +2167,12 @@
           <select id="mSup"></select>
         </div>
         <div class="field">
-          <label>หมวดหมู่ (เลือกหรือพิมพ์เพิ่มเองได้) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— หมวดหน้าขาย (ชั่วคราว) — จัดการ/เรียงที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
-          <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า">
+          <label>หมวดหมู่ <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— มุมมองความเข้ากันได้: แสดง/แก้หมวดของรายการนี้เท่านั้น · สร้าง/เรียง/เปลี่ยนชื่อ/ลบหมวด ทำที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
+          <!-- UX-4: combobox แบบ list=datalist คือรูปแบบ "ค้นหา-หรือ-สร้าง" ที่กำลังเลิกใช้ (ต้นเหตุของเหตุการณ์)
+               คงช่องไว้เพื่อไม่ให้ flow แก้ไขเดิมพัง แต่ทำให้ Enter ไม่มีผล: กัน submit ฟอร์มแม่ และไม่สร้างหมวด
+               ค่าที่พิมพ์มีผลกับ "หมวดของรายการนี้" ตอนกดบันทึกฟอร์มเท่านั้น ไม่เคยเขียนลิสต์หมวดทั้งก้อน -->
+          <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
           <datalist id="catDatalist"></datalist>
         </div>
       </div>
@@ -2375,8 +2379,11 @@
       </div>
 
       <div class="field" style="margin-top:16px;">
-        <label>หมวดหมู่เมนู (สำหรับกรองใน POS) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— หมวดหน้าขาย (ชั่วคราว) — จัดการ/เรียงที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
-        <input id="rCategory" list="rCategoryList" placeholder="เลือกหมวดเดิม หรือพิมพ์เพิ่มใหม่ (เช่น เครื่องดื่ม, อาหาร, ขนม)">
+        <label>หมวดหมู่เมนู (สำหรับกรองใน POS) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— มุมมองความเข้ากันได้: แสดง/แก้หมวดของเมนูนี้เท่านั้น · สูตรไม่ได้เป็นเจ้าของหมวด · สร้าง/เรียง/เปลี่ยนชื่อ/ลบหมวด ทำที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
+        <!-- UX-4: การแก้สูตรไม่ใช่ที่หลักสำหรับจัดการหมวด — ช่องนี้เป็นมุมมองความเข้ากันได้ของ "หมวดปัจจุบัน"
+             ของเมนูนี้เท่านั้น Enter ถูกกันไว้ (ไม่ submit ฟอร์มแม่ ไม่สร้างหมวด ไม่แตะลิสต์หมวดทั้งก้อน) -->
+        <input id="rCategory" list="rCategoryList" placeholder="เลือกหมวดของเมนูนี้ (จัดการหมวดทั้งหมดที่ 'จัดการหมวดเมนู')"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
         <datalist id="rCategoryList"></datalist>
       </div>
 
@@ -7556,6 +7563,8 @@ function renderPosCategoryBar() {
 // ทุกการแก้ต้องผ่าน posCatCommit() (H: snapshot → mutate → saving → saved/failed/conflict) — ห้ามแก้ตรงๆ
 let _posCatEditingIdx = null;     // index ของหมวดที่กำลังแก้ชื่ออยู่ (inline)
 let _posCatSuppressBlur = false;  // กัน onblur ยิงซ้ำตอน Enter/Escape ทำให้ re-render แล้ว input หลุดโฟกัสเอง
+let _posCatCreating = false;      // UX-2: อยู่ใน "โหมดสร้างหมวด" ไหม (ต้องกด + เพิ่มหมวด ก่อนเท่านั้น)
+let _posCatSearch = '';           // UX-1: คำค้นหา — กรองแถวที่แสดงเท่านั้น ไม่เคยถูกเขียนลงข้อมูล
 let _posCatDragFrom = null;       // HTML5 DnD (เมาส์): index ที่เริ่มลาก
 let _posCatTouch = null;          // pointer-based fallback (แตะค้าง ~300ms แล้วลาก) สำหรับจอสัมผัส
 
@@ -7692,6 +7701,8 @@ async function posCatCommit(mutateFn, auditFn) {
 function openPosCatManager() {
   if (!Array.isArray(settings.posCategories)) settings.posCategories = [];
   _posCatEditingIdx = null;
+  _posCatCreating = false;   // เปิดตัวจัดการทุกครั้ง = เริ่มที่โหมดดู ไม่ใช่โหมดสร้าง
+  _posCatSearch = '';
   let ov = document.getElementById('posCatOverlay');
   if (ov) ov.remove();
   ov = document.createElement('div');
@@ -7701,15 +7712,53 @@ function openPosCatManager() {
       <h2 style="margin:0 0 4px;"><span class="ico" data-icon="layout-grid"></span> จัดการหมวดเมนู</h2>
       <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 14px;">ลาก ⠿ เพื่อจัดลำดับ (แตะค้างบนมือถือ) · แตะชื่อ/ปุ่มดินสอเพื่อแก้ไข · แยกจากหมวดวัตถุดิบ/สต๊อก</p>
       <div id="posCatManagerBody"></div>
-      <div style="display:flex;gap:6px;margin-top:14px;">
-        <input id="newPosCat" placeholder="ชื่อหมวดใหม่ เช่น เครื่องดื่มเย็น" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();posCatAdd();}">
-        <button class="btn btn-primary btn-sm" onclick="posCatAdd()"><span class="ico" data-icon="plus"></span> เพิ่มหมวด</button>
-      </div>
       <button onclick="document.getElementById('posCatOverlay').remove()" class="btn btn-ghost" style="width:100%;margin-top:10px;">ปิด</button>
     </div>`;
   document.body.appendChild(ov);
   renderPosCatManagerBody();
+}
+
+// ── UX-1: ค้นหา = ค้นหาอย่างเดียว (แยกขาดจากการสร้าง) ────────────────────────
+// เหตุการณ์ที่ทำให้หมวดหาย เกิดจากช่องเดียวทำสองหน้าที่ (ค้นหา/เลือกของเดิม + พิมพ์ชื่อใหม่แล้ว
+// Enter เพื่อสร้าง) — ข้อความที่ผู้ใช้พิมพ์จึงกลายเป็น "ลิสต์ใหม่ทั้งก้อน" ได้ ตอนนี้แยกเป็นคนละ
+// component: ช่องนี้กรองแถวที่แสดงเท่านั้น ไม่เขียนอะไรทั้งสิ้น
+// Enter ที่นี่ = preventDefault แล้วจบ — ไม่สร้าง ไม่แก้ชื่อ ไม่แทนลิสต์ ไม่ submit ฟอร์มแม่
+function posCatSearchInput(v) {
+  _posCatSearch = String(v == null ? '' : v);
+  renderPosCatManagerRows();   // re-render เฉพาะแถว เพื่อไม่ให้ช่องค้นหาหลุดโฟกัสระหว่างพิมพ์
+}
+// Enter ในช่องค้นหา: กันพฤติกรรมเริ่มต้นของเบราว์เซอร์ (submit ฟอร์มแม่) แล้วไม่ทำอะไรต่อ
+// ตั้งใจให้ "ไม่ทำอะไร" — ห้ามผูกการสร้าง/บันทึกใดๆ เข้ากับปุ่ม Enter ของช่องค้นหาอีก
+function posCatSearchKeydown(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  return false;
+}
+function posCatSearchClear() { _posCatSearch = ''; renderPosCatManagerBody(); }
+// คืนค่า index จริงใน settings.posCategories ของหมวดที่ผ่านตัวกรอง — ทุกปุ่มในแถวใช้ index จริงเสมอ
+// (ห้ามใช้ index ของลิสต์ที่กรองแล้ว ไม่งั้นกรองอยู่แล้วกดลบ จะลบผิดตัว)
+function posCatFilteredIdx() {
+  const cats = settings.posCategories || [];
+  const q = String(_posCatSearch || '').trim().toLowerCase();
+  const idx = cats.map((c, i) => i);
+  if (!q) return idx;
+  return idx.filter(i => String(cats[i] == null ? '' : cats[i]).toLowerCase().includes(q));
+}
+
+// ── UX-2: การสร้างหมวด = โหมดแยกที่ต้องเปิดเอง + มีปุ่มบันทึก/ยกเลิกชัดเจน ──
+// กด "+ เพิ่มหมวด" เพื่อเข้าโหมดสร้าง; Enter ยืนยันได้เฉพาะ "ในโหมดสร้าง" เท่านั้น
+function posCatCreateStart() {
+  _posCatCreating = true;
+  renderPosCatManagerBody();
+  const inp = document.getElementById('posCatCreateInput');
+  if (inp) { inp.focus(); }
+}
+function posCatCreateCancel() { _posCatCreating = false; renderPosCatManagerBody(); }
+// ยืนยันสร้าง — เพิ่ม "หนึ่งรายการ" ต่อการยืนยันหนึ่งครั้ง ของเดิมไม่ถูกแตะ (posCatAdd → push เดียว)
+async function posCatCreateConfirm() {
+  const inp = document.getElementById('posCatCreateInput');
+  const r = await posCatAdd(inp ? inp.value : '');
+  if (r && r.ok) { _posCatCreating = false; renderPosCatManagerBody(); }
 }
 
 function renderPosCatManagerBody() {
@@ -7724,7 +7773,80 @@ function renderPosCatManagerBody() {
       <div style="margin-top:6px;"><button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none;" onclick="posCatRepair()">ซ่อมข้อมูล</button></div>
     </div>` : '';
 
-  const catRows = cats.length ? cats.map((c, i) => {
+  el.innerHTML = `
+    ${repairBanner}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="font-size:13px;font-weight:700;flex:1;">หมวด (ลากจัดลำดับ · โฟกัสแถวแล้วกด Alt+↑/↓ ก็ได้)</div>
+      <div id="posCatStatusLine" style="font-size:11px;">${posCatStatusHtml()}</div>
+    </div>
+    ${posCatSearchBarHtml()}
+    ${posCatCreateRowHtml()}
+    <div id="posCatRowsWrap" style="background:var(--surface-2);border-radius:10px;padding:4px 10px;max-height:300px;overflow-y:auto;">${posCatRowsHtml()}</div>
+    ${posCatPlacementHtml()}`;
+  renderIcons(el);
+  if (_posCatEditingIdx != null) {
+    const inp = document.getElementById('posCatRenameInput');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+}
+
+// UX-1: แถบค้นหา — คนละ component กับการสร้าง (คนละปุ่ม คนละ handler คนละ id)
+// ไม่มี onkeydown ที่เรียก posCatAdd/posCatRename/หรือเขียนอะไรทั้งนั้น — Enter ถูกกลืนทิ้งอย่างเดียว
+function posCatSearchBarHtml() {
+  const cats = settings.posCategories || [];
+  if (cats.length < 2 && !_posCatSearch) return '';   // ลิสต์สั้นมากไม่ต้องมีช่องค้นหาให้รก
+  const shown = posCatFilteredIdx().length;
+  return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+      <span class="ico" data-icon="search" style="color:var(--color-text-muted);flex:0 0 auto;"></span>
+      <input id="posCatSearchInput" type="search" value="${esc(_posCatSearch)}" placeholder="ค้นหาหมวด (กรองรายการที่แสดงเท่านั้น)"
+        oninput="posCatSearchInput(this.value)" onkeydown="return posCatSearchKeydown(event)"
+        style="flex:1;padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+      ${_posCatSearch ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;flex:0 0 auto;" onclick="posCatSearchClear()">ล้าง</button>
+        <span style="font-size:11px;color:var(--color-text-muted);flex:0 0 auto;white-space:nowrap;">${shown}/${cats.length}</span>` : ''}
+    </div>`;
+}
+
+// UX-2: การสร้าง — ปุ่ม "+ เพิ่มหมวด" เปิดแถวสร้างเฉพาะกิจ ที่มีบันทึก/ยกเลิกชัดเจน
+// Enter ยืนยันได้ "เฉพาะในโหมดนี้" (ไม่มีช่องอื่นในตัวจัดการที่ Enter แล้วสร้างหมวดได้อีก)
+function posCatCreateRowHtml() {
+  if (!_posCatCreating) {
+    return `<button class="btn btn-primary btn-sm" style="margin-bottom:8px;" onclick="posCatCreateStart()">
+        <span class="ico" data-icon="plus"></span> เพิ่มหมวด
+      </button>`;
+  }
+  return `<div style="background:var(--surface-2);border:1px solid var(--color-primary);border-radius:10px;padding:10px;margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:6px;">สร้างหมวดใหม่</div>
+      <div style="display:flex;gap:6px;">
+        <input id="posCatCreateInput" placeholder="ชื่อหมวดใหม่ เช่น เครื่องดื่มเย็น"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();posCatCreateConfirm();}else if(event.key==='Escape'){event.preventDefault();posCatCreateCancel();}"
+          style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+        <button class="btn btn-primary btn-sm" onclick="posCatCreateConfirm()"><span class="ico" data-icon="check"></span> บันทึก</button>
+        <button class="btn btn-ghost btn-sm" onclick="posCatCreateCancel()">ยกเลิก</button>
+      </div>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-top:6px;">เพิ่มหมวดใหม่ 1 หมวด — หมวดเดิมทั้งหมดยังอยู่ครบ</div>
+    </div>`;
+}
+
+// re-render เฉพาะแถว (ใช้ตอนพิมพ์ค้นหา) — ไม่แตะ DOM ของช่องค้นหา ช่องจึงไม่หลุดโฟกัส
+function renderPosCatManagerRows() {
+  const wrap = document.getElementById('posCatRowsWrap');
+  if (!wrap) return;
+  wrap.innerHTML = posCatRowsHtml();
+  renderIcons(wrap);
+  const cats = settings.posCategories || [];
+  const shown = posCatFilteredIdx().length;
+  const counter = document.getElementById('posCatSearchCount');
+  if (counter) counter.textContent = `${shown}/${cats.length}`;
+}
+
+function posCatRowsHtml() {
+  const cats = settings.posCategories || [];
+  if (!cats.length) return '<div style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีหมวด — กด "+ เพิ่มหมวด" ด้านบน</div>';
+  const visibleIdx = posCatFilteredIdx();
+  if (!visibleIdx.length) return `<div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">ไม่พบหมวดที่ตรงกับ "${esc(_posCatSearch)}" — หมวดทั้ง ${cats.length} หมวดยังอยู่ครบ (ตัวกรองไม่ได้ลบอะไร)</div>`;
+  // i = index จริงใน settings.posCategories เสมอ (ไม่ใช่ index ของลิสต์ที่กรองแล้ว)
+  return visibleIdx.map((i) => {
+    const c = cats[i];
     const archived = posCatIsArchived(c);
     const count = posCatItemCount(c);
     const editing = _posCatEditingIdx === i;
@@ -7747,34 +7869,61 @@ function renderPosCatManagerBody() {
       </button>
       <button class="btn btn-ghost btn-sm" style="padding:2px 7px;color:#dc2626;flex:0 0 auto;" onclick="posCatDeleteConfirm(${i})">ลบ</button>
     </div>`;
-  }).join('') : '<div style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีหมวด — เพิ่มด้านล่าง</div>';
+  }).join('');
+}
 
-  el.innerHTML = `
-    ${repairBanner}
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <div style="font-size:13px;font-weight:700;flex:1;">หมวด (ลากจัดลำดับ · โฟกัสแถวแล้วกด Alt+↑/↓ ก็ได้)</div>
-      <div id="posCatStatusLine" style="font-size:11px;">${posCatStatusHtml()}</div>
-    </div>
-    <div id="posCatRowsWrap" style="background:var(--surface-2);border-radius:10px;padding:4px 10px;max-height:420px;overflow-y:auto;">${catRows}</div>`;
-  renderIcons(el);
-  if (_posCatEditingIdx != null) {
-    const inp = document.getElementById('posCatRenameInput');
-    if (inp) { inp.focus(); inp.select(); }
-  }
+// ── UX-3: จัดเมนูเข้าหมวด (product placement) ────────────────────────────────
+// หน้าที่ "กำหนดว่าสินค้าอยู่หมวดไหน" อยู่ในบริบทการขาย/เมนู (ตัวจัดการนี้เปิดจากหน้าขาย)
+// เลือกจาก <select> ของหมวดที่มีอยู่ + ตัวเลือก "ไม่มีหมวด" เท่านั้น — ไม่มีช่องพิมพ์อิสระ
+// เพราะ free-text ที่แก้ได้ทั้งลิสต์คือรูปแบบที่กำลังเลิกใช้ (ต้นเหตุของเหตุการณ์)
+function posCatPlacementHtml() {
+  const cats = visiblePosCategories();
+  const menuRecs = recipes.filter(r => (r.onMenu != null ? r.onMenu : !r.isRaw));
+  const menuMats = posSellableMats();
+  const total = menuRecs.length + menuMats.length;
+  const opts = (cur) => {
+    const known = cats.some(c => c === cur);
+    return '<option value="">— ไม่มีหมวด —</option>'
+      + cats.map(c => `<option value="${esc(c)}"${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('')
+      // หมวดเดิมของสินค้าที่ถูกซ่อน/ไม่อยู่ในลิสต์แล้ว — โชว์ไว้ให้เห็นความจริง ไม่แอบเปลี่ยนให้เงียบๆ
+      + ((cur && !known) ? `<option value="${esc(cur)}" selected>${esc(cur)} (หมวดเดิม)</option>` : '');
+  };
+  const itemRow = (name, cur, onch) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+      <span style="flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>
+      <select onchange="${onch}" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:12px;min-width:130px;flex:0 0 auto;">${opts(cur)}</select>
+    </div>`;
+  return `
+    <div style="font-size:13px;font-weight:700;margin:14px 0 6px;">จัดเมนูเข้าหมวด (${total} รายการ)</div>
+    <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;">เลือกหมวดให้สินค้าจากหมวดที่มีอยู่ — การตั้งค่านี้เปลี่ยนเฉพาะ "หมวดของสินค้า" ไม่แตะสูตร/ตัวเลือก/ราคา/สต๊อก</div>
+    <div style="background:var(--surface-2);border-radius:10px;padding:8px 12px;max-height:260px;overflow:auto;">
+      ${menuRecs.map(r => itemRow(r.name, r.category || '', `posCatAssign('rec','${r.id}',this.value)`)).join('')}
+      ${menuMats.map(m => itemRow(m.name + ' (สินค้า)', m.category || '', `posCatAssign('mat','${m.id}',this.value)`)).join('')}
+      ${total ? '' : '<div style="font-size:12px;color:var(--color-text-muted);">ยังไม่มีเมนู</div>'}
+    </div>`;
 }
 
 // ── การเพิ่ม/ลบ/ย้าย/แก้ชื่อ — คงชื่อฟังก์ชัน+สัญญาเดิมไว้ (เรียกจากที่อื่นได้เหมือนเดิม) ──
-// เพิ่มหมวด: Enter ปลอดภัย (ตัวเรียกใช้ preventDefault), ค่าว่างเพิ่มไม่ได้, ชื่อซ้ำเตือนชัดเจน (ไม่เขียนทับ)
-function posCatAdd() {
-  const inp = document.getElementById('newPosCat'); if (!inp) return;
-  const name = (inp.value || '').trim();
-  if (!name) { if (typeof ui !== 'undefined' && ui.toast) ui.toast('พิมพ์ชื่อหมวดก่อน', 'warning'); return; }
+// UX-2: สร้างหมวด — รับ "ชื่อ" มาตรงๆ ไม่ไปอ่าน DOM เอง จึงผูกกับช่องกรอกใดช่องหนึ่งไม่ได้อีก
+// (เดิม posCatAdd() อ่าน #newPosCat ที่เป็นช่อง "ค้นหา-หรือ-สร้าง" ช่องเดียวกัน — ต้นเหตุของเหตุการณ์)
+// เพิ่ม "หนึ่งรายการ" ต่อการเรียกหนึ่งครั้งเสมอ (push เดียว ไม่มีการเขียนทับทั้งอาเรย์)
+// ค่าว่าง = ไม่เพิ่ม · ชื่อซ้ำ = เตือนชัดเจน ไม่เขียนทับของเดิม
+function posCatAdd(nameRaw) {
+  // back-compat: ถ้าไม่ส่งชื่อมา ให้อ่านจากช่องในโหมดสร้าง (ไม่ใช่ช่องค้นหา)
+  if (nameRaw == null) {
+    const inp = document.getElementById('posCatCreateInput');
+    if (!inp) return { ok: false, reason: 'no_input' };
+    nameRaw = inp.value;
+  }
+  const name = String(nameRaw == null ? '' : nameRaw).trim();
+  if (!name) {
+    if (typeof ui !== 'undefined' && ui.toast) ui.toast('พิมพ์ชื่อหมวดก่อน', 'warning');
+    return { ok: false, reason: 'empty' };
+  }
   if (!Array.isArray(settings.posCategories)) settings.posCategories = [];
   if (settings.posCategories.some(c => String(c == null ? '' : c).trim() === name)) {
     if (typeof ui !== 'undefined' && ui.toast) ui.toast(`มีหมวด "${name}" อยู่แล้ว — ใช้ชื่ออื่น`, 'warning');
-    return;
+    return { ok: false, reason: 'duplicate' };
   }
-  inp.value = '';
   return posCatCommit(
     () => { settings.posCategories.push(name); return name; },
     () => ({ action: 'category.create', old: null, new: name, count: 0 })
@@ -7984,11 +8133,22 @@ async function posCatRepair() {
   const r = await posCatCommit(() => { settings._posCategoriesRaw = null; return true; }, null);
   if (r && r.ok && typeof ui !== 'undefined' && ui.toast) ui.toast('ซ่อมข้อมูลหมวดหน้าขายแล้ว', 'success');
 }
-// เก็บไว้ใช้ตามสัญญาเดิม (ฟอร์มสูตร/วัตถุดิบเรียกตรงๆ) — เขียนเฉพาะค่าหมวดของสินค้า 1 ตัว
+// UX-3: กำหนดหมวดให้สินค้า 1 ตัว จากส่วน "จัดเมนูเข้าหมวด" (บริบทการขาย/เมนู)
+// เขียนเฉพาะค่าหมวด (string) ของสินค้าตัวนั้นตัวเดียว — ไม่แตะสูตร/BOM/ตัวเลือก/ราคา/สต๊อก
+// ผ่าน posCatCommit เพื่อให้ได้ H (สถานะ/rollback/409) + I (audit) เหมือนการแก้หมวดอื่นๆ
 function posCatAssign(type, id, value) {
-  if (type === 'rec') { const r = recById(id); if (r) r.category = value; }
-  else { const m = matById(id); if (m) m.category = value; }
-  saveAll(); renderPosGrid();
+  const target = (type === 'rec') ? recById(id) : matById(id);
+  if (!target) return { ok: false, reason: 'not_found' };
+  const from = target.category || '';
+  const to = String(value == null ? '' : value);
+  if (from === to) return { ok: false, reason: 'unchanged' };
+  return posCatCommit(
+    () => { target.category = to; return to; },
+    () => ({ action: 'category.assignment_change', old: from || null, new: to || null, count: 1 })
+  ).then(r => {
+    if (typeof renderPosGrid === 'function') renderPosGrid();
+    return r;
+  });
 }
 
 // ── Drag & drop จัดลำดับหมวด ──
