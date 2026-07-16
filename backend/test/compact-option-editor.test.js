@@ -427,6 +427,19 @@ console.log('\n=== Compact Option Editor — Founder acceptance ===\n');
   check('J6 a recipe swapping into itself (self-reference) cannot publish', r6.ok === false, r6);
   check('J6 the reason specifically names the self-reference check', /สูตรเดียวกับเมนูนี้เอง/.test(r6.label), r6.label);
 
+  // J6b. "self-reference cannot publish" must hold UNCONDITIONALLY, not only when a host happens to be known.
+  // Regression: ogValidateChoice feeds the gate ogLinkedRecipeIdsLive(), which is [] while the group has no
+  // recipe linked. With an empty host list there is no "self" to compare against, so a self-swap used to
+  // validate as publishable and was only caught on a later save. An unlinked group must fail closed.
+  const r6b = api.ogRecipeVariantGate({}, HOST_RECIPE, []);
+  check('J6b a self-swap cannot publish when the group has no recipe linked (fails closed)', r6b.ok === false, r6b);
+  check('J6b the reason asks the owner to link a menu first', /ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน/.test(r6b.label), r6b.label);
+  const r6c = api.ogRecipeVariantGate({}, CLEAN_RECIPE, []);
+  check('J6c even an otherwise-valid variant cannot publish while unlinked (consistent with REPLACE/QUANTITY)',
+    r6c.ok === false, r6c);
+  check('J6c an unlinked failure still carries the required Founder wording',
+    /เลือกได้เฉพาะสูตรที่มีวัตถุดิบและปริมาณครบถ้วน ระบบจะตรวจสอบก่อนเผยแพร่/.test(r6c.label), r6c.label);
+
   // J7. circular dependency cannot publish
   const cycle = api.ogRecipeDependencyCycle(CYCLE_A.id);
   check('J7 ogRecipeDependencyCycle detects A→B→A', Array.isArray(cycle) && cycle.length > 0, cycle);

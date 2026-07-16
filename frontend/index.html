@@ -14423,7 +14423,14 @@ function ogRecipeVariantGate(choice, recipe, hostRecipeIds) {
     return fail(`สูตร "${recipe.name}" ถูกปิดใช้งาน/เก็บเข้าคลังแล้ว`);
   }
 
-  // 4. not a self-reference (swapping a recipe into itself is meaningless)
+  // 4. not a self-reference (swapping a recipe into itself is meaningless).
+  // The self-reference check is only meaningful once we know the host: with no linked recipe there is no
+  // "self" to compare against, so an unlinked group would let a self-swap validate as publishable and only
+  // get caught on a later save. Require linkage first — same rule REPLACE/CHANGE_QUANTITY already enforce —
+  // so "self-reference cannot publish" holds unconditionally rather than only when linked.
+  if (!hosts.length) {
+    return fail('ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน จึงจะตรวจสอบสูตรที่ใช้แทนได้');
+  }
   if (hosts.includes(recipe.id)) {
     return fail(`สูตร "${recipe.name}" คือสูตรเดียวกับเมนูนี้เอง — เลือกสูตรอื่น`);
   }
