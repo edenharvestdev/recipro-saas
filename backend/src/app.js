@@ -147,6 +147,10 @@ const ASSET_VERSION = (() => {
 const INDEX_SHELL = (() => {
   let html = fs.readFileSync(path.join(frontendDir, 'index.html'), 'utf8');
   VERSIONED_ASSETS.forEach((f) => { html = html.split('./' + f + '"').join('./' + f + '?v=' + ASSET_VERSION + '"'); });
+  // TEST HARNESS: stamp the loaded build into the UI so a tester never has to guess whether the newest
+  // build is live. Note the shell is read ONCE at boot — editing index.html without restarting the
+  // process serves the OLD shell, which is exactly what made a local fix look like it had not applied.
+  html = html.split('__BUILD_VERSION__').join(ASSET_VERSION);
   return html;
 })();
 function sendShell(res) {

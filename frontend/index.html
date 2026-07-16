@@ -29,6 +29,16 @@
 </head>
 <body>
 
+<!-- TEST HARNESS (branch test/founder-authoring only — not part of PR #39/#40).
+     Always-visible build stamp so the tester never has to guess whether the newest build loaded.
+     The server replaces __BUILD_VERSION__ when it builds the shell (see backend/src/app.js). -->
+<div id="buildStamp" title="เวอร์ชันที่กำลังโหลดอยู่ — ถ้าไม่ตรงกับที่ทีมแจ้ง แปลว่าเบราว์เซอร์ยังใช้ของเก่า"
+  style="position:fixed;left:8px;bottom:8px;z-index:99999;font:600 10px/1.4 ui-monospace,Consolas,monospace;
+         background:rgba(15,20,25,.86);color:#7ee0c8;border:1px solid rgba(126,224,200,.35);border-radius:5px;
+         padding:4px 7px;letter-spacing:.05em;pointer-events:auto;user-select:all;backdrop-filter:blur(3px);">
+  BUILD __BUILD_VERSION__
+</div>
+
 <div class="glow-container">
   <div class="glow-blob blob-1"></div>
   <div class="glow-blob blob-2"></div>
