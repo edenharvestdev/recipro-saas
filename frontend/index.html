@@ -31,13 +31,41 @@
 
 <!-- TEST HARNESS (branch test/founder-authoring only — not part of PR #39/#40).
      Always-visible build stamp so the tester never has to guess whether the newest build loaded.
-     The server replaces __BUILD_VERSION__ when it builds the shell (see backend/src/app.js). -->
-<div id="buildStamp" title="เวอร์ชันที่กำลังโหลดอยู่ — ถ้าไม่ตรงกับที่ทีมแจ้ง แปลว่าเบราว์เซอร์ยังใช้ของเก่า"
+     The server replaces __BUILD_VERSION__ when it builds the shell (see backend/src/app.js).
+     It also pings the backend, because the service worker serves the cached shell when the server is
+     down: the app then looks perfectly alive and only fails at login with "Failed to fetch". The stamp
+     must therefore report backend reachability, not just which build painted. -->
+<div id="buildStamp" title="เวอร์ชันที่กำลังโหลดอยู่ + สถานะการต่อหลังบ้าน"
   style="position:fixed;left:8px;bottom:8px;z-index:99999;font:600 10px/1.4 ui-monospace,Consolas,monospace;
          background:rgba(15,20,25,.86);color:#7ee0c8;border:1px solid rgba(126,224,200,.35);border-radius:5px;
          padding:4px 7px;letter-spacing:.05em;pointer-events:auto;user-select:all;backdrop-filter:blur(3px);">
-  BUILD __BUILD_VERSION__
+  BUILD __BUILD_VERSION__ · <span id="buildStampApi">ตรวจสอบหลังบ้าน…</span>
 </div>
+<script>
+(function () {
+  var box = document.getElementById('buildStamp');
+  var tag = document.getElementById('buildStampApi');
+  if (!box || !tag) return;
+  function paint(ok, msg) {
+    tag.textContent = msg;
+    box.style.background = ok ? 'rgba(15,20,25,.86)' : 'rgba(60,10,10,.94)';
+    box.style.color      = ok ? '#7ee0c8' : '#ffb4b4';
+    box.style.borderColor= ok ? 'rgba(126,224,200,.35)' : 'rgba(255,120,120,.6)';
+  }
+  function ping() {
+    // cache:'no-store' + a route the service worker never caches (/auth, /api, /webhooks are skipped),
+    // so this reports the REAL server, never a cached copy. 401/404 still prove it is listening.
+    fetch('/api/bootstrap', { method: 'GET', cache: 'no-store' })
+      .then(function (r) { paint(true, 'หลังบ้าน: ต่อได้ (' + r.status + ')'); })
+      .catch(function () {
+        paint(false, 'หลังบ้านไม่ทำงาน — สั่ง  npm start  ก่อน แล้วรีเฟรช');
+      });
+  }
+  ping();
+  setInterval(ping, 15000);
+  window.addEventListener('online', ping);
+})();
+</script>
 
 <div class="glow-container">
   <div class="glow-blob blob-1"></div>
