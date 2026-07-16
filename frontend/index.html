@@ -2167,10 +2167,10 @@
           <select id="mSup"></select>
         </div>
         <div class="field">
-          <label>หมวดหมู่ <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— มุมมองความเข้ากันได้: แสดง/แก้หมวดของรายการนี้เท่านั้น · สร้าง/เรียง/เปลี่ยนชื่อ/ลบหมวด ทำที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
-          <!-- UX-4: combobox แบบ list=datalist คือรูปแบบ "ค้นหา-หรือ-สร้าง" ที่กำลังเลิกใช้ (ต้นเหตุของเหตุการณ์)
-               คงช่องไว้เพื่อไม่ให้ flow แก้ไขเดิมพัง แต่ทำให้ Enter ไม่มีผล: กัน submit ฟอร์มแม่ และไม่สร้างหมวด
-               ค่าที่พิมพ์มีผลกับ "หมวดของรายการนี้" ตอนกดบันทึกฟอร์มเท่านั้น ไม่เคยเขียนลิสต์หมวดทั้งก้อน -->
+          <label>หมวดหมู่คลัง (จัดกลุ่มวัตถุดิบ/สต๊อก) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— คนละชุดกับ "หมวดหน้าขาย (POS)" · ถ้ารายการนี้ตั้งขายบน POS ให้จัดหมวดหน้าขายที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
+          <!-- ช่องนี้คือ "หมวดคลัง" (catDatalist ← getCategories() = DEFAULT_CATEGORIES ∪ settings.categories ∪
+               materials.category) ซึ่งเป็นคนละระบบกับ posCategories ของหน้าขาย — จงใจไม่รวมสองระบบเข้าด้วยกันที่นี่
+               (เป็นงานสถาปัตยกรรม อยู่นอกขอบเขต) แค่ทำให้ Enter ไม่มีผล: ไม่ submit ฟอร์มแม่ และไม่แตะลิสต์หมวดใดๆ -->
           <input id="mCat" list="catDatalist" placeholder="เช่น วัตถุดิบ / บรรจุภัณฑ์ / เครื่องใช้ไฟฟ้า"
             onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
           <datalist id="catDatalist"></datalist>
@@ -2379,12 +2379,13 @@
       </div>
 
       <div class="field" style="margin-top:16px;">
-        <label>หมวดหมู่เมนู (สำหรับกรองใน POS) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— มุมมองความเข้ากันได้: แสดง/แก้หมวดของเมนูนี้เท่านั้น · สูตรไม่ได้เป็นเจ้าของหมวด · สร้าง/เรียง/เปลี่ยนชื่อ/ลบหมวด ทำที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
-        <!-- UX-4: การแก้สูตรไม่ใช่ที่หลักสำหรับจัดการหมวด — ช่องนี้เป็นมุมมองความเข้ากันได้ของ "หมวดปัจจุบัน"
-             ของเมนูนี้เท่านั้น Enter ถูกกันไว้ (ไม่ submit ฟอร์มแม่ ไม่สร้างหมวด ไม่แตะลิสต์หมวดทั้งก้อน) -->
-        <input id="rCategory" list="rCategoryList" placeholder="เลือกหมวดของเมนูนี้ (จัดการหมวดทั้งหมดที่ 'จัดการหมวดเมนู')"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-        <datalist id="rCategoryList"></datalist>
+        <label>หมวดหมู่เมนู (สำหรับกรองใน POS) <span style="color:var(--color-text-muted);font-weight:400;font-size:11px;">— เลือกหมวดที่มีอยู่เท่านั้น · สูตรไม่ได้เป็นเจ้าของหมวด · สร้าง/เรียง/เปลี่ยนชื่อ/ลบหมวด ทำที่ <a href="javascript:void(0)" onclick="openPosCatManager()">"จัดการหมวดเมนู"</a></span></label>
+        <!-- P1: "สูตรไม่ได้เป็นเจ้าของหมวด" — เดิมช่องนี้เป็น input list=datalist (พิมพ์ชื่อใหม่ = สร้างหมวด
+             นอกตัวจัดการได้) ตอนนี้เป็น select ที่เลือกได้เฉพาะหมวดที่ตัวจัดการมีอยู่จริง สูตรจึง "อ้างถึง"
+             หมวดเท่านั้น สร้างไม่ได้ ตัวจัดการหมวดเมนูเป็นที่เดียวที่จัดการหมวด
+             ค่าหมวดเดิมของสูตรที่ยังไม่อยู่ในลิสต์ที่จัดการ จะถูกใส่เป็นตัวเลือก "(หมวดเดิม)" ไว้เสมอ
+             เพื่อไม่ให้การเปิดฟอร์มแล้วบันทึกเปลี่ยนหมวดของสูตรเงียบๆ — ดู setRecipeCategorySelect() -->
+        <select id="rCategory"></select>
       </div>
 
       <div style="margin-top:16px;">
@@ -5721,10 +5722,24 @@ function setIngCat(i, cat) {
   renderRecipeForm();
 }
 
+// P1: เติมตัวเลือกหมวดให้ฟอร์มสูตร — เลือกได้เฉพาะหมวดที่ "จัดการหมวดเมนู" มีอยู่จริง (สร้างใหม่จากที่นี่ไม่ได้)
+// current = ค่าหมวดปัจจุบันของสูตรที่กำลังแก้ ถ้ายังไม่อยู่ในลิสต์ที่จัดการ (ข้อมูลเดิม/หมวดที่ถูกลบไปแล้ว)
+// ต้องคงไว้เป็นตัวเลือกเสมอ ไม่งั้นแค่เปิดฟอร์มแล้วกดบันทึก หมวดของสูตรจะถูกเปลี่ยนเงียบๆ
+function setRecipeCategorySelect(current) {
+  const sel = $('rCategory'); if (!sel) return;
+  const cur = String(current == null ? '' : current);
+  const managed = (typeof visiblePosCategories === 'function' ? visiblePosCategories() : (settings.posCategories || [])).filter(Boolean);
+  const opts = ['<option value="">— ไม่มีหมวด —</option>'];
+  managed.forEach(c => { opts.push(`<option value="${esc(c)}">${esc(c)}</option>`); });
+  if (cur && !managed.some(c => String(c) === cur)) {
+    opts.push(`<option value="${esc(cur)}">${esc(cur)} (หมวดเดิม — ไม่อยู่ในลิสต์ที่จัดการแล้ว)</option>`);
+  }
+  sel.innerHTML = opts.join('');
+  sel.value = cur;
+}
 function renderRecipeForm() {
   const sops = sopCandidates();
-  const catDl = $('rCategoryList');
-  if (catDl) catDl.innerHTML = [...new Set(recipes.map(r => r.category).filter(Boolean))].sort().map(c => `<option value="${esc(c)}"></option>`).join('');
+  setRecipeCategorySelect($('rCategory') ? $('rCategory').value : '');
   const cats = itemCategories();
   // SERVICE (behavior G) is sellable but must never appear as a recipe ingredient or its own tab.
   const nonCons = materials.filter(m => !m.isConsumable && m.itemType !== 'SERVICE');
@@ -5953,7 +5968,7 @@ function editRecipe(id) {
   $('rSteps').value = r.steps || '';
   if ($('rDetail')) $('rDetail').value = r.detail || '';
   if ($('rLink')) $('rLink').value = r.link || '';
-  if ($('rCategory')) $('rCategory').value = r.category || '';
+  setRecipeCategorySelect(r.category || '');   // P1: เติมตัวเลือก + คงหมวดเดิมไว้ ก่อนตั้งค่า
   if ($('rInventoryMode')) $('rInventoryMode').value = r.inventoryMode || 'inherit';
   setRecipeImgPreview(r.imgData || '');
   recipeOptGroups = (r.optGroups || []).map(g => ({
@@ -6115,7 +6130,7 @@ function resetRecipeForm() {
   $('rSteps').value = '';
   if ($('rDetail')) $('rDetail').value = '';
   if ($('rLink')) $('rLink').value = '';
-  if ($('rCategory')) $('rCategory').value = '';
+  setRecipeCategorySelect('');   // P1: สูตรใหม่ = ยังไม่มีหมวด (ไปเลือก/สร้างหมวดที่ตัวจัดการ)
   setRecipeImgPreview('');
   recipeIng = [{ matId: '', subId: null, amount: 0, role: '' }];
   recipeOptGroups = [];

@@ -828,16 +828,39 @@ function buildNormalizer() {
     const inertEnter = /onkeydown="if\(event\.key==='Enter'\)\{event\.preventDefault\(\);return false;\}"/;
     const rCat = fieldMarkup(INDEX_SRC, 'rCategory');
     const mCat = fieldMarkup(INDEX_SRC, 'mCat');
-    check('U6 rCategory Enter is inert (preventDefault, no submit, no create)', inertEnter.test(rCat), rCat);
+
+    // P1 "Recipe/BOM must never own categories": rCategory is a <select> over the managed list.
+    // This is STRICTLY STRONGER than the previous Enter-inert <input list=datalist>: a select has
+    // no free-text surface at all, so the recipe form cannot mint a category under any keystroke.
+    check('U6 rCategory is a select — the recipe cannot create a category at all',
+      /<select id="rCategory">/.test(INDEX_SRC));
+    check('U6 rCategory is no longer a free-text input or datalist combobox',
+      !/<input id="rCategory"/.test(INDEX_SRC) && !/rCategoryList/.test(INDEX_SRC));
+    check('U6 rCategory options come from the managed list only (visiblePosCategories)',
+      /function setRecipeCategorySelect/.test(INDEX_SRC) &&
+      /visiblePosCategories\(\)/.test(extractFn(INDEX_SRC, 'setRecipeCategorySelect', 'index.html')));
+    // Opening a recipe whose category is not (or no longer) in the managed list must not silently
+    // re-file it on save — the legacy value stays selectable and selected.
+    check('U6 a legacy/unmanaged category is preserved as an option, not dropped',
+      /หมวดเดิม/.test(extractFn(INDEX_SRC, 'setRecipeCategorySelect', 'index.html')));
+    check('U6 setRecipeCategorySelect never writes the managed category list',
+      !/posCategories\s*=|posCatAdd|posCatCommit|posCatRename/.test(extractFn(INDEX_SRC, 'setRecipeCategorySelect', 'index.html')));
+
+    // mCat is the INVENTORY category field (catDatalist <- getCategories()), a different system
+    // from posCategories. It stays free-text (unifying the two is architecture work, out of scope),
+    // but Enter must stay inert so it cannot submit a parent form.
     check('U6 mCat Enter is inert (preventDefault, no submit, no create)', inertEnter.test(mCat), mCat);
-    check('U6 neither compatibility field can call a category writer on Enter',
+    check('U6 neither field can call a category writer',
       !/posCatAdd|posCatCommit|posCatRename/.test(rCat) && !/posCatAdd|posCatCommit|posCatRename/.test(mCat));
     check('U6 both fields point the operator at the real manager',
       /openPosCatManager\(\)/.test(rCat) && /openPosCatManager\(\)/.test(mCat));
-    check('U6 both are labelled as compatibility views of this item only',
-      /มุมมองความเข้ากันได้/.test(rCat) && /มุมมองความเข้ากันได้/.test(mCat));
     check('U6 the recipe field states that the recipe does not own the category',
       /สูตรไม่ได้เป็นเจ้าของหมวด/.test(rCat));
+    check('U6 the recipe field says only existing categories may be chosen',
+      /เลือกหมวดที่มีอยู่เท่านั้น/.test(rCat));
+    // mCat must not masquerade as the POS category field — it is the stock/inventory grouping.
+    check('U6 mCat is labelled as the inventory category, distinct from the POS category set',
+      /หมวดหมู่คลัง/.test(mCat) && /คนละชุดกับ/.test(mCat));
     // The fields must still exist — deleting them would break existing edit flows.
     check('U6 the fields still exist (compatibility preserved, not removed)',
       /id="rCategory"/.test(INDEX_SRC) && /id="mCat"/.test(INDEX_SRC));
