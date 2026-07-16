@@ -14251,10 +14251,325 @@ function togglePublicMenu(on) {
 }
 
 // ============================================================
-// OPTIONS MANAGER
+// OPTIONS MANAGER — Compact Option Editor (5 blocks)
 // ============================================================
+// Founder mandate: "normal restaurant owners build menus without
+// understanding the engine." The owner only ever sees 5 friendly blocks
+// (A-E below). Every block is just a friendly front-end onto the SAME
+// UNCHANGED stock engine (backend/src/stockEngine.js buildEffectiveBom):
+// is_metadata_only / effect_type ADD|REPLACE|QUANTITY|RECIPE_VARIANT +
+// target_material_id / amount / links / variant_recipe_id. There is no
+// raw effect-type dropdown, no multi-ingredient row editor, and no
+// technical operation exposed anywhere in this UI.
+//
+// SCHEMA-FREE: block type is never stored as its own column. It is always
+// DERIVED from the existing engine fields via ogBlockTypeOf() below — see
+// that function for exactly how. This avoids a migration entirely.
 let editGroupId = null;
 let editGroupChoices = [];
+
+// The 5 blocks — these and ONLY these are ever offered to the owner.
+const OG_BLOCK_TYPES = [
+  ['INSTRUCTION_ONLY', 'แจ้งครัว', 'file-text'],
+  ['ADD_ONE_INGREDIENT', 'เพิ่มวัตถุดิบ', 'plus-circle'],
+  ['REPLACE_ONE_INGREDIENT', 'เปลี่ยนวัตถุดิบ', 'repeat'],
+  ['CHANGE_ONE_QUANTITY', 'ปรับปริมาณ', 'sliders-horizontal'],
+  ['RECIPE_VARIANT', 'เปลี่ยนทั้งสูตร', 'refresh-cw']
+];
+function ogBlockLabel(val) { const f = OG_BLOCK_TYPES.find(x => x[0] === val); return f ? f[1] : ''; }
+
+// ogBlockTypeOf: the SINGLE place that derives which of the 5 blocks a
+// choice represents, purely from its existing engine fields (effect_type +
+// is_metadata_only + shape of links/target). This works identically for a
+// brand-new choice authored through this editor AND for older data, because
+// the editor always writes exactly one of these 5 clean shapes (see
+// ogSetBlockType). Returns null when a choice doesn't cleanly match any of
+// the 5 shapes (e.g. legacy data authored via the old raw editor with 2+
+// linked ingredients) — such a choice shows with no block selected until
+// the owner explicitly picks one (which resets it to a clean single shape).
+function ogBlockTypeOf(c) {
+  if (!c) return null;
+  if (c.isMetadataOnly) return 'INSTRUCTION_ONLY';
+  const eff = c.effectType || 'NONE';
+  const links = c.links || [];
+  if (eff === 'ADD') return links.length === 1 ? 'ADD_ONE_INGREDIENT' : null;
+  if (eff === 'REPLACE') return links.length === 1 ? 'REPLACE_ONE_INGREDIENT' : null;
+  if (eff === 'QUANTITY') return 'CHANGE_ONE_QUANTITY';
+  if (eff === 'RECIPE_VARIANT') return 'RECIPE_VARIANT';
+  return null;
+}
+
+// ── Recipe-aware ingredient sourcing (block C "replace from" / D target) ───
+// Reads the LIVE (unsaved) recipe-picker checkbox state in the drawer, so
+// the source-ingredient list updates the moment a recipe is (un)checked.
+function ogLinkedRecipeIdsLive() {
+  const boxes = document.querySelectorAll('.og-recipe-chk:checked');
+  if (boxes.length) return [...boxes].map(el => el.dataset.rid);
+  return editGroupId ? ((optionGroups.find(g => g.id === editGroupId) || {}).recipeIds || []) : [];
+}
+
+// Union of ingredients across every recipe currently linked to this group —
+// the ONLY source list for block C's "replace from" and block D's target
+// picker, per the Founder's spec: these must come from the ACTIVE recipe's
+// ingredients, never the full material registry.
+function ogSourceIngredients() {
+  const rIds = ogLinkedRecipeIdsLive();
+  const map = new Map();
+  rIds.forEach(rid => {
+    const r = recById(rid);
+    if (!r) return;
+    (r.items || []).forEach(it => {
+      if (!it.matId) return;
+      const m = matById(it.matId);
+      if (!m) return;
+      if (!map.has(it.matId)) map.set(it.matId, { matId: it.matId, name: m.name, unit: baseU(m), amount: Number(it.amount) || 0, recipeNames: [] });
+      map.get(it.matId).recipeNames.push(r.name);
+    });
+  });
+  return [...map.values()];
+}
+
+// Walks recipe_items sub-recipe links the SAME way buildEffectiveBom /
+// computeRecipeCostPerUnit recurse on the backend (recipe_items.subId
+// chains), looking for a cycle reachable from startId (A→B→A, or deeper).
+// Returns the cycle path (array of recipe ids) if one exists, else null.
+function ogRecipeDependencyCycle(startId, _path) {
+  const path = _path || [startId];
+  const rec = recById(startId);
+  if (!rec) return null;
+  const subIds = (rec.items || []).map(it => it.subId).filter(Boolean);
+  for (const subId of subIds) {
+    if (path.includes(subId)) return [...path, subId];
+    const deeper = ogRecipeDependencyCycle(subId, [...path, subId]);
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
+// Simulates the material-only accumulation buildEffectiveBom performs on the
+// backend (recipe_items -> materials, following sub-recipe chains) and
+// confirms it resolves to a concrete, non-empty, fully-referenced set.
+// Client-side PRE-CHECK only — backend's buildEffectiveBom (never modified
+// here) is still the real authority at sale time.
+function ogRecipeBomResolvable(recipeId, _seen) {
+  const seen = _seen || new Set();
+  if (seen.has(recipeId)) return false; // cycle — reported separately by ogRecipeDependencyCycle
+  seen.add(recipeId);
+  const rec = recById(recipeId);
+  if (!rec) return false;
+  const items = (rec.items || []).filter(it => Number(it.amount) > 0 && (it.matId || it.subId));
+  if (!items.length) return false;
+  for (const it of items) {
+    if (it.matId) { if (!matById(it.matId)) return false; }
+    else if (it.subId) { if (!ogRecipeBomResolvable(it.subId, seen)) return false; }
+  }
+  return true;
+}
+
+// ============================================================================
+// ogRecipeVariantGate — SINGLE decision point for whether a RECIPE_VARIANT
+// (block E, "swap the whole recipe") choice may be PUBLISHED (enabled on
+// POS/Delivery). ogValidateChoice below is the ONLY caller — the lead can
+// change the policy in exactly one place without touching anything else.
+//
+// FRAMING: there is no recipe DRAFT/APPROVED/RETIRED lifecycle anywhere in
+// this codebase (recipes have no archived/enabled column at all — grep
+// backend/db/schema.sql). This function is a TEMPORARY completeness gate
+// standing in for that lifecycle. It is NOT a substitute for it — building
+// that real lifecycle is DEFERRED. Authoring is never blocked: a choice can
+// always be SAVED as an incomplete draft (nothing is ever lost). Only
+// PUBLICATION (enabled=true, reachable on POS/Delivery) is gated.
+//
+// Founder ruling: E may publish only when the target recipe passes ALL of:
+//   1. it exists                              2. belongs to this shop/tenant
+//   3. is not archived/disabled                4. is not the host recipe itself
+//   5. has >=1 ingredient with qty > 0         6. every ingredient resolves to a Material
+//   7. every unit is a valid Unit Registry unit 8. no unresolved/ambiguous conversion
+//   9. no circular recipe dependency           10. the effective BOM resolves deterministically
+// On ANY failure: draft is kept, publication blocked, and the EXACT reason
+// is shown (never a generic message) — and this function NEVER silently
+// falls back to the host/base recipe (a silent fallback would deduct the
+// wrong stock with no signal to anyone).
+//
+// Judgment calls (documented, not hidden):
+//   - Checks 1+2 collapse into one: recById() only searches THIS shop's own
+//     already shop-scoped `recipes` array (bootstrap data is per-tenant), so
+//     "not found here" already means "doesn't exist for this tenant" from
+//     this authoring UI. True cross-tenant DB-level enforcement is a backend
+//     concern outside frontend/index.html's scope (see final report).
+//   - Check 3 is a no-op today: recipes have no archived/disabled column in
+//     this schema. The check is left in place (reads recipe.archived /
+//     recipe.enabled defensively) so it activates for free the day that
+//     column exists, without another edit here.
+//   - Checks 6/7/8 reuse frontend/materialResolver.js's resolveMaterialCost
+//     (ARCH-3 UNIT_REGISTRY) rather than duplicating unit logic. Only a RED
+//     health (MAT_UNIT_AMBIGUOUS_NO_CONVERSION — truly unresolvable) blocks;
+//     a YELLOW "needs confirmation" (e.g. an explicit non-standard kg/L
+//     override) does NOT, because the codebase has no persisted place to
+//     ever mark a material "confirmed" — treating YELLOW as a hard block
+//     would make an otherwise-valid, already-in-use material permanently
+//     unpublishable. Worth the Founder/lead double-checking (see report).
+// ============================================================================
+function ogRecipeVariantGate(choice, recipe, hostRecipeIds) {
+  const REQUIRED_WORDING = 'เลือกได้เฉพาะสูตรที่มีวัตถุดิบและปริมาณครบถ้วน ระบบจะตรวจสอบก่อนเผยแพร่';
+  const fail = (reason) => ({ ok: false, label: reason + ' — ' + REQUIRED_WORDING });
+  const hosts = hostRecipeIds || [];
+
+  // 1+2. exists + belongs to this shop (see judgment-call note above)
+  if (!recipe) return fail('ไม่พบสูตรที่เลือก (อาจถูกลบ หรือไม่ได้อยู่ในร้านนี้)');
+
+  // 3. not archived/disabled (no-op today — see judgment-call note above)
+  if (recipe.archived === true || recipe.enabled === false) {
+    return fail(`สูตร "${recipe.name}" ถูกปิดใช้งาน/เก็บเข้าคลังแล้ว`);
+  }
+
+  // 4. not a self-reference (swapping a recipe into itself is meaningless)
+  if (hosts.includes(recipe.id)) {
+    return fail(`สูตร "${recipe.name}" คือสูตรเดียวกับเมนูนี้เอง — เลือกสูตรอื่น`);
+  }
+
+  // 5. at least one real ingredient with quantity > 0 (catches both the
+  // fully-empty recipe AND the zero-quantity-only recipe)
+  const items = Array.isArray(recipe.items) ? recipe.items : [];
+  const realItems = items.filter(it => it.matId || it.subId);
+  const qtyItems = realItems.filter(it => Number(it.amount) > 0);
+  if (!qtyItems.length) {
+    return fail(`สูตร "${recipe.name}" ยังไม่มีวัตถุดิบที่มีปริมาณมากกว่า 0`);
+  }
+
+  // 6+7+8. every ingredient resolves to a Material, with a valid, unambiguous unit
+  for (const it of realItems) {
+    if (!it.matId) continue; // sub-recipe rows are covered by checks 9/10
+    const m = matById(it.matId);
+    if (!m) return fail(`สูตร "${recipe.name}" มีวัตถุดิบที่หาไม่พบในระบบ (ถูกลบไปแล้ว)`);
+    if (window.MaterialResolver && window.MaterialResolver.resolveMaterialCost) {
+      const health = window.MaterialResolver.resolveMaterialCost({
+        price: m.price, qty: m.qty, unit: m.unit, conv_qty: m.convQty, stock_unit: m.stockUnit
+      });
+      if (health.health === 'RED') {
+        return fail(`สูตร "${recipe.name}" มีวัตถุดิบ "${m.name}" ที่หน่วย "${m.unit || '-'}" ยังแปลงหน่วยอัตโนมัติไม่ได้`);
+      }
+    }
+  }
+
+  // 9. no circular recipe dependency (A→B→A, and deeper cycles)
+  const cycle = ogRecipeDependencyCycle(recipe.id);
+  if (cycle) {
+    return fail(`สูตร "${recipe.name}" อ้างอิงกันเป็นวงกลม (${cycle.map(id => recById(id)?.name || id).join(' → ')})`);
+  }
+
+  // 10. the effective BOM resolves to a single, deterministic set
+  if (!ogRecipeBomResolvable(recipe.id)) {
+    return fail(`สูตร "${recipe.name}" คำนวณวัตถุดิบที่ใช้จริงไม่ได้`);
+  }
+
+  return { ok: true, label: `สูตร "${recipe.name}" พร้อมเผยแพร่` };
+}
+
+// Step-4 validation — returns { ok, items:[{ok,label}] }. Draft save is
+// always allowed; these V-rules only block the "complete"/POS-visible state
+// (see saveGroupForm's incomplete handling).
+function ogValidateChoice(c) {
+  const bt = ogBlockTypeOf(c);
+  if (!bt) return { ok: false, items: [{ ok: false, label: 'ยังไม่ได้เลือกว่าตัวเลือกนี้ทำอะไร (ขั้นตอนที่ 1)' }] };
+  const items = [];
+  if (c.label && c.label.trim()) items.push({ ok: true, label: 'ตั้งชื่อตัวเลือกแล้ว' });
+  else items.push({ ok: false, label: bt === 'INSTRUCTION_ONLY' ? 'ยังไม่ได้ระบุข้อความถึงครัว' : 'ยังไม่ได้ตั้งชื่อตัวเลือก' });
+
+  const sourceIds = ogSourceIngredients().map(x => x.matId);
+
+  if (bt === 'ADD_ONE_INGREDIENT') {
+    const l = (c.links || [])[0];
+    if (!l || !l.matId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบที่จะเพิ่ม' });
+    else items.push({ ok: true, label: 'เลือกวัตถุดิบที่จะเพิ่มแล้ว' });
+    if (!l || !(Number(l.amount) > 0)) items.push({ ok: false, label: 'ระบุจำนวนที่เพิ่มให้มากกว่า 0' });
+    else items.push({ ok: true, label: 'ระบุจำนวนแล้ว' });
+  } else if (bt === 'REPLACE_ONE_INGREDIENT') {
+    if (!sourceIds.length) items.push({ ok: false, label: 'ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน' });
+    if (!c.targetMaterialId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบเดิมที่จะเอาออก' });
+    else if (sourceIds.length && !sourceIds.includes(c.targetMaterialId)) items.push({ ok: false, label: 'วัตถุดิบเดิมที่เลือกไม่อยู่ในสูตรที่ใช้งานอยู่' });
+    else items.push({ ok: true, label: 'เลือกวัตถุดิบเดิมแล้ว' });
+    const l = (c.links || [])[0];
+    if (!l || !l.matId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบใหม่ที่ใส่แทน' });
+    else items.push({ ok: true, label: 'เลือกวัตถุดิบใหม่แล้ว' });
+    if (!l || !(Number(l.amount) > 0)) items.push({ ok: false, label: 'ระบุจำนวนของวัตถุดิบใหม่ให้มากกว่า 0' });
+    else items.push({ ok: true, label: 'ระบุจำนวนแล้ว' });
+  } else if (bt === 'CHANGE_ONE_QUANTITY') {
+    if (!sourceIds.length) items.push({ ok: false, label: 'ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน' });
+    if (!c.targetMaterialId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบที่จะปรับปริมาณ' });
+    else if (sourceIds.length && !sourceIds.includes(c.targetMaterialId)) items.push({ ok: false, label: 'วัตถุดิบที่เลือกไม่อยู่ในสูตรที่ใช้งานอยู่' });
+    else items.push({ ok: true, label: 'เลือกวัตถุดิบแล้ว' });
+    if (c.amount == null || Number(c.amount) < 0) items.push({ ok: false, label: 'ระบุปริมาณใหม่ (0 = ตัดออก)' });
+    else items.push({ ok: true, label: `ระบุปริมาณใหม่แล้ว (${c.amount})` });
+  } else if (bt === 'RECIPE_VARIANT') {
+    if (!c.variantRecipeId) items.push({ ok: false, label: 'ยังไม่ได้เลือกสูตรที่จะใช้แทน' });
+    else {
+      items.push({ ok: true, label: 'เลือกสูตรที่ใช้แทนแล้ว' });
+      items.push(ogRecipeVariantGate(c, recById(c.variantRecipeId), ogLinkedRecipeIdsLive()));
+    }
+  }
+  // INSTRUCTION_ONLY: no ingredient/price fields exist to validate — the label check above suffices.
+
+  return { ok: items.every(it => it.ok), items };
+}
+
+// Step-3 readable Thai summary — auto-rendered from the block's own fields.
+function ogChoiceSummary(c) {
+  const bt = ogBlockTypeOf(c);
+  if (!bt) return '';
+  const priceStr = c.priceAdd ? (c.priceAdd > 0 ? ` · เพิ่มราคา ${money(Math.abs(c.priceAdd))} บาท` : ` · ลดราคา ${money(Math.abs(c.priceAdd))} บาท`) : '';
+  if (bt === 'INSTRUCTION_ONLY') return `แจ้งครัว: ${c.label ? c.label : '(ยังไม่ได้ระบุ)'} · ไม่มีผลต่อสต๊อก/ราคา`;
+  if (bt === 'ADD_ONE_INGREDIENT') {
+    const l = (c.links || [])[0] || {};
+    const m = matById(l.matId);
+    return `เพิ่ม${m ? m.name : '(ยังไม่ได้เลือกวัตถุดิบ)'}${l.amount ? ` ${l.amount} ${m ? baseU(m) : ''}` : ''}${priceStr}`;
+  }
+  if (bt === 'REPLACE_ONE_INGREDIENT') {
+    const l = (c.links || [])[0] || {};
+    const from = matById(c.targetMaterialId);
+    const to = matById(l.matId);
+    const src = ogSourceIngredients().find(x => x.matId === c.targetMaterialId);
+    return `เปลี่ยน${from ? from.name : '(ยังไม่ได้เลือก)'}${src ? ` ${src.amount} ${src.unit}` : ''} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'}${l.amount ? ` ${l.amount} ${to ? baseU(to) : ''}` : ''}${priceStr}`;
+  }
+  if (bt === 'CHANGE_ONE_QUANTITY') {
+    const m = matById(c.targetMaterialId);
+    const src = ogSourceIngredients().find(x => x.matId === c.targetMaterialId);
+    const cut = Number(c.amount) === 0 ? ' (ตัดออกจากสูตร)' : '';
+    return `ปรับปริมาณ${m ? m.name : '(ยังไม่ได้เลือก)'}${src ? ` จาก ${src.amount} ${src.unit}` : ''} เป็น ${c.amount || 0} ${m ? baseU(m) : ''}${cut}${priceStr}`;
+  }
+  if (bt === 'RECIPE_VARIANT') {
+    const r = recById(c.variantRecipeId);
+    return `สลับไปใช้สูตร "${r ? r.name : '(ยังไม่ได้เลือก)'}" ทั้งหมด${priceStr}`;
+  }
+  return '';
+}
+
+// Conflict detection: flags when >1 ENABLED choice in the same group targets
+// the same material with contradictory effects (REPLACE vs QUANTITY, or two
+// REPLACEs on the same source). UI warning only — buildEffectiveBom's own
+// fixed REPLACE→QUANTITY→ADD ordering (unchanged) still decides precedence.
+function ogDetectConflicts(choices) {
+  const enabled = (choices || []).filter(c => c.enabled !== false);
+  const byTarget = new Map();
+  enabled.forEach(c => {
+    const eff = c.effectType;
+    if ((eff === 'REPLACE' || eff === 'QUANTITY') && c.targetMaterialId) {
+      if (!byTarget.has(c.targetMaterialId)) byTarget.set(c.targetMaterialId, []);
+      byTarget.get(c.targetMaterialId).push({ id: c.id, label: c.label, kind: eff });
+    }
+  });
+  const conflicts = [];
+  byTarget.forEach((arr, matId) => {
+    if (arr.length < 2) return;
+    const kinds = new Set(arr.map(x => x.kind));
+    const replaceCount = arr.filter(x => x.kind === 'REPLACE').length;
+    if (kinds.size > 1 || replaceCount > 1) {
+      const m = matById(matId);
+      conflicts.push({ matId, matName: m ? m.name : matId, choices: arr });
+    }
+  });
+  return conflicts;
+}
 
 function renderOptionsPage() {
   const el = $('optGroupList');
@@ -14282,12 +14597,13 @@ function renderOptionsPage() {
       ${recipeNames?`<div style="font-size:12px;color:var(--color-text-muted);margin-bottom:8px;">${icon('utensils')} ใช้กับ: ${esc(recipeNames)}</div>`:''}
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${(g.choices||[]).map(c=>{
-          const eff=c.effectType||'NONE';
-          const effColor={ADD:'#16a34a',REPLACE:'#2563eb',QUANTITY:'#7c3aed',RECIPE_VARIANT:'#d97706',NONE:'#6b7280'}[eff]||'#6b7280';
+          const bt = ogBlockTypeOf(c);
+          const btColor={INSTRUCTION_ONLY:'#6b7280',ADD_ONE_INGREDIENT:'#16a34a',REPLACE_ONE_INGREDIENT:'#2563eb',CHANGE_ONE_QUANTITY:'#7c3aed',RECIPE_VARIANT:'#d97706'}[bt]||'#6b7280';
           const priceStr=c.priceAdd?(c.priceAdd>0?`+${money(c.priceAdd)}`:`${money(c.priceAdd)}`):'';
           return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border-radius:20px;padding:3px 10px;font-size:12px;${!c.enabled?'opacity:0.45;':''}">
             ${esc(c.label)}${priceStr?`<span style="color:var(--color-secondary);font-size:11px;">${priceStr}</span>`:''}
-            <span style="font-size:10px;color:${effColor};font-weight:700;">${eff}</span>
+            ${bt?`<span style="font-size:10px;color:${btColor};font-weight:700;">${esc(ogBlockLabel(bt))}</span>`:''}
+            ${c.incomplete?'<span style="font-size:10px;color:#d97706;font-weight:700;">ร่าง</span>':''}
           </span>`;
         }).join('')}
       </div>
@@ -14304,9 +14620,95 @@ function openGroupForm(id, preselect) {
   $('ogSelectType').value = g?.selectType || 'single';
   $('ogRequired').checked = !!g?.required;
   $('ogEnabled').checked = g?.enabled !== false;
-  renderGroupChoices();
   renderGroupRecipePicker(g?.recipeIds || preselect || []);
+  renderGroupChoices();
   openDrawer('optGroupDrawer');
+}
+
+// ── Step-2 field renderers — one per block, single-row only (no raw effect
+// dropdown, no multi-ingredient list editor). Kept as standalone functions
+// so each block's exact fields are easy to verify independently. ──────────
+function ogInstructionStep2Html() {
+  return `<div style="margin-top:6px;font-size:11px;color:var(--color-text-muted);">ข้อความในช่องชื่อด้านบนคือสิ่งที่จะแจ้งครัว — ไม่มีวัตถุดิบ ไม่มีราคา ไม่มีผลต่อสต๊อก</div>`;
+}
+function ogAddStep2Html(c, ci) {
+  const l = (c.links || [])[0] || { matId: '', amount: 0 };
+  const m = matById(l.matId);
+  return `<div style="margin-top:8px;">
+    <label style="font-size:11px;color:var(--color-text-muted);">วัตถุดิบที่จะเพิ่ม</label>
+    <div style="display:flex;gap:6px;margin-top:2px;">
+      <select onchange="ogChoiceSetLink(${ci},0,'matId',this.value)" style="flex:2;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <option value="">—เลือกวัตถุดิบ—</option>
+        ${materials.filter(x=>!x.isConsumable).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
+      </select>
+      <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+      <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${m?baseU(m):''}</span>
+    </div>
+  </div>`;
+}
+// C REPLACE — exactly the Founder's 4 fields: ① from (sourced from the
+// ACTIVE recipe's ingredients ONLY — sourceIngs, never `materials`),
+// ② with (material + quantity), plus the shared price field rendered by the
+// caller. The stock deduction (old ingredient stops being deducted, new one
+// starts) is derived entirely by the engine from target_material_id + the
+// single link — never shown or configured here.
+function ogReplaceStep2Html(c, ci, sourceIngs) {
+  const l = (c.links || [])[0] || { matId: '', amount: 0 };
+  const to = matById(l.matId);
+  return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+    <div>
+      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">① เอาออก (จากสูตรที่ใช้งานอยู่)</label>
+      <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+        <option value="">— เลือกวัตถุดิบ —</option>
+        ${sourceIngs.map(s=>`<option value="${s.matId}"${s.matId===c.targetMaterialId?' selected':''}>${esc(s.name)} — ${s.amount} ${s.unit}</option>`).join('')}
+      </select>
+      ${!sourceIngs.length ? `<div style="font-size:11px;color:#d97706;margin-top:4px;">${icon('alert-triangle')} ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน</div>` : ''}
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">② เปลี่ยนเป็น (วัตถุดิบใหม่ + จำนวน)</label>
+      <div style="display:flex;gap:6px;margin-top:2px;">
+        <select onchange="ogChoiceSetLink(${ci},0,'matId',this.value)" style="flex:2;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          <option value="">—เลือกวัตถุดิบ—</option>
+          ${materials.filter(x=>!x.isConsumable && x.id!==c.targetMaterialId).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
+        </select>
+        <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${to?baseU(to):''}</span>
+      </div>
+    </div>
+  </div>`;
+}
+function ogQuantityStep2Html(c, ci, sourceIngs) {
+  const tm = matById(c.targetMaterialId);
+  return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+    <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">วัตถุดิบที่จะปรับปริมาณ (จากสูตรที่ใช้งานอยู่)</label>
+    <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+      <option value="">— เลือกวัตถุดิบ —</option>
+      ${sourceIngs.map(s=>`<option value="${s.matId}"${s.matId===c.targetMaterialId?' selected':''}>${esc(s.name)} — เดิม ${s.amount} ${s.unit}</option>`).join('')}
+    </select>
+    ${!sourceIngs.length ? `<div style="font-size:11px;color:#d97706;">${icon('alert-triangle')} ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน</div>` : ''}
+    <div style="display:flex;gap:6px;align-items:center;">
+      <label style="font-size:11px;color:var(--color-text-muted);">ปริมาณใหม่ (0 = ตัดออก)</label>
+      <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value;ogRefreshChoicePreview(${ci});" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+      <span style="font-size:12px;color:var(--color-text-muted);">${tm?baseU(tm):''}</span>
+    </div>
+  </div>`;
+}
+function ogVariantStep2Html(c, ci, excludeIds) {
+  const excl = new Set(excludeIds || []);
+  const opts = recipes.filter(r => !excl.has(r.id));
+  return `<div style="margin-top:8px;">
+    <label style="font-size:11px;color:var(--color-text-muted);">สูตรที่ใช้แทนทั้งหมด</label>
+    <select onchange="editGroupChoices[${ci}].variantRecipeId=this.value||null;renderGroupChoices();" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+      <option value="">—เลือกสูตร—</option>
+      ${opts.map(r=>`<option value="${r.id}"${r.id===c.variantRecipeId?' selected':''}>${esc(r.name)}</option>`).join('')}
+    </select>
+  </div>`;
+}
+function ogPriceFieldHtml(c, ci) {
+  return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+    <span style="font-size:11px;color:var(--color-text-muted);">+ราคา</span>
+    <input type="number" step="any" value="${c.priceAdd||0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value;ogRefreshChoicePreview(${ci});" placeholder="0" style="width:80px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+  </div>`;
 }
 
 function renderGroupChoices() {
@@ -14316,92 +14718,130 @@ function renderGroupChoices() {
     el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีตัวเลือก — กดเพิ่มด้านบน</p>';
     return;
   }
-  const allRoles = [...new Set(recipes.flatMap(r => (r.items || []).map(it => it.role).filter(Boolean)))].sort();
-  el.innerHTML = editGroupChoices.map((c, ci) => {
-    const eff = c.effectType || 'NONE';
-    const isMeta = !!c.isMetadataOnly;
-    const linksHtml = (!isMeta && (eff === 'ADD' || eff === 'REPLACE')) ? `
-      <div style="margin-top:8px;">
-        <label style="font-size:11px;color:${eff === 'REPLACE' ? 'var(--color-text-main);font-weight:600' : 'var(--color-text-muted)'};">${eff === 'REPLACE' ? '② ใส่แทนด้วย (วัตถุดิบใหม่ + จำนวน):' : 'วัตถุดิบที่เพิ่ม (+ จำนวน):'}</label>
-        ${(c.links||[]).map((l,li)=>`
-          <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
-            <select onchange="editGroupChoices[${ci}].links[${li}].matId=this.value" style="flex:2;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-              <option value="">—เลือกวัตถุดิบ—</option>
-              ${materials.filter(m=>!m.isConsumable).map(m=>`<option value="${m.id}"${m.id===l.matId?' selected':''}>${esc(m.name)} (${baseU(m)})</option>`).join('')}
-            </select>
-            <input type="number" step="any" value="${l.amount||0}" oninput="editGroupChoices[${ci}].links[${li}].amount=+this.value" placeholder="จำนวน" style="width:80px;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-            <button class="btn btn-danger btn-sm" onclick="removeChoiceLink(${ci},${li})" style="padding:4px 7px;">${icon('x')}</button>
-          </div>`).join('')}
-        <button class="btn btn-ghost btn-sm" onclick="addChoiceLink(${ci})" style="margin-top:4px;font-size:11px;">+ เพิ่มวัตถุดิบ</button>
-      </div>` : '';
-    const targetMatHtml = (!isMeta && (eff === 'REPLACE' || eff === 'QUANTITY')) ? `
-      <div style="margin-top:8px;">
-        <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">${eff === 'REPLACE' ? '① วัตถุดิบเดิมที่จะเอาออก:' : '① วัตถุดิบที่จะกำหนดปริมาณ:'}</label>
-        <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
-          <option value="">— เลือกวัตถุดิบ —</option>
-          ${materials.filter(m=>!m.isConsumable).map(m=>`<option value="${m.id}"${m.id===c.targetMaterialId?' selected':''}>${esc(m.name)} (${baseU(m)})</option>`).join('')}
-        </select>
-      </div>` : '';
-    const roleHtml = (!isMeta && (eff === 'REPLACE' || eff === 'QUANTITY') && (allRoles.length || c.targetRole)) ? `
-      <div style="margin-top:6px;">
-        <label style="font-size:11px;color:var(--color-text-muted);">หรือเลือกตาม role (ขั้นสูง — ใช้กับหลายสูตรพร้อมกัน):</label>
-        <select onchange="editGroupChoices[${ci}].targetRole=this.value" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
-          <option value="">— ไม่ใช้ role —</option>
-          ${allRoles.map(role=>`<option value="${esc(role)}"${role===c.targetRole?' selected':''}>${esc(role)}</option>`).join('')}
-          ${(c.targetRole && !allRoles.includes(c.targetRole)) ? `<option value="${esc(c.targetRole)}" selected>${esc(c.targetRole)} (เดิม)</option>` : ''}
-        </select>
-      </div>` : '';
-    const quantityHtml = (!isMeta && eff === 'QUANTITY') ? `
-      <div style="margin-top:6px;">
-        <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">② ปริมาณใหม่ (0 = ตัดออก):</label>
-        <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value" style="width:80px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
-      </div>` : '';
-    const variantHtml = (!isMeta && eff === 'RECIPE_VARIANT') ? `
-      <div style="margin-top:6px;">
-        <label style="font-size:11px;color:var(--color-text-muted);">สูตรที่ใช้แทน BOM:</label>
-        <select onchange="editGroupChoices[${ci}].variantRecipeId=this.value" style="width:100%;font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
-          <option value="">—เลือกสูตร—</option>
-          ${recipes.map(r=>`<option value="${r.id}"${r.id===c.variantRecipeId?' selected':''}>${esc(r.name)}</option>`).join('')}
-        </select>
-      </div>` : '';
-    const maxQtyHtml = (!isMeta && eff === 'ADD') ? `
-      <div style="margin-top:6px;font-size:11px;color:var(--color-text-muted);">
-        สั่งซ้ำได้สูงสุด:
-        <input type="number" min="1" value="${c.maxQty||1}" oninput="editGroupChoices[${ci}].maxQty=+this.value||1" style="width:50px;font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-left:4px;">
-      </div>` : '';
-    const effOpts = [['NONE', 'ไม่มีผลต่อสต๊อก'], ['ADD', 'เพิ่มของ + ตัดสต๊อก'], ['REPLACE', 'เปลี่ยนวัตถุดิบ'], ['QUANTITY', 'กำหนดปริมาณ'], ['RECIPE_VARIANT', 'สลับสูตร (ร้อน/เย็น)']];
-    return `<div style="background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:12px;margin-bottom:10px;">
+  const sourceIngs = ogSourceIngredients();
+  const linkedRecipeIds = ogLinkedRecipeIdsLive();
+  const groupConflicts = ogDetectConflicts(editGroupChoices);
+  const conflictedChoiceIds = new Set(groupConflicts.flatMap(cf => cf.choices.map(x => x.id)));
+
+  const conflictBanner = groupConflicts.length ? `<div style="background:#fef2f2;border:1px solid #dc2626;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#b91c1c;">
+    ${icon('alert-triangle')} <b>ตัวเลือกขัดแย้งกัน</b> — วัตถุดิบเดียวกันถูกกำหนดโดยหลายตัวเลือกพร้อมกัน:
+    ${groupConflicts.map(cf => `<div style="margin-top:4px;">• ${esc(cf.matName)}: ${cf.choices.map(x => esc(x.label || '(ไม่มีชื่อ)')).join(', ')}</div>`).join('')}
+  </div>` : '';
+
+  el.innerHTML = conflictBanner + editGroupChoices.map((c, ci) => {
+    const bt = ogBlockTypeOf(c);
+
+    const step1 = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+      ${OG_BLOCK_TYPES.map(([val, labelTh, ic]) => `
+        <button type="button" class="btn btn-sm ${bt === val ? 'btn-primary' : 'btn-ghost'}" onclick="ogSetBlockType(${ci},'${val}')" style="font-size:12px;">
+          ${icon(ic)} ${labelTh}
+        </button>`).join('')}
+    </div>`;
+
+    let step2 = '';
+    if (bt === 'INSTRUCTION_ONLY') step2 = ogInstructionStep2Html();
+    else if (bt === 'ADD_ONE_INGREDIENT') step2 = ogAddStep2Html(c, ci);
+    else if (bt === 'REPLACE_ONE_INGREDIENT') step2 = ogReplaceStep2Html(c, ci, sourceIngs);
+    else if (bt === 'CHANGE_ONE_QUANTITY') step2 = ogQuantityStep2Html(c, ci, sourceIngs);
+    else if (bt === 'RECIPE_VARIANT') step2 = ogVariantStep2Html(c, ci, linkedRecipeIds);
+
+    const showPrice = bt && bt !== 'INSTRUCTION_ONLY';
+    const priceField = showPrice ? ogPriceFieldHtml(c, ci) : '';
+
+    const summary = bt ? ogChoiceSummary(c) : '';
+    const step3 = bt ? `<div id="ogSummary${ci}" style="margin-top:8px;font-size:12px;background:var(--surface-1);border:1px dashed var(--border-soft);border-radius:7px;padding:6px 9px;color:var(--color-text-main);">${icon('list')} ${esc(summary)}</div>` : '';
+
+    const validated = bt ? ogValidateChoice(c) : { ok: false, items: [] };
+    const conflictItem = conflictedChoiceIds.has(c.id) ? [{ ok: false, label: 'ขัดแย้งกับตัวเลือกอื่นในกลุ่มเดียวกัน (ดูแบนเนอร์ด้านบน)' }] : [];
+    const allItems = validated.items.concat(conflictItem);
+    const step4 = bt ? `<div style="margin-top:6px;font-size:11px;">
+      ${allItems.map(it => `<div style="color:${it.ok?'#16a34a':'#dc2626'};">${it.ok?'✓':'✗'} ${esc(it.label)}</div>`).join('')}
+    </div>` : '';
+
+    const isComplete = validated.ok && !conflictedChoiceIds.has(c.id);
+    const labelPlaceholder = bt === 'INSTRUCTION_ONLY' ? 'ข้อความถึงครัว เช่น ไม่ใส่น้ำแข็ง / หวานน้อย' : 'ชื่อตัวเลือก เช่น เพิ่มไข่มุก / เปลี่ยนนมโอ๊ต';
+
+    return `<div style="background:var(--surface-2);border:1px solid ${bt && !isComplete ? '#d97706' : 'var(--border-soft)'};border-radius:10px;padding:12px;margin-bottom:10px;">
       <div style="display:flex;gap:6px;align-items:center;">
-        <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value" placeholder="ชื่อตัวเลือก เช่น เพิ่มไข่มุก / เปลี่ยนนมโอ๊ต" style="flex:1;min-width:80px;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value;ogRefreshChoicePreview(${ci});" placeholder="${labelPlaceholder}" style="flex:1;min-width:80px;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        ${c.incomplete ? '<span style="font-size:10px;color:#d97706;font-weight:700;white-space:nowrap;">ร่าง–ยังไม่สมบูรณ์</span>' : ''}
         <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:6px 8px;">${icon('trash-2')}</button>
       </div>
-      ${isMeta ? '' : `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-        <span style="font-size:12px;font-weight:700;color:var(--color-text-main);">ประเภท:</span>
-        <select onchange="setChoiceEffect(${ci}, this.value)" style="flex:1;min-width:160px;font-size:13px;padding:6px 8px;border-radius:7px;border:1px solid ${eff === 'NONE' ? '#d97706' : 'var(--border-soft)'};background:var(--surface-1);color:var(--color-text-main);">
-          ${effOpts.map(([v, t]) => `<option value="${v}"${v === eff ? ' selected' : ''}>${t}</option>`).join('')}
-        </select>
-        <span style="font-size:11px;color:var(--color-text-muted);">+ราคา</span>
-        <input type="number" step="any" value="${c.priceAdd || 0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value" placeholder="0" style="width:64px;font-size:13px;padding:6px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-      </div>
-      ${eff === 'NONE' ? '<div style="font-size:11px;color:#d97706;margin-top:5px;"><span class="ico" data-icon="arrow-up"></span> เลือก "ประเภท" เพื่อให้ตัดสต๊อก: เพิ่มของ · เปลี่ยนวัตถุดิบ · กำหนดปริมาณ · สลับสูตร</div>' : ''}`}
-      ${targetMatHtml}${quantityHtml}${linksHtml}${roleHtml}${variantHtml}${maxQtyHtml}
+      <div style="font-size:11px;color:var(--color-text-muted);margin-top:8px;">ขั้นตอนที่ 1 — ตัวเลือกนี้ทำอะไร?</div>
+      ${step1}
+      ${step2}
+      ${priceField}
+      ${step3}
+      ${step4}
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${isMeta ? ' checked' : ''} onchange="editGroupChoices[${ci}].isMetadataOnly=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> ข้อมูลเท่านั้น (ฟรี ไม่ตัดสต๊อก)</label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.enabled !== false ? ' checked' : ''} onchange="editGroupChoices[${ci}].enabled=this.checked" style="width:auto;margin:0;"> เปิดใช้</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.isDefault ? ' checked' : ''} onchange="setChoiceDefault(${ci},this.checked)" style="width:auto;margin:0;"> ตัวเลือกเริ่มต้น (default)</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.enabled !== false ? ' checked' : ''} onchange="editGroupChoices[${ci}].enabled=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> เปิดใช้</label>
       </div>
     </div>`;
   }).join('');
   renderIcons(el);
 }
 
-// เปลี่ยน effect ของตัวเลือก — ถ้าเป็น ADD/REPLACE ให้ขึ้นช่องเลือกวัตถุดิบ 1 แถวทันที (กัน "ขึ้นไม่ครบ")
-function setChoiceEffect(ci, val) {
+// Re-renders just this choice's summary text without a full re-render — used
+// on every label/price/qty keystroke so typing doesn't lose input focus.
+function ogRefreshChoicePreview(ci) {
   const c = editGroupChoices[ci];
   if (!c) return;
-  c.effectType = val;
-  if ((val === 'ADD' || val === 'REPLACE') && (!c.links || !c.links.length)) {
-    c.links = [{ id: uid(), matId: '', amount: 0 }];
+  const sumEl = document.getElementById('ogSummary' + ci);
+  if (sumEl) sumEl.innerHTML = icon('list') + ' ' + esc(ogChoiceSummary(c));
+}
+
+// One-max enforcement for "default choice" — setting one choice as default
+// clears every other choice's default in the SAME group.
+function setChoiceDefault(ci, checked) {
+  editGroupChoices.forEach((c, i) => { c.isDefault = (i === ci) ? checked : false; });
+  renderGroupChoices();
+}
+
+// Sets one field on the single-slot links[0] row, creating it if missing —
+// used by blocks B and C, which always deal with exactly one link.
+function ogChoiceSetLink(ci, li, field, value) {
+  const c = editGroupChoices[ci];
+  if (!c) return;
+  if (!c.links) c.links = [];
+  if (!c.links[li]) c.links[li] = { id: uid(), matId: '', amount: 0 };
+  c.links[li][field] = value;
+  renderGroupChoices();
+}
+
+// Step-1 button handler — writes ONLY the underlying engine fields
+// (effect_type/is_metadata_only/links/target/amount/variant) to a clean
+// slate for the chosen block; there is no separate block_type to store
+// (see ogBlockTypeOf). label/priceAdd survive a block switch; only the
+// engine-driving fields reset. A redundant click on the already-active
+// block is a no-op (never wipes what the owner already entered).
+function ogSetBlockType(ci, blockType) {
+  const c = editGroupChoices[ci];
+  if (!c) return;
+  if (ogBlockTypeOf(c) === blockType) { renderGroupChoices(); return; }
+  switch (blockType) {
+    case 'INSTRUCTION_ONLY':
+      c.isMetadataOnly = true; c.effectType = 'NONE'; c.priceAdd = 0;
+      c.links = []; c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      break;
+    case 'ADD_ONE_INGREDIENT':
+      c.isMetadataOnly = false; c.effectType = 'ADD';
+      c.links = [{ id: uid(), matId: '', amount: 0 }];
+      c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      break;
+    case 'REPLACE_ONE_INGREDIENT':
+      c.isMetadataOnly = false; c.effectType = 'REPLACE';
+      c.links = [{ id: uid(), matId: '', amount: 0 }];
+      c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      break;
+    case 'CHANGE_ONE_QUANTITY':
+      c.isMetadataOnly = false; c.effectType = 'QUANTITY';
+      c.links = []; c.targetRole = ''; c.variantRecipeId = null;
+      break;
+    case 'RECIPE_VARIANT':
+      c.isMetadataOnly = false; c.effectType = 'RECIPE_VARIANT';
+      c.links = []; c.targetMaterialId = null; c.targetRole = ''; c.amount = 0;
+      break;
   }
   renderGroupChoices();
 }
@@ -14410,19 +14850,13 @@ function addChoiceRow() {
   editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', targetMaterialId: null, variantRecipeId: null, links: [], amount: 0, isMetadataOnly: false });
   renderGroupChoices();
 }
-function addChoiceLink(ci) {
-  if (!editGroupChoices[ci].links) editGroupChoices[ci].links = [];
-  editGroupChoices[ci].links.push({ id: uid(), matId: '', amount: 0 });
-  renderGroupChoices();
-}
-function removeChoiceLink(ci, li) { editGroupChoices[ci].links.splice(li, 1); renderGroupChoices(); }
 
 function renderGroupRecipePicker(selectedIds) {
   const el = $('ogRecipePicker');
   if (!el) return;
   el.innerHTML = recipes.filter(r => !r.isRaw).map(r => `
     <label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:13px;">
-      <input type="checkbox" class="og-recipe-chk" data-rid="${r.id}" ${(selectedIds||[]).includes(r.id)?'checked':''} style="width:auto;margin:0;"> ${esc(r.name)}
+      <input type="checkbox" class="og-recipe-chk" data-rid="${r.id}" ${(selectedIds||[]).includes(r.id)?'checked':''} onchange="renderGroupChoices()" style="width:auto;margin:0;"> ${esc(r.name)}
     </label>`).join('') || '<p style="color:var(--color-text-muted);font-size:12px;">ยังไม่มีสูตร</p>';
 }
 
@@ -14440,7 +14874,20 @@ function saveGroupForm() {
     sort: editGroupId ? (optionGroups.find(x => x.id === editGroupId)?.sort || 0) : optionGroups.length,
     enabled: $('ogEnabled').checked,
     recipeIds,
-    choices: editGroupChoices.map((c, i) => ({ ...c, sort: i, links: (c.links||[]).filter(l => l.matId) }))
+    // V-rule enforcement: a choice that fails ogValidateChoice is saved as a
+    // DRAFT — never silently dropped, but forced enabled=false so it can't
+    // reach the POS/Delivery sheet (POS filters `g.choices.filter(c =>
+    // c.enabled)`) until the owner finishes it. There is no separate "draft"
+    // DB column — enabled=false IS the gate, surfaced back via `incomplete`
+    // (a display-only flag, not itself persisted as engine behavior).
+    choices: editGroupChoices.map((c, i) => {
+      const links = (c.links || []).filter(l => l.matId);
+      const out = { ...c, sort: i, links };
+      const v = ogValidateChoice(out);
+      out.incomplete = !v.ok;
+      if (!v.ok) out.enabled = false;
+      return out;
+    })
   };
   if (editGroupId) {
     const idx = optionGroups.findIndex(x => x.id === editGroupId);
