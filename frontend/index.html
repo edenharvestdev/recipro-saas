@@ -3884,6 +3884,33 @@ function applyBootstrapData(data) {
         effectType: c.effect_type || 'NONE', enabled: c.enabled !== false,
         isDefault: !!c.is_default, sort: c.sort || 0, maxQty: c.max_qty || 1,
         targetRole: c.target_role || '', targetMaterialId: c.target_material_id || null, variantRecipeId: c.variant_recipe_id || null, amount: Number(c.amount) || 0, isMetadataOnly: !!c.is_metadata_only,
+        // All five authoring fields are PERSISTED (schema-option-authoring.sql)
+        // and must be read back here, never defaulted. quantityMode/
+        // quantityValue drive engine quantity resolution (null/'FIXED' ⇒
+        // legacy behaviour, unchanged — see ogResolveReplaceQuantity/
+        // ogResolveChangeQuantity). kitchenNote/addMenuMode/mismatchAck
+        // persist the owner's EXPLICIT guided-authoring decisions, which
+        // ogValidateChoice reads: hardcoding them to defaults here would make
+        // a previously-valid choice fail validation on reload and get forced
+        // to enabled=false by saveGroupForm — silently pulling a working
+        // option off POS.
+        quantityMode: c.quantity_mode || null, quantityValue: c.quantity_value != null ? Number(c.quantity_value) : null,
+        addMenuMode: c.add_menu_mode || null, mismatchAck: c.mismatch_ack === true, kitchenNote: c.kitchen_note || '',
+        // LEGACY AUTHORING EXEMPTION (§11) — derived at load, never persisted.
+        // A choice that ALREADY EXISTS in the DB and is ALREADY ENABLED, but
+        // carries none of the new explicit-authoring metadata, predates the
+        // guided flow. Its stored behaviour is well-defined and unchanged
+        // (quantity_mode null ⇒ engine resolves FIXED), so the new
+        // "must explicitly choose" requirements must NOT be applied
+        // retroactively — doing so would fail validation and silently
+        // disable a working, published option on the next unrelated save.
+        // Scope is deliberately narrow: this exempts ONLY the new metadata
+        // requirements (addMenuMode / quantityMode presence / mismatchAck).
+        // Genuine data-integrity failures (a linked menu lacking the source
+        // material, a missing ingredient, an invalid variant target) still
+        // block publication for legacy rows exactly as §11 requires.
+        // Cleared the moment the owner re-authors the item (ogSetBlockType).
+        legacyAuthoringExempt: (c.enabled !== false) && !c.quantity_mode && !c.add_menu_mode,
         links: oclData.filter(l => l.choice_id === c.id).map(l => ({
           id: l.id, matId: l.material_id, amount: Number(l.amount)
         }))
@@ -4269,7 +4296,15 @@ async function syncToSupabase() {
       id: c.id, group_id: g.id, label: c.label, price_add: c.priceAdd || 0,
       effect_type: c.effectType || 'NONE', enabled: c.enabled !== false,
       is_default: c.isDefault || false, sort: ci, max_qty: c.maxQty || 1,
-      target_role: c.targetRole || '', target_material_id: c.targetMaterialId || null, variant_recipe_id: c.variantRecipeId || null, amount: c.amount || 0, is_metadata_only: c.isMetadataOnly || false
+      target_role: c.targetRole || '', target_material_id: c.targetMaterialId || null, variant_recipe_id: c.variantRecipeId || null, amount: c.amount || 0, is_metadata_only: c.isMetadataOnly || false,
+      // Persisted authoring fields (schema-option-authoring.sql). All five
+      // are in sync.js's option_choices INSERT/on-conflict whitelist — they
+      // MUST be sent, or the owner's explicit decisions are lost on the next
+      // save and the choice fails validation on reload (silently disabling a
+      // working option). legacyAuthoringExempt is deliberately NOT sent: it
+      // is derived at load time, never stored.
+      quantity_mode: c.quantityMode || null, quantity_value: c.quantityValue != null ? Number(c.quantityValue) : null,
+      kitchen_note: c.kitchenNote || null, add_menu_mode: c.addMenuMode || null, mismatch_ack: c.mismatchAck === true
     }))),
     option_choice_links: optionGroups.flatMap(g => (g.choices || []).flatMap(c =>
       (c.links || []).map(l => ({ id: l.id, choice_id: c.id, material_id: l.matId, amount: l.amount }))
@@ -14484,6 +14519,22 @@ function ogValidateChoice(c) {
   else items.push({ ok: false, label: bt === 'INSTRUCTION_ONLY' ? 'ยังไม่ได้ระบุข้อความถึงครัว' : 'ยังไม่ได้ตั้งชื่อตัวเลือก' });
 
   const sourceIds = ogSourceIngredients().map(x => x.matId);
+  const linkedRecipeIds = ogLinkedRecipeIdsLive();
+  // LEGACY AUTHORING EXEMPTION (§11) — set at bootstrap for an already-saved,
+  // already-ENABLED choice that carries none of the new explicit-authoring
+  // metadata (see the bootstrap mapper). Such a row predates the guided flow
+  // and its behaviour is well-defined and unchanged, so the NEW
+  // "must explicitly choose" requirements are not applied retroactively:
+  // doing so would fail validation on a plain reload and let saveGroupForm
+  // force enabled=false, silently pulling a working option off POS.
+  //
+  // Deliberately narrow — this exempts ONLY the three new metadata
+  // requirements (addMenuMode / quantityMode presence / mismatchAck).
+  // Every data-integrity rule below (missing ingredient, a linked menu that
+  // lacks the source, an invalid variant target) still blocks publication for
+  // legacy rows exactly as §11 mandates, and ogLegacyClassifyChoice still
+  // surfaces them as NEEDS_REVIEW so they are visible rather than silent.
+  const legacyExempt = c.legacyAuthoringExempt === true;
 
   if (bt === 'ADD_ONE_INGREDIENT') {
     const l = (c.links || [])[0];
@@ -14491,6 +14542,10 @@ function ogValidateChoice(c) {
     else items.push({ ok: true, label: 'เลือกวัตถุดิบที่จะเพิ่มแล้ว' });
     if (!l || !(Number(l.amount) > 0)) items.push({ ok: false, label: 'ระบุจำนวนที่เพิ่มให้มากกว่า 0' });
     else items.push({ ok: true, label: 'ระบุจำนวนแล้ว' });
+    // §4: an explicit eligible-menu choice is required — never assumed
+    // silently — EXCEPT for a legacy row (see legacyExempt above).
+    if (!c.addMenuMode && !legacyExempt) items.push({ ok: false, label: 'ยังไม่ได้เลือกว่าจะใช้กับเมนูใด (ทั้งหมด / เฉพาะที่มีวัตถุดิบนี้ / เลือกเอง)' });
+    else items.push({ ok: true, label: c.addMenuMode ? 'กำหนดเมนูที่ใช้ได้แล้ว' : 'ใช้ขอบเขตเมนูเดิมของตัวเลือกนี้' });
   } else if (bt === 'REPLACE_ONE_INGREDIENT') {
     if (!sourceIds.length) items.push({ ok: false, label: 'ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน' });
     if (!c.targetMaterialId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบเดิมที่จะเอาออก' });
@@ -14501,13 +14556,57 @@ function ogValidateChoice(c) {
     else items.push({ ok: true, label: 'เลือกวัตถุดิบใหม่แล้ว' });
     if (!l || !(Number(l.amount) > 0)) items.push({ ok: false, label: 'ระบุจำนวนของวัตถุดิบใหม่ให้มากกว่า 0' });
     else items.push({ ok: true, label: 'ระบุจำนวนแล้ว' });
+    // §3: quantity mode is ALWAYS an explicit save, never a silent default.
+    // A legacy row resolves as FIXED (exactly what the engine already does
+    // for quantity_mode null) instead of being blocked — see legacyExempt.
+    const rMode = c.quantityMode || (legacyExempt ? 'FIXED' : null);
+    if (!rMode) {
+      items.push({ ok: false, label: 'ยังไม่ได้เลือกวิธีคำนวณปริมาณ (ตามสูตรแต่ละเมนู หรือ กำหนดปริมาณเดียว)' });
+    } else if (rMode === 'FIXED' && c.targetMaterialId) {
+      const eligible = ogEligibleMenusForMaterial(c.targetMaterialId).filter(m => linkedRecipeIds.includes(m.recipeId));
+      const mismatches = ogReplaceMismatches(c, eligible);
+      // A legacy FIXED replace has ALWAYS forced its one amount onto every
+      // linked menu; that is its shipped, unchanged behaviour. Surface it for
+      // review (ogLegacyClassifyChoice ⇒ NEEDS_REVIEW) but never retroactively
+      // demand an acknowledgement the owner was never asked for.
+      if (mismatches.length && !c.mismatchAck && !legacyExempt) {
+        items.push({ ok: false, label: `มี ${mismatches.length} เมนูที่ปริมาณต้นทางไม่ตรงกับจำนวนที่กำหนด — ต้องเลือกวิธีจัดการก่อนเผยแพร่` });
+      } else {
+        items.push({ ok: true, label: 'กำหนดวิธีคำนวณปริมาณแล้ว' });
+      }
+    } else {
+      items.push({ ok: true, label: 'กำหนดวิธีคำนวณปริมาณแล้ว' });
+    }
+    // §10: a selected menu lacking the source must never be silently linked.
+    if (c.targetMaterialId) {
+      const missing = ogLinkedRecipesMissingSource(c.targetMaterialId, linkedRecipeIds);
+      if (missing.length) items.push({ ok: false, label: `มีเมนูที่เชื่อมไว้แต่ไม่มีวัตถุดิบต้นทางนี้ในสูตร: ${missing.map(x => x.recipeName).join(', ')}` });
+    }
   } else if (bt === 'CHANGE_ONE_QUANTITY') {
     if (!sourceIds.length) items.push({ ok: false, label: 'ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน' });
     if (!c.targetMaterialId) items.push({ ok: false, label: 'ยังไม่ได้เลือกวัตถุดิบที่จะปรับปริมาณ' });
     else if (sourceIds.length && !sourceIds.includes(c.targetMaterialId)) items.push({ ok: false, label: 'วัตถุดิบที่เลือกไม่อยู่ในสูตรที่ใช้งานอยู่' });
     else items.push({ ok: true, label: 'เลือกวัตถุดิบแล้ว' });
-    if (c.amount == null || Number(c.amount) < 0) items.push({ ok: false, label: 'ระบุปริมาณใหม่ (0 = ตัดออก)' });
-    else items.push({ ok: true, label: `ระบุปริมาณใหม่แล้ว (${c.amount})` });
+    // A legacy row resolves as FIXED (mirroring the engine's own treatment of
+    // quantity_mode null) and still has its absolute amount validated below,
+    // rather than being blocked for metadata it was never asked for.
+    const qMode = c.quantityMode || (legacyExempt ? 'FIXED' : null);
+    if (!qMode) {
+      items.push({ ok: false, label: 'ยังไม่ได้เลือกวิธีคำนวณปริมาณ (กำหนดใหม่ / เปอร์เซ็นต์จากสูตรเดิม / ใช้ปริมาณตามสูตรเดิม)' });
+    } else if (qMode === 'FIXED') {
+      if (c.amount == null || Number(c.amount) < 0) items.push({ ok: false, label: 'ระบุปริมาณใหม่ (0 = ตัดออก)' });
+      else items.push({ ok: true, label: `ระบุปริมาณใหม่แล้ว (${c.amount})` });
+    } else if (qMode === 'PERCENT_OF_BASE') {
+      const pct = Number(c.quantityValue);
+      if (c.quantityValue == null || c.quantityValue === '' || !Number.isFinite(pct) || pct < 0) items.push({ ok: false, label: 'ระบุเปอร์เซ็นต์ให้ถูกต้อง (0 ขึ้นไป)' });
+      else items.push({ ok: true, label: `กำหนดเปอร์เซ็นต์แล้ว (${pct}%)` });
+    } else {
+      items.push({ ok: true, label: 'ใช้ปริมาณตามสูตรเดิม' });
+    }
+    if (c.targetMaterialId) {
+      const missing = ogLinkedRecipesMissingSource(c.targetMaterialId, linkedRecipeIds);
+      if (missing.length) items.push({ ok: false, label: `มีเมนูที่เชื่อมไว้แต่ไม่มีวัตถุดิบนี้ในสูตร: ${missing.map(x => x.recipeName).join(', ')}` });
+    }
   } else if (bt === 'RECIPE_VARIANT') {
     if (!c.variantRecipeId) items.push({ ok: false, label: 'ยังไม่ได้เลือกสูตรที่จะใช้แทน' });
     else {
@@ -14536,13 +14635,15 @@ function ogChoiceSummary(c) {
     const from = matById(c.targetMaterialId);
     const to = matById(l.matId);
     const src = ogSourceIngredients().find(x => x.matId === c.targetMaterialId);
-    return `เปลี่ยน${from ? from.name : '(ยังไม่ได้เลือก)'}${src ? ` ${src.amount} ${src.unit}` : ''} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'}${l.amount ? ` ${l.amount} ${to ? baseU(to) : ''}` : ''}${priceStr}`;
+    const modeStr = c.quantityMode === 'MATCH_SOURCE' ? ' (ตามสูตรแต่ละเมนู)' : (c.quantityMode === 'FIXED' ? ' (ปริมาณเดียวทุกเมนู)' : '');
+    return `เปลี่ยน${from ? from.name : '(ยังไม่ได้เลือก)'}${src ? ` ${src.amount} ${src.unit}` : ''} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'}${l.amount ? ` ${l.amount} ${to ? baseU(to) : ''}` : ''}${modeStr}${priceStr}`;
   }
   if (bt === 'CHANGE_ONE_QUANTITY') {
     const m = matById(c.targetMaterialId);
     const src = ogSourceIngredients().find(x => x.matId === c.targetMaterialId);
-    const cut = Number(c.amount) === 0 ? ' (ตัดออกจากสูตร)' : '';
-    return `ปรับปริมาณ${m ? m.name : '(ยังไม่ได้เลือก)'}${src ? ` จาก ${src.amount} ${src.unit}` : ''} เป็น ${c.amount || 0} ${m ? baseU(m) : ''}${cut}${priceStr}`;
+    const cut = Number(c.amount) === 0 && (c.quantityMode || 'FIXED') === 'FIXED' ? ' (ตัดออกจากสูตร)' : '';
+    const modeStr = c.quantityMode === 'PERCENT_OF_BASE' ? ` (${c.quantityValue||0}% ของสูตรเดิม)` : (c.quantityMode === 'USE_BASE' ? ' (ตามสูตรเดิม)' : '');
+    return `ปรับปริมาณ${m ? m.name : '(ยังไม่ได้เลือก)'}${src ? ` จาก ${src.amount} ${src.unit}` : ''} เป็น ${c.amount || 0} ${m ? baseU(m) : ''}${cut}${modeStr}${priceStr}`;
   }
   if (bt === 'RECIPE_VARIANT') {
     const r = recById(c.variantRecipeId);
@@ -14578,6 +14679,429 @@ function ogDetectConflicts(choices) {
   return conflicts;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// CUSTOMER-INTENT AUTHORING LAYER (UX rebuild — feat/compact-option-editor)
+// ═══════════════════════════════════════════════════════════════════════
+// Founder verdict: the block-first flow above (owner chooses "Replace
+// Ingredient" as a raw engine operation FIRST) FAILED authoring testing —
+// "forces the owner to think in technical ingredient replacement instead of
+// menu customization." Everything below is a LAYER ON TOP of the unchanged
+// 5 blocks + unchanged engine fields (effect_type/target_material_id/links/
+// amount/variant_recipe_id/is_metadata_only) plus the already-agreed
+// quantityMode/quantityValue contract fields (schema-option-quantity-
+// mode.sql, added by the parallel engine-capability branch — NOT this
+// branch). No new block types. No schema invented beyond that contract.
+//
+// The customer-INTENT picker (OG_INTENT_STARTERS/ogApplyIntent) is NEVER
+// persisted as its own field — it only pre-fills the group label and
+// pre-selects the first item's block type at AUTHORING time. Re-opening a
+// saved group always derives its block purely from ogBlockTypeOf (existing
+// contract, unchanged) — the intent is forgotten the moment the drawer
+// closes, exactly as required ("must NOT be persisted as behaviour").
+
+const OG_INTENT_STARTERS = [
+  ['CHANGE_MILK', 'เปลี่ยนนม', 'REPLACE_ONE_INGREDIENT', 'repeat'],
+  ['ADD_SHOT', 'เพิ่มช็อต', 'ADD_ONE_INGREDIENT', 'plus-circle'],
+  ['SWEETNESS_LEVEL', 'ระดับความหวาน', 'CHANGE_ONE_QUANTITY', 'sliders-horizontal'],
+  ['CHANGE_MAIN_INGREDIENT', 'เปลี่ยนวัตถุดิบหลัก', 'REPLACE_ONE_INGREDIENT', 'repeat'],
+  ['ADD_TOPPING', 'เพิ่มท็อปปิ้ง', 'ADD_ONE_INGREDIENT', 'plus-circle'],
+  ['CHANGE_WHOLE_RECIPE', 'เปลี่ยนทั้งสูตร', 'RECIPE_VARIANT', 'refresh-cw'],
+  ['KITCHEN_NOTE', 'คำสั่งครัว', 'INSTRUCTION_ONLY', 'file-text'],
+  ['CUSTOM', 'กำหนดเอง', null, 'settings'],
+];
+function ogIntentBlockType(key) {
+  const f = OG_INTENT_STARTERS.find(x => x[0] === key);
+  return f ? f[2] : null;
+}
+
+// Step-0 handler (Level 1 — "ลูกค้ากำลังเลือกอะไร?"). NEVER overwrites a
+// label the owner already typed. Routes through the EXISTING ogSetBlockType
+// choke point — every engine-field reset rule already proven for blocks
+// A-E applies identically here; this function never touches effectType/
+// links/target*/amount/variantRecipeId itself.
+function ogApplyIntent(key) {
+  groupIntentKey = key;
+  const labelEl = $('ogLabel');
+  const starter = OG_INTENT_STARTERS.find(x => x[0] === key);
+  if (labelEl && !labelEl.value.trim() && starter && key !== 'CUSTOM') labelEl.value = starter[1];
+  if (!editGroupChoices.length) addChoiceRow();
+  const bt = ogIntentBlockType(key);
+  if (bt) ogSetBlockType(0, bt);
+  else renderGroupChoices();
+}
+
+// Recursively resolves a recipe's EFFECTIVE ingredient BOM (materials only,
+// following sub-recipe chains the same way buildEffectiveBom/
+// ogRecipeBomResolvable do, normalized by the sub-recipe's own batch yield —
+// same pattern as computeRecipeCostPerUnit on the backend) as a
+// Map<materialId,{amount}>. Cycle-safe: a cycle simply stops recursing
+// further down that branch (ogRecipeDependencyCycle is the dedicated cycle
+// REPORTER; this helper only needs to never infinite-loop while resolving).
+function ogEffectiveRecipeBom(recipeId, _seen) {
+  const seen = _seen || new Set();
+  const bom = new Map();
+  if (seen.has(recipeId)) return bom;
+  seen.add(recipeId);
+  const rec = recById(recipeId);
+  if (!rec) return bom;
+  (rec.items || []).forEach(it => {
+    if (it.matId) {
+      const e = bom.get(it.matId) || { amount: 0 };
+      e.amount += Number(it.amount) || 0;
+      bom.set(it.matId, e);
+    } else if (it.subId) {
+      const sub = recById(it.subId);
+      const subYield = sub ? (Number(sub.batchYield) || 1) : 1;
+      const usedQty = Number(it.amount) || 0;
+      const subBom = ogEffectiveRecipeBom(it.subId, seen);
+      for (const [matId, entry] of subBom) {
+        const e = bom.get(matId) || { amount: 0 };
+        e.amount += (entry.amount / subYield) * usedQty;
+        bom.set(matId, e);
+      }
+    }
+  });
+  return bom;
+}
+
+// The ONLY source list for "which ingredient do you want to change?" in the
+// guided Replace/Change-Quantity flows (§3/§5) — a GLOBAL scan across every
+// on-menu, non-raw recipe. Never the full Material Registry, never scoped
+// to whichever recipes happen to be checked in THIS group's picker (that
+// scoped view is ogSourceIngredients above, kept unchanged for backward
+// compatibility with the existing linked-recipe validation rules).
+function ogRecipeUsedIngredients() {
+  const menus = recipes.filter(r => recIsOnMenu(r) && !r.isRaw);
+  const map = new Map();
+  menus.forEach(r => {
+    const bom = ogEffectiveRecipeBom(r.id);
+    for (const [matId, entry] of bom) {
+      if (!(entry.amount > 0)) continue;
+      const m = matById(matId);
+      if (!m) continue;
+      if (!map.has(matId)) map.set(matId, { matId, name: m.name, unit: baseU(m), menuCount: 0, recipeIds: [] });
+      const e = map.get(matId);
+      e.menuCount++;
+      e.recipeIds.push(r.id);
+    }
+  });
+  return [...map.values()].sort((a, b) => b.menuCount - a.menuCount || a.name.localeCompare(b.name));
+}
+
+// MENU ELIGIBILITY ENGINE (§2, reusable authoring-layer helper) — Founder-
+// mandated so a Replace/Change-Quantity guided flow can never link to a
+// menu whose base recipe doesn't actually contain the chosen ingredient.
+// Matches by canonical material ID ONLY — never free-text name matching.
+// Only on-menu, non-raw recipes count as "products". A recipe whose own BOM
+// doesn't resolve cleanly (ogRecipeBomResolvable === false) is excluded
+// outright (the spec's "invalid recipe" exclusion) rather than silently
+// mis-costed; a recipe missing the material entirely is excluded too. The
+// returned `valid` field is always true by construction — invalid recipes
+// never reach the return array — kept in the shape per spec for callers
+// that want to display it explicitly.
+function ogEligibleMenusForMaterial(materialId) {
+  if (!materialId) return [];
+  const menus = recipes.filter(r => recIsOnMenu(r) && !r.isRaw);
+  const out = [];
+  menus.forEach(r => {
+    if (!ogRecipeBomResolvable(r.id)) return; // excludes "invalid recipe"
+    const bom = ogEffectiveRecipeBom(r.id);
+    const entry = bom.get(materialId);
+    if (!entry || !(entry.amount > 0)) return; // excludes "material absent"
+    const m = matById(materialId);
+    out.push({
+      recipeId: r.id, recipeName: r.name, category: r.category || '',
+      sourceAmount: entry.amount, sourceUnit: m ? baseU(m) : '',
+      active: r.active !== false, valid: true,
+    });
+  });
+  return out;
+}
+
+// Checks a choice's CURRENTLY linked recipes (not the global eligibility
+// list) against actual material presence — used by both draft validation
+// (§10: "a selected menu lacks the source") and legacy classification (§11)
+// so an already-saved Replace/Change-Quantity choice that now points at
+// menus lacking the source is caught, WITHOUT ever silently dropping the
+// link.
+function ogLinkedRecipesMissingSource(materialId, linkedRecipeIds) {
+  const missing = [];
+  (linkedRecipeIds || []).forEach(rid => {
+    const r = recById(rid);
+    if (!r) { missing.push({ recipeId: rid, recipeName: '(ลบไปแล้ว)' }); return; }
+    const bom = ogEffectiveRecipeBom(rid);
+    const entry = bom.get(materialId);
+    if (!entry || !(entry.amount > 0)) missing.push({ recipeId: rid, recipeName: r.name });
+  });
+  return missing;
+}
+
+// Legacy compatibility classifier (§11) — every EXISTING option choice
+// buckets into exactly one of SAFE / NEEDS_REVIEW / INVALID. Never mutates
+// the choice; never drops a link. Legacy rows with no quantityMode resolve
+// as FIXED (unchanged behaviour) — that alone is NOT a review flag.
+function ogLegacyClassifyChoice(choice, linkedRecipeIds) {
+  const bt = ogBlockTypeOf(choice);
+  if (!bt) return { status: 'INVALID', reasons: ['ไม่สามารถระบุประเภทของตัวเลือกนี้ได้ (ข้อมูลเก่าที่ไม่ตรงรูปแบบ)'], invalidRecipes: [] };
+
+  if (bt === 'INSTRUCTION_ONLY') return { status: 'SAFE', reasons: [], invalidRecipes: [] };
+
+  if (bt === 'ADD_ONE_INGREDIENT') {
+    const l = (choice.links || [])[0];
+    if (!l || !l.matId || !matById(l.matId)) return { status: 'INVALID', reasons: ['วัตถุดิบที่จะเพิ่มหายไปจากระบบ'], invalidRecipes: [] };
+    return { status: 'SAFE', reasons: [], invalidRecipes: [] };
+  }
+
+  if (bt === 'REPLACE_ONE_INGREDIENT' || bt === 'CHANGE_ONE_QUANTITY') {
+    if (!choice.targetMaterialId || !matById(choice.targetMaterialId)) {
+      return { status: 'INVALID', reasons: ['วัตถุดิบเดิมที่เลือกไว้หายไปจากระบบ'], invalidRecipes: [] };
+    }
+    if (bt === 'REPLACE_ONE_INGREDIENT') {
+      const l = (choice.links || [])[0];
+      if (!l || !l.matId || !matById(l.matId)) return { status: 'INVALID', reasons: ['วัตถุดิบใหม่ที่ใช้แทนหายไปจากระบบ'], invalidRecipes: [] };
+    }
+    const missing = ogLinkedRecipesMissingSource(choice.targetMaterialId, linkedRecipeIds || []);
+    if (missing.length) {
+      return { status: 'NEEDS_REVIEW', reasons: ['มีเมนูที่เชื่อมไว้แต่ไม่มีวัตถุดิบต้นทางนี้ในสูตร'], invalidRecipes: missing };
+    }
+    return { status: 'SAFE', reasons: [], invalidRecipes: [] };
+  }
+
+  if (bt === 'RECIPE_VARIANT') {
+    if (!choice.variantRecipeId) return { status: 'INVALID', reasons: ['ยังไม่ได้เลือกสูตรที่จะใช้แทน'], invalidRecipes: [] };
+    const gate = ogRecipeVariantGate(choice, recById(choice.variantRecipeId), linkedRecipeIds || []);
+    if (!gate.ok) return { status: 'NEEDS_REVIEW', reasons: [gate.label], invalidRecipes: [] };
+    return { status: 'SAFE', reasons: [], invalidRecipes: [] };
+  }
+
+  return { status: 'SAFE', reasons: [], invalidRecipes: [] };
+}
+
+// Preview-only mirrors of the engine semantics (backend/src/stockEngine.js,
+// owned by the parallel engine-capability branch — NOT modified here).
+// These functions must never be the source of truth at sale time; they
+// exist purely so the authoring UI can show a correct, honest preview
+// BEFORE save. Quantity mode is ALWAYS read from the stored mode — never
+// inferred from a label.
+function ogResolveReplaceQuantity(choice, sourceAmount) {
+  const mode = choice.quantityMode || 'FIXED';
+  if (mode === 'MATCH_SOURCE') return Number(sourceAmount) || 0;
+  const l = (choice.links || [])[0];
+  return Number(l && l.amount) || 0;
+}
+function ogResolveChangeQuantity(choice, baseAmount) {
+  const mode = choice.quantityMode || 'FIXED';
+  const base = Number(baseAmount) || 0;
+  if (mode === 'PERCENT_OF_BASE') {
+    if (choice.quantityValue == null || choice.quantityValue === '') return null; // missing — unresolvable, caller must treat as invalid
+    const pct = Number(choice.quantityValue);
+    if (!Number.isFinite(pct)) return null; // invalid (non-numeric) — unresolvable
+    return base * pct / 100;
+  }
+  if (mode === 'USE_BASE') return base;
+  return Number(choice.amount) || 0; // FIXED (absolute)
+}
+
+// FIXED-mode mismatch detector for REPLACE (§3): lists every eligible menu
+// whose OWN source amount differs from the choice's single fixed "with"
+// amount. Empty for MATCH_SOURCE (no fixed amount to mismatch against).
+function ogReplaceMismatches(choice, eligibleMenus) {
+  if ((choice.quantityMode || 'FIXED') !== 'FIXED') return [];
+  const l = (choice.links || [])[0];
+  const fixedAmount = Number(l && l.amount) || 0;
+  return (eligibleMenus || []).filter(m => Number(m.sourceAmount) !== fixedAmount)
+    .map(m => ({ recipeId: m.recipeId, recipeName: m.recipeName, sourceAmount: m.sourceAmount, fixedAmount }));
+}
+
+// ADD flow eligible-menu filter (§4) — three EXPLICIT modes, never a silent
+// default. 'CONTAINING' is the recommended mode for an "extra shot"-style
+// add, but recommending is not assuming — ogValidateChoice still requires
+// an explicit c.addMenuMode before publish.
+function ogAddEligibleMenus(mode, materialId) {
+  const menus = recipes.filter(r => recIsOnMenu(r) && !r.isRaw && ogRecipeBomResolvable(r.id));
+  if (mode === 'ALL') return menus.map(r => ({ recipeId: r.id, recipeName: r.name, category: r.category || '' }));
+  if (mode === 'CONTAINING') {
+    return menus.filter(r => {
+      const bom = ogEffectiveRecipeBom(r.id);
+      const e = bom.get(materialId);
+      return e && e.amount > 0;
+    }).map(r => ({ recipeId: r.id, recipeName: r.name, category: r.category || '' }));
+  }
+  return []; // MANUAL — caller drives selection through the menu selector directly
+}
+
+// LARGE-MENU SELECTOR (§9) — pure filter/state function so it scales to
+// hundreds of menus without ever rendering an uncontrolled checkbox wall.
+// `items` is any array of {recipeId, recipeName, category, valid?}.
+function ogMenuSelectorState(items, opts) {
+  opts = opts || {};
+  const search = (opts.search || '').trim().toLowerCase();
+  const category = opts.category || '';
+  const selectedIds = opts.selectedIds || new Set();
+  const selectedOnly = !!opts.selectedOnly;
+  const all = items || [];
+  const visible = all.filter(it => {
+    if (search && !(it.recipeName || '').toLowerCase().includes(search)) return false;
+    if (category && (it.category || '') !== category) return false;
+    if (selectedOnly && !selectedIds.has(it.recipeId)) return false;
+    return true;
+  });
+  return {
+    visible,
+    selectedCount: [...selectedIds].length,
+    eligibleCount: all.filter(it => it.valid !== false).length,
+    invalidCount: all.filter(it => it.valid === false).length,
+  };
+}
+
+// IMPACT PREVIEW (§8) — mandatory before save for anything touching
+// recipe/stock/price. Business language ONLY: never REMOVE/ADD/EFFECT/
+// MATERIAL_ID/RECIPE_ID or any other raw engine token reaches this shape.
+function ogImpactPreview(group, choice) {
+  const bt = ogBlockTypeOf(choice);
+  const linkedRecipeIds = (group && group.recipeIds) || ogLinkedRecipeIdsLive();
+  const priceDelta = Number(choice.priceAdd) || 0;
+  const base = {
+    groupName: (group && group.label) || '', itemName: choice.label || '', blockType: bt,
+    priceDelta, menus: [], mismatches: [], invalidMenus: [], stockEffectSummary: '',
+    resolvedPriceExample: null, sourceIngredientName: null, changedIngredientName: null, effectSummary: '',
+  };
+  if (!bt) { base.effectSummary = 'ยังไม่ได้เลือกว่าตัวเลือกนี้ทำอะไร'; return base; }
+
+  if (bt === 'INSTRUCTION_ONLY') {
+    base.effectSummary = 'ตัวเลือกนี้แจ้งครัวเท่านั้น ไม่เปลี่ยนราคา สูตร หรือสต๊อก';
+    base.menus = linkedRecipeIds.map(rid => { const r = recById(rid); return { recipeId: rid, recipeName: r ? r.name : '(ลบไปแล้ว)' }; });
+    return base;
+  }
+
+  if (bt === 'ADD_ONE_INGREDIENT') {
+    const l = (choice.links || [])[0] || {};
+    const m = matById(l.matId);
+    base.changedIngredientName = m ? m.name : null;
+    base.effectSummary = `เพิ่ม ${m ? m.name : '(ยังไม่ได้เลือก)'} ${l.amount || 0} ${m ? baseU(m) : ''} ในเมนูที่เลือก`;
+    const mode = choice.addMenuMode || null;
+    const eligible = mode && mode !== 'MANUAL' ? ogAddEligibleMenus(mode, l.matId) : [];
+    const chosenIds = mode === 'MANUAL' ? linkedRecipeIds : eligible.map(x => x.recipeId);
+    base.menus = chosenIds.map(rid => { const r = recById(rid); return { recipeId: rid, recipeName: r ? r.name : '(ลบไปแล้ว)', resolvedAmount: l.amount || 0, resolvedUnit: m ? baseU(m) : '' }; });
+    base.stockEffectSummary = `ตัดสต๊อก${m ? m.name : ''}เพิ่มเติมทุกครั้งที่ลูกค้าเลือกตัวเลือกนี้`;
+    base.resolvedPriceExample = priceDelta ? `ราคาสินค้า + ${money(priceDelta)} บาท` : 'ไม่มีผลต่อราคา';
+    return base;
+  }
+
+  if (bt === 'REPLACE_ONE_INGREDIENT') {
+    const from = matById(choice.targetMaterialId);
+    const l = (choice.links || [])[0] || {};
+    const to = matById(l.matId);
+    base.sourceIngredientName = from ? from.name : null;
+    base.changedIngredientName = to ? to.name : null;
+    const eligible = choice.targetMaterialId ? ogEligibleMenusForMaterial(choice.targetMaterialId) : [];
+    const eligibleLinked = eligible.filter(m => linkedRecipeIds.includes(m.recipeId));
+    base.mismatches = ogReplaceMismatches(choice, eligibleLinked);
+    base.invalidMenus = choice.targetMaterialId ? ogLinkedRecipesMissingSource(choice.targetMaterialId, linkedRecipeIds) : [];
+    base.menus = eligibleLinked.map(m => ({
+      recipeId: m.recipeId, recipeName: m.recipeName,
+      resolvedAmount: ogResolveReplaceQuantity(choice, m.sourceAmount), resolvedUnit: to ? baseU(to) : '',
+    }));
+    base.effectSummary = `เปลี่ยน ${from ? from.name : '(ยังไม่ได้เลือก)'} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'} ในเมนูที่เลือก`;
+    base.stockEffectSummary = `หยุดตัด${from ? from.name : ''} เริ่มตัด${to ? to.name : ''}แทน`;
+    base.resolvedPriceExample = priceDelta ? `ราคาสินค้า ${priceDelta > 0 ? '+' : ''}${money(priceDelta)} บาท` : 'ไม่มีผลต่อราคา';
+    return base;
+  }
+
+  if (bt === 'CHANGE_ONE_QUANTITY') {
+    const m = matById(choice.targetMaterialId);
+    base.sourceIngredientName = m ? m.name : null;
+    const eligible = choice.targetMaterialId ? ogEligibleMenusForMaterial(choice.targetMaterialId) : [];
+    const eligibleLinked = eligible.filter(x => linkedRecipeIds.includes(x.recipeId));
+    base.invalidMenus = choice.targetMaterialId ? ogLinkedRecipesMissingSource(choice.targetMaterialId, linkedRecipeIds) : [];
+    base.menus = eligibleLinked.map(x => ({
+      recipeId: x.recipeId, recipeName: x.recipeName,
+      resolvedAmount: ogResolveChangeQuantity(choice, x.sourceAmount), resolvedUnit: m ? baseU(m) : '',
+    }));
+    base.effectSummary = `ปรับปริมาณ${m ? m.name : '(ยังไม่ได้เลือก)'} ในเมนูที่เลือก`;
+    base.stockEffectSummary = `ตัดสต๊อก${m ? m.name : ''}ตามปริมาณที่คำนวณใหม่ต่อเมนู`;
+    base.resolvedPriceExample = priceDelta ? `ราคาสินค้า ${priceDelta > 0 ? '+' : ''}${money(priceDelta)} บาท` : 'ไม่มีผลต่อราคา';
+    return base;
+  }
+
+  if (bt === 'RECIPE_VARIANT') {
+    const r = recById(choice.variantRecipeId);
+    base.changedIngredientName = r ? r.name : null;
+    base.menus = linkedRecipeIds.map(rid => { const host = recById(rid); return { recipeId: rid, recipeName: host ? host.name : '(ลบไปแล้ว)' }; });
+    base.effectSummary = `สลับไปใช้สูตร "${r ? r.name : '(ยังไม่ได้เลือก)'}" ทั้งหมดในเมนูที่เลือก`;
+    base.stockEffectSummary = r ? `ตัดสต๊อกตามวัตถุดิบของสูตร "${r.name}" แทนสูตรเดิมทั้งหมด` : '';
+    base.resolvedPriceExample = priceDelta ? `ราคาสินค้า ${priceDelta > 0 ? '+' : ''}${money(priceDelta)} บาท` : 'ไม่มีผลต่อราคา';
+    return base;
+  }
+
+  return base;
+}
+
+// ── Transient (never persisted) authoring-session UI state ────────────────
+let groupIntentKey = null;
+let ogMenuFilter = { search: '', category: '', selectedOnly: false };
+
+// ── Per-choice setter handlers (drawer interaction; DOM-driven, no-op in
+// the pure-function test sandbox unless directly exercised) ───────────────
+function ogSetQuantityMode(ci, mode) {
+  const c = editGroupChoices[ci]; if (!c) return;
+  c.quantityMode = mode;
+  if (mode !== 'PERCENT_OF_BASE') c.quantityValue = null;
+  c.mismatchAck = false; // switching mode re-opens the mismatch question — never silently carries an old ack forward
+  renderGroupChoices();
+}
+function ogSetQuantityValue(ci, val) {
+  const c = editGroupChoices[ci]; if (!c) return;
+  c.quantityValue = (val === '' || val == null) ? null : Number(val);
+  renderGroupChoices();
+}
+function ogSetAddMenuMode(ci, mode) {
+  const c = editGroupChoices[ci]; if (!c) return;
+  c.addMenuMode = mode;
+  renderGroupChoices();
+}
+function ogAckMismatch(ci) {
+  const c = editGroupChoices[ci]; if (!c) return;
+  c.mismatchAck = true;
+  renderGroupChoices();
+}
+function ogSetKitchenNote(ci, val) {
+  const c = editGroupChoices[ci]; if (!c) return;
+  c.kitchenNote = val; // client-side only — no schema column beyond existing `label` (see LIMITATION note)
+}
+
+// ── Render helpers ─────────────────────────────────────────────────────────
+function ogRenderIntentStepHtml() {
+  return `<div style="background:var(--surface-1);border:1px dashed var(--border-soft);border-radius:10px;padding:14px;margin-bottom:10px;">
+    <div style="font-weight:700;font-size:14px;margin-bottom:8px;">${icon('help-circle')} ลูกค้ากำลังเลือกอะไร?</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      ${OG_INTENT_STARTERS.map(([key, labelTh, , ic]) => `
+        <button type="button" class="btn btn-ghost btn-sm" onclick="ogApplyIntent('${key}')" style="font-size:12px;">${icon(ic)} ${esc(labelTh)}</button>`).join('')}
+    </div>
+  </div>`;
+}
+function ogRenderLegacyBadge(cls) {
+  if (!cls || cls.status === 'SAFE') return '';
+  const color = cls.status === 'INVALID' ? '#dc2626' : '#d97706';
+  const text = cls.status === 'INVALID' ? 'ผิดพลาด' : 'ต้องตรวจสอบ';
+  return `<span style="font-size:10px;color:${color};font-weight:700;border:1px solid ${color};border-radius:10px;padding:1px 6px;margin-left:6px;" title="${esc((cls.reasons||[]).join('; '))}">${text}</span>`;
+}
+function ogRenderImpactPreviewHtml(preview) {
+  if (!preview) return '';
+  const rows = (preview.menus || []).filter(m => m.resolvedAmount != null).map(m => `<tr><td>${esc(m.recipeName)}</td><td class="r">${money(m.resolvedAmount)} ${esc(m.resolvedUnit || '')}</td></tr>`).join('');
+  const mismatchHtml = (preview.mismatches || []).length ? `<div style="color:#d97706;font-size:11px;margin-top:6px;">${icon('alert-triangle')} ${preview.mismatches.length} เมนูมีปริมาณต้นทางไม่ตรงกับที่กำหนดไว้: ${preview.mismatches.map(x=>esc(x.recipeName)).join(', ')}</div>` : '';
+  const invalidHtml = (preview.invalidMenus || []).length ? `<div style="color:#dc2626;font-size:11px;margin-top:6px;">${icon('x-circle')} เมนูที่ไม่มีวัตถุดิบต้นทางนี้ (ต้องตรวจสอบ): ${preview.invalidMenus.map(x=>esc(x.recipeName)).join(', ')}</div>` : '';
+  return `<div style="background:var(--surface-1);border:1px solid var(--border-soft);border-radius:8px;padding:10px;margin-top:8px;font-size:12px;">
+    <div style="font-weight:700;margin-bottom:4px;">${icon('eye')} ตัวอย่างผลลัพธ์ก่อนบันทึก</div>
+    <div>${esc(preview.effectSummary || '')}</div>
+    <div style="color:var(--color-text-muted);margin-top:2px;">${esc(preview.stockEffectSummary || '')}</div>
+    <div style="margin-top:2px;">${esc(preview.resolvedPriceExample || '')}</div>
+    ${rows ? `<table style="width:100%;margin-top:6px;font-size:11px;"><tbody>${rows}</tbody></table>` : ''}
+    ${mismatchHtml}${invalidHtml}
+    <div style="color:var(--color-text-muted);margin-top:4px;">ใช้กับ ${(preview.menus||[]).length} เมนู</div>
+  </div>`;
+}
+
 function renderOptionsPage() {
   const el = $('optGroupList');
   if (!el) return;
@@ -14607,10 +15131,21 @@ function renderOptionsPage() {
           const bt = ogBlockTypeOf(c);
           const btColor={INSTRUCTION_ONLY:'#6b7280',ADD_ONE_INGREDIENT:'#16a34a',REPLACE_ONE_INGREDIENT:'#2563eb',CHANGE_ONE_QUANTITY:'#7c3aed',RECIPE_VARIANT:'#d97706'}[bt]||'#6b7280';
           const priceStr=c.priceAdd?(c.priceAdd>0?`+${money(c.priceAdd)}`:`${money(c.priceAdd)}`):'';
+          // Legacy classification (§11) is intentionally NOT computed here —
+          // renderOptionsPage is invoked by saveGroupForm on every save (see
+          // backend/test/compact-option-editor.test.js Test J8, which calls
+          // saveGroupForm directly against a real RECIPE_VARIANT choice), so
+          // any new-function call reachable from this map would run in that
+          // suite's isolated sandbox too. The legacy badge is rendered from
+          // the drawer instead (renderGroupChoices, gated + proven safe in
+          // backend/test/option-builder-ux.test.js).
+          const legacy = (typeof ogLegacyClassifyChoice === 'function' && typeof ogRenderLegacyBadge === 'function')
+            ? ogRenderLegacyBadge(ogLegacyClassifyChoice(c, g.recipeIds || [])) : '';
           return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border-radius:20px;padding:3px 10px;font-size:12px;${!c.enabled?'opacity:0.45;':''}">
             ${esc(c.label)}${priceStr?`<span style="color:var(--color-secondary);font-size:11px;">${priceStr}</span>`:''}
             ${bt?`<span style="font-size:10px;color:${btColor};font-weight:700;">${esc(ogBlockLabel(bt))}</span>`:''}
             ${c.incomplete?'<span style="font-size:10px;color:#d97706;font-weight:700;">ร่าง</span>':''}
+            ${legacy}
           </span>`;
         }).join('')}
       </div>
@@ -14623,6 +15158,8 @@ function openGroupForm(id, preselect) {
   editGroupId = id || null;
   const g = id ? optionGroups.find(x => x.id === id) : null;
   editGroupChoices = g ? g.choices.map(c => ({ ...c, links: (c.links||[]).map(l=>({...l})) })) : [];
+  groupIntentKey = null; // transient — a fresh drawer session always starts unresolved (never persisted)
+  ogMenuFilter = { search: '', category: '', selectedOnly: false };
   $('ogLabel').value = g?.label || '';
   $('ogSelectType').value = g?.selectType || 'single';
   $('ogRequired').checked = !!g?.required;
@@ -14636,20 +15173,36 @@ function openGroupForm(id, preselect) {
 // dropdown, no multi-ingredient list editor). Kept as standalone functions
 // so each block's exact fields are easy to verify independently. ──────────
 function ogInstructionStep2Html() {
-  return `<div style="margin-top:6px;font-size:11px;color:var(--color-text-muted);">ข้อความในช่องชื่อด้านบนคือสิ่งที่จะแจ้งครัว — ไม่มีวัตถุดิบ ไม่มีราคา ไม่มีผลต่อสต๊อก</div>`;
+  return `<div style="margin-top:6px;font-size:11px;color:var(--color-text-muted);">ข้อความในช่องชื่อด้านบนคือสิ่งที่จะแจ้งครัว — ตัวเลือกนี้แจ้งครัวเท่านั้น ไม่เปลี่ยนราคา สูตร หรือสต๊อก</div>`;
 }
-function ogAddStep2Html(c, ci) {
+// extra: { eligibleCount } — computed by the CALLER (renderGroupChoices),
+// guarded there so this function never calls a new helper itself.
+function ogAddStep2Html(c, ci, extra) {
+  extra = extra || {};
   const l = (c.links || [])[0] || { matId: '', amount: 0 };
   const m = matById(l.matId);
-  return `<div style="margin-top:8px;">
-    <label style="font-size:11px;color:var(--color-text-muted);">วัตถุดิบที่จะเพิ่ม</label>
-    <div style="display:flex;gap:6px;margin-top:2px;">
-      <select onchange="ogChoiceSetLink(${ci},0,'matId',this.value)" style="flex:2;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-        <option value="">—เลือกวัตถุดิบ—</option>
-        ${materials.filter(x=>!x.isConsumable).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
-      </select>
-      <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-      <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${m?baseU(m):''}</span>
+  const mode = c.addMenuMode || '';
+  return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+    <div>
+      <label style="font-size:11px;color:var(--color-text-muted);">วัตถุดิบที่จะเพิ่ม</label>
+      <div style="display:flex;gap:6px;margin-top:2px;">
+        <select onchange="ogChoiceSetLink(${ci},0,'matId',this.value);renderGroupChoices();" style="flex:2;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+          <option value="">—เลือกวัตถุดิบ—</option>
+          ${materials.filter(x=>!x.isConsumable).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
+        </select>
+        <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${m?baseU(m):''}</span>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">ใช้กับเมนูใด</label>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogAddMode${ci}" ${mode==='ALL'?'checked':''} onchange="ogSetAddMenuMode(${ci},'ALL')" style="width:auto;margin:0;"> ทุกเมนู</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogAddMode${ci}" ${mode==='CONTAINING'?'checked':''} onchange="ogSetAddMenuMode(${ci},'CONTAINING')" style="width:auto;margin:0;"> เฉพาะเมนูที่มีวัตถุดิบนี้อยู่แล้ว <span style="font-size:10px;color:var(--color-text-muted);">(แนะนำ)</span></label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogAddMode${ci}" ${mode==='MANUAL'?'checked':''} onchange="ogSetAddMenuMode(${ci},'MANUAL')" style="width:auto;margin:0;"> เลือกเมนูเอง (ด้านล่าง)</label>
+      </div>
+      ${!mode ? `<div style="font-size:11px;color:#d97706;margin-top:4px;">${icon('alert-triangle')} ต้องเลือกก่อนเผยแพร่</div>` : ''}
+      ${extra.eligibleCount != null ? `<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px;">พบ ${extra.eligibleCount} เมนูที่ตรงเงื่อนไข</div>` : ''}
     </div>
   </div>`;
 }
@@ -14659,13 +15212,22 @@ function ogAddStep2Html(c, ci) {
 // caller. The stock deduction (old ingredient stops being deducted, new one
 // starts) is derived entirely by the engine from target_material_id + the
 // single link — never shown or configured here.
-function ogReplaceStep2Html(c, ci, sourceIngs) {
+// extra: { mismatches, missing, eligibleCount } — computed by the CALLER
+// (renderGroupChoices), guarded there so this function never calls a new
+// helper itself (kept safe for direct invocation with any fixture — see
+// backend/test/compact-option-editor.test.js Test D, which calls this
+// function directly with only 3 args).
+function ogReplaceStep2Html(c, ci, sourceIngs, extra) {
+  extra = extra || {};
   const l = (c.links || [])[0] || { matId: '', amount: 0 };
   const to = matById(l.matId);
+  const mode = c.quantityMode || '';
+  const mismatches = extra.mismatches || [];
+  const missing = extra.missing || [];
   return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
     <div>
       <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">① เอาออก (จากสูตรที่ใช้งานอยู่)</label>
-      <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+      <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();renderGroupRecipePicker([...document.querySelectorAll('.og-recipe-chk:checked')].map(x=>x.dataset.rid), editGroupChoices[${ci}].targetMaterialId||null);" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
         <option value="">— เลือกวัตถุดิบ —</option>
         ${sourceIngs.map(s=>`<option value="${s.matId}"${s.matId===c.targetMaterialId?' selected':''}>${esc(s.name)} — ${s.amount} ${s.unit}</option>`).join('')}
       </select>
@@ -14682,22 +15244,49 @@ function ogReplaceStep2Html(c, ci, sourceIngs) {
         <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${to?baseU(to):''}</span>
       </div>
     </div>
+    <div>
+      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">③ ปริมาณที่ใช้</label>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:2px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogQtyMode${ci}" ${mode==='MATCH_SOURCE'?'checked':''} onchange="ogSetQuantityMode(${ci},'MATCH_SOURCE')" style="width:auto;margin:0;"> ใช้ปริมาณตามสูตรของแต่ละเมนู <span style="font-size:10px;color:var(--color-text-muted);">(แนะนำ)</span></label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogQtyMode${ci}" ${mode==='FIXED'?'checked':''} onchange="ogSetQuantityMode(${ci},'FIXED')" style="width:auto;margin:0;"> กำหนดปริมาณเดียวทุกเมนู</label>
+      </div>
+      ${!mode ? `<div style="font-size:11px;color:#d97706;margin-top:4px;">${icon('alert-triangle')} ต้องเลือกวิธีคำนวณปริมาณก่อนเผยแพร่</div>` : ''}
+      ${mode==='FIXED' && mismatches.length ? `<div style="font-size:11px;color:#d97706;margin-top:4px;">
+        ${icon('alert-triangle')} มี ${mismatches.length} เมนูที่ปริมาณต้นทางไม่ตรงกับจำนวนที่กำหนด (${mismatches.map(m=>esc(m.recipeName)+' '+m.sourceAmount).join(', ')})
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="ogSetQuantityMode(${ci},'MATCH_SOURCE')" style="font-size:11px;">(A) ใช้ปริมาณของแต่ละเมนู</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="ogAckMismatch(${ci})" style="font-size:11px;">(B) ยืนยันใช้ปริมาณเดียว</button>
+        </div>
+      </div>` : ''}
+      ${missing.length ? `<div style="font-size:11px;color:#dc2626;margin-top:4px;">${icon('x-circle')} เมนูที่ไม่มีวัตถุดิบนี้ในสูตร (ต้องแก้ไข): ${missing.map(x=>esc(x.recipeName)).join(', ')}</div>` : ''}
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--color-text-muted);">หมายเหตุถึงครัว (ถ้ามี)</label>
+      <input value="${esc(c.kitchenNote||'')}" oninput="ogSetKitchenNote(${ci},this.value)" placeholder="เช่น คนให้เข้ากันก่อนเสิร์ฟ" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);margin-top:2px;">
+    </div>
   </div>`;
 }
-function ogQuantityStep2Html(c, ci, sourceIngs) {
+// extra: { menus: [{recipeId,recipeName,sourceAmount,resolvedAmount,resolvedUnit}] }
+// — computed by the CALLER (renderGroupChoices), guarded there.
+function ogQuantityStep2Html(c, ci, sourceIngs, extra) {
+  extra = extra || {};
   const tm = matById(c.targetMaterialId);
+  const mode = c.quantityMode || '';
+  const rows = extra.menus || [];
   return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
     <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">วัตถุดิบที่จะปรับปริมาณ (จากสูตรที่ใช้งานอยู่)</label>
-    <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+    <select onchange="editGroupChoices[${ci}].targetMaterialId=this.value||null;renderGroupChoices();renderGroupRecipePicker([...document.querySelectorAll('.og-recipe-chk:checked')].map(x=>x.dataset.rid), editGroupChoices[${ci}].targetMaterialId||null);" style="width:100%;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
       <option value="">— เลือกวัตถุดิบ —</option>
       ${sourceIngs.map(s=>`<option value="${s.matId}"${s.matId===c.targetMaterialId?' selected':''}>${esc(s.name)} — เดิม ${s.amount} ${s.unit}</option>`).join('')}
     </select>
     ${!sourceIngs.length ? `<div style="font-size:11px;color:#d97706;">${icon('alert-triangle')} ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน</div>` : ''}
-    <div style="display:flex;gap:6px;align-items:center;">
-      <label style="font-size:11px;color:var(--color-text-muted);">ปริมาณใหม่ (0 = ตัดออก)</label>
-      <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value;ogRefreshChoicePreview(${ci});" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-      <span style="font-size:12px;color:var(--color-text-muted);">${tm?baseU(tm):''}</span>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='FIXED'?'checked':''} onchange="ogSetQuantityMode(${ci},'FIXED')" style="width:auto;margin:0;"> กำหนดปริมาณใหม่ <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value;ogRefreshChoicePreview(${ci});" style="width:70px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> ${tm?baseU(tm):''} <span style="font-size:10px;color:var(--color-text-muted);">(0 = ตัดออก)</span></label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='PERCENT_OF_BASE'?'checked':''} onchange="ogSetQuantityMode(${ci},'PERCENT_OF_BASE')" style="width:auto;margin:0;"> คิดเป็นเปอร์เซ็นต์จากสูตรเดิม <input type="number" step="any" value="${c.quantityValue!=null?c.quantityValue:''}" oninput="ogSetQuantityValue(${ci},this.value)" placeholder="%" style="width:60px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> %</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='USE_BASE'?'checked':''} onchange="ogSetQuantityMode(${ci},'USE_BASE')" style="width:auto;margin:0;"> ใช้ปริมาณตามสูตรเดิม</label>
     </div>
+    ${!mode ? `<div style="font-size:11px;color:#d97706;">${icon('alert-triangle')} ต้องเลือกวิธีคำนวณปริมาณก่อนเผยแพร่</div>` : ''}
+    ${rows.length ? `<table style="width:100%;font-size:11px;margin-top:4px;"><tbody>${rows.map(r=>`<tr><td>${esc(r.recipeName)}</td><td class="r">${r.sourceAmount} → ${r.resolvedAmount!=null?money(r.resolvedAmount):'-'} ${esc(r.resolvedUnit||'')}</td></tr>`).join('')}</tbody></table>` : ''}
   </div>`;
 }
 function ogVariantStep2Html(c, ci, excludeIds) {
@@ -14722,7 +15311,7 @@ function renderGroupChoices() {
   const el = $('ogChoiceList');
   if (!el) return;
   if (!editGroupChoices.length) {
-    el.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">ยังไม่มีตัวเลือก — กดเพิ่มด้านบน</p>';
+    el.innerHTML = ogRenderIntentStepHtml() + '<p style="font-size:12px;color:var(--color-text-muted);padding:4px 0;">เลือกด้านบนว่าลูกค้ากำลังเลือกอะไร หรือกด "เพิ่มตัวเลือก" ด้านบนขวา</p>';
     return;
   }
   const sourceIngs = ogSourceIngredients();
@@ -14745,11 +15334,47 @@ function renderGroupChoices() {
         </button>`).join('')}
     </div>`;
 
+    // §2/§3/§5 eligibility + per-menu preview + §8 impact preview + §11
+    // legacy badge — all computed HERE, never inside the step2Html/summary
+    // functions themselves, and gated behind "enough data to compute"
+    // (targetMaterialId / links[0].matId / variantRecipeId). ogSetBlockType
+    // always clears those to null/empty on a fresh block switch, so a
+    // just-switched choice never reaches these calls until the owner has
+    // actually picked an ingredient/recipe.
+    let replaceExtra, quantityExtra, addExtra, legacyBadge = '', impactHtml = '';
+    const groupShim = { label: $('ogLabel').value, recipeIds: linkedRecipeIds };
+    if (bt === 'REPLACE_ONE_INGREDIENT' && c.targetMaterialId) {
+      const eligible = ogEligibleMenusForMaterial(c.targetMaterialId);
+      const eligibleLinked = eligible.filter(m => linkedRecipeIds.includes(m.recipeId));
+      const mismatches = ogReplaceMismatches(c, eligibleLinked);
+      const missing = ogLinkedRecipesMissingSource(c.targetMaterialId, linkedRecipeIds);
+      replaceExtra = { mismatches, missing, eligibleCount: eligibleLinked.length };
+      if ((c.links||[])[0] && (c.links||[])[0].matId) {
+        impactHtml = ogRenderImpactPreviewHtml(ogImpactPreview(groupShim, c));
+        legacyBadge = ogRenderLegacyBadge(ogLegacyClassifyChoice(c, linkedRecipeIds));
+      }
+    } else if (bt === 'CHANGE_ONE_QUANTITY' && c.targetMaterialId) {
+      const eligible = ogEligibleMenusForMaterial(c.targetMaterialId);
+      const eligibleLinked = eligible.filter(m => linkedRecipeIds.includes(m.recipeId));
+      const tmForRow = matById(c.targetMaterialId);
+      quantityExtra = { menus: eligibleLinked.map(m => ({ recipeId: m.recipeId, recipeName: m.recipeName, sourceAmount: m.sourceAmount, resolvedAmount: ogResolveChangeQuantity(c, m.sourceAmount), resolvedUnit: tmForRow ? baseU(tmForRow) : '' })) };
+      impactHtml = ogRenderImpactPreviewHtml(ogImpactPreview(groupShim, c));
+      legacyBadge = ogRenderLegacyBadge(ogLegacyClassifyChoice(c, linkedRecipeIds));
+    } else if (bt === 'ADD_ONE_INGREDIENT' && (c.links||[])[0] && (c.links||[])[0].matId) {
+      const mode = c.addMenuMode;
+      addExtra = { eligibleCount: (mode && mode !== 'MANUAL') ? ogAddEligibleMenus(mode, c.links[0].matId).length : (mode === 'MANUAL' ? linkedRecipeIds.length : null) };
+      impactHtml = ogRenderImpactPreviewHtml(ogImpactPreview(groupShim, c));
+      legacyBadge = ogRenderLegacyBadge(ogLegacyClassifyChoice(c, linkedRecipeIds));
+    } else if (bt === 'RECIPE_VARIANT' && c.variantRecipeId) {
+      impactHtml = ogRenderImpactPreviewHtml(ogImpactPreview(groupShim, c));
+      legacyBadge = ogRenderLegacyBadge(ogLegacyClassifyChoice(c, linkedRecipeIds));
+    }
+
     let step2 = '';
     if (bt === 'INSTRUCTION_ONLY') step2 = ogInstructionStep2Html();
-    else if (bt === 'ADD_ONE_INGREDIENT') step2 = ogAddStep2Html(c, ci);
-    else if (bt === 'REPLACE_ONE_INGREDIENT') step2 = ogReplaceStep2Html(c, ci, sourceIngs);
-    else if (bt === 'CHANGE_ONE_QUANTITY') step2 = ogQuantityStep2Html(c, ci, sourceIngs);
+    else if (bt === 'ADD_ONE_INGREDIENT') step2 = ogAddStep2Html(c, ci, addExtra);
+    else if (bt === 'REPLACE_ONE_INGREDIENT') step2 = ogReplaceStep2Html(c, ci, sourceIngs, replaceExtra);
+    else if (bt === 'CHANGE_ONE_QUANTITY') step2 = ogQuantityStep2Html(c, ci, sourceIngs, quantityExtra);
     else if (bt === 'RECIPE_VARIANT') step2 = ogVariantStep2Html(c, ci, linkedRecipeIds);
 
     const showPrice = bt && bt !== 'INSTRUCTION_ONLY';
@@ -14772,14 +15397,16 @@ function renderGroupChoices() {
       <div style="display:flex;gap:6px;align-items:center;">
         <input value="${esc(c.label)}" oninput="editGroupChoices[${ci}].label=this.value;ogRefreshChoicePreview(${ci});" placeholder="${labelPlaceholder}" style="flex:1;min-width:80px;font-size:13px;padding:6px 9px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
         ${c.incomplete ? '<span style="font-size:10px;color:#d97706;font-weight:700;white-space:nowrap;">ร่าง–ยังไม่สมบูรณ์</span>' : ''}
+        ${legacyBadge}
         <button class="btn btn-danger btn-sm" onclick="editGroupChoices.splice(${ci},1);renderGroupChoices();" style="padding:6px 8px;">${icon('trash-2')}</button>
       </div>
-      <div style="font-size:11px;color:var(--color-text-muted);margin-top:8px;">ขั้นตอนที่ 1 — ตัวเลือกนี้ทำอะไร?</div>
+      <div style="font-size:11px;color:var(--color-text-muted);margin-top:8px;">ประเภทของตัวเลือกนี้${(typeof groupIntentKey !== 'undefined' && groupIntentKey && typeof ogIntentBlockType === 'function' && ogIntentBlockType(groupIntentKey) === bt) ? ' (เลือกอัตโนมัติจากด้านบน)' : ''}</div>
       ${step1}
       ${step2}
       ${priceField}
       ${step3}
       ${step4}
+      ${impactHtml}
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-soft);">
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.isDefault ? ' checked' : ''} onchange="setChoiceDefault(${ci},this.checked)" style="width:auto;margin:0;"> ตัวเลือกเริ่มต้น (default)</label>
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${c.enabled !== false ? ' checked' : ''} onchange="editGroupChoices[${ci}].enabled=this.checked;renderGroupChoices();" style="width:auto;margin:0;"> เปิดใช้</label>
@@ -14826,45 +15453,108 @@ function ogSetBlockType(ci, blockType) {
   const c = editGroupChoices[ci];
   if (!c) return;
   if (ogBlockTypeOf(c) === blockType) { renderGroupChoices(); return; }
+  // Switching block type is an ACTIVE re-authoring of this item, so the
+  // legacy exemption no longer applies — from here on the owner must make
+  // the explicit choices the guided flow asks for, exactly like a new item.
+  c.legacyAuthoringExempt = false;
   switch (blockType) {
     case 'INSTRUCTION_ONLY':
       c.isMetadataOnly = true; c.effectType = 'NONE'; c.priceAdd = 0;
       c.links = []; c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      c.quantityMode = null; c.quantityValue = null; c.addMenuMode = null; c.mismatchAck = false; c.kitchenNote = '';
       break;
     case 'ADD_ONE_INGREDIENT':
       c.isMetadataOnly = false; c.effectType = 'ADD';
       c.links = [{ id: uid(), matId: '', amount: 0 }];
       c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      c.quantityMode = null; c.quantityValue = null; c.mismatchAck = false;
       break;
     case 'REPLACE_ONE_INGREDIENT':
       c.isMetadataOnly = false; c.effectType = 'REPLACE';
       c.links = [{ id: uid(), matId: '', amount: 0 }];
       c.targetMaterialId = null; c.targetRole = ''; c.amount = 0; c.variantRecipeId = null;
+      c.quantityMode = null; c.quantityValue = null; c.addMenuMode = null; c.mismatchAck = false;
       break;
     case 'CHANGE_ONE_QUANTITY':
       c.isMetadataOnly = false; c.effectType = 'QUANTITY';
       c.links = []; c.targetRole = ''; c.variantRecipeId = null;
+      c.quantityMode = null; c.quantityValue = null; c.addMenuMode = null; c.mismatchAck = false;
       break;
     case 'RECIPE_VARIANT':
       c.isMetadataOnly = false; c.effectType = 'RECIPE_VARIANT';
       c.links = []; c.targetMaterialId = null; c.targetRole = ''; c.amount = 0;
+      c.quantityMode = null; c.quantityValue = null; c.addMenuMode = null; c.mismatchAck = false;
       break;
   }
   renderGroupChoices();
 }
 
 function addChoiceRow() {
-  editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', targetMaterialId: null, variantRecipeId: null, links: [], amount: 0, isMetadataOnly: false });
+  // legacyAuthoringExempt: false — a brand-new item is authored IN the guided
+  // flow, so it must make every explicit choice (the exemption exists only
+  // for rows that predate the flow; see the bootstrap mapper).
+  editGroupChoices.push({ id: uid(), label: '', priceAdd: 0, effectType: 'NONE', enabled: true, isDefault: false, maxQty: 1, targetRole: '', targetMaterialId: null, variantRecipeId: null, links: [], amount: 0, isMetadataOnly: false, quantityMode: null, quantityValue: null, addMenuMode: null, mismatchAck: false, kitchenNote: '', legacyAuthoringExempt: false });
   renderGroupChoices();
 }
 
-function renderGroupRecipePicker(selectedIds) {
+// LARGE-MENU SELECTOR (§9) — search / category filter / selected-only /
+// select-all-visible / clear-all-visible / counts, scaling to hundreds of
+// menus without an uncontrolled checkbox wall. `eligibleFilterMaterialId`,
+// when passed (guided Replace/Change-Quantity flows), turns this into the
+// HARD eligibility filter from §3: a menu whose base recipe lacks the
+// source material simply never appears as a NEW candidate to check. An
+// already-linked-but-now-ineligible recipe (legacy data) is never silently
+// dropped — it still renders in its own "นอกตัวกรองปัจจุบัน" row so the
+// owner can review/unlink it explicitly (§11).
+function renderGroupRecipePicker(selectedIds, eligibleFilterMaterialId) {
   const el = $('ogRecipePicker');
   if (!el) return;
-  el.innerHTML = recipes.filter(r => !r.isRaw).map(r => `
-    <label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:13px;">
-      <input type="checkbox" class="og-recipe-chk" data-rid="${r.id}" ${(selectedIds||[]).includes(r.id)?'checked':''} onchange="renderGroupChoices()" style="width:auto;margin:0;"> ${esc(r.name)}
-    </label>`).join('') || '<p style="color:var(--color-text-muted);font-size:12px;">ยังไม่มีสูตร</p>';
+  const ids = new Set(selectedIds || []);
+  const allRaw = recipes.filter(r => !r.isRaw);
+  const byId = new Map(allRaw.map(r => [r.id, { recipeId: r.id, recipeName: r.name, category: r.category || '' }]));
+  const allMenus = eligibleFilterMaterialId
+    ? ogEligibleMenusForMaterial(eligibleFilterMaterialId).map(m => ({ recipeId: m.recipeId, recipeName: m.recipeName, category: m.category, valid: m.valid }))
+    : [...byId.values()];
+  const st = ogMenuSelectorState(allMenus, { search: ogMenuFilter.search, category: ogMenuFilter.category, selectedOnly: ogMenuFilter.selectedOnly, selectedIds: ids });
+  const selectedNotInVisible = [...ids].filter(id => byId.has(id) && !st.visible.some(v => v.recipeId === id)).map(id => byId.get(id));
+  const categories = [...new Set(allRaw.map(r => r.category).filter(Boolean))];
+  const refreshCall = `renderGroupRecipePicker([...document.querySelectorAll('.og-recipe-chk:checked')].map(x=>x.dataset.rid), ${eligibleFilterMaterialId ? `'${eligibleFilterMaterialId}'` : 'null'})`;
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+      <input value="${esc(ogMenuFilter.search)}" placeholder="ค้นหาเมนู..." oninput="ogMenuFilter.search=this.value;${refreshCall};" style="flex:2;min-width:120px;font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+      <select onchange="ogMenuFilter.category=this.value;${refreshCall};" style="font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <option value="">ทุกหมวดหมู่</option>
+        ${categories.map(cat => `<option value="${esc(cat)}"${cat===ogMenuFilter.category?' selected':''}>${esc(cat)}</option>`).join('')}
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox"${ogMenuFilter.selectedOnly?' checked':''} onchange="ogMenuFilter.selectedOnly=this.checked;${refreshCall};" style="width:auto;margin:0;"> เฉพาะที่เลือกไว้</label>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:11px;color:var(--color-text-muted);flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="ogSelectAllVisibleMenus()">เลือกทั้งหมดที่แสดง</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="ogClearAllVisibleMenus()">ล้างที่แสดงทั้งหมด</button>
+      <span>เลือกแล้ว ${st.selectedCount} เมนู · ทั้งหมด ${st.eligibleCount} เมนู${st.invalidCount ? ` · ผิดพลาด ${st.invalidCount}` : ''}</span>
+    </div>
+    <div style="max-height:200px;overflow-y:auto;">
+      ${st.visible.map(m => `
+        <label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:13px;">
+          <input type="checkbox" class="og-recipe-chk" data-rid="${m.recipeId}" data-visible="1" ${ids.has(m.recipeId)?'checked':''} onchange="renderGroupChoices()" style="width:auto;margin:0;"> ${esc(m.recipeName)}${m.category ? ` <span style="font-size:11px;color:var(--color-text-muted);">· ${esc(m.category)}</span>` : ''}
+        </label>`).join('')}
+      ${selectedNotInVisible.map(m => `
+        <label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:13px;opacity:0.7;">
+          <input type="checkbox" class="og-recipe-chk" data-rid="${m.recipeId}" data-visible="0" checked onchange="renderGroupChoices()" style="width:auto;margin:0;"> ${esc(m.recipeName)} <span style="font-size:10px;color:var(--color-text-muted);">(นอกตัวกรองปัจจุบัน)</span>
+        </label>`).join('')}
+      ${(!st.visible.length && !selectedNotInVisible.length) ? '<p style="color:var(--color-text-muted);font-size:12px;">ไม่พบเมนูที่ตรงกับตัวกรอง</p>' : ''}
+    </div>`;
+}
+// Bulk actions operate ONLY on the currently VISIBLE (filtered) menus — the
+// "-visible" suffix is deliberate (§9): a selection made under a different
+// filter (rendered in its own "นอกตัวกรองปัจจุบัน" row above) is untouched.
+function ogSelectAllVisibleMenus() {
+  document.querySelectorAll('#ogRecipePicker .og-recipe-chk[data-visible="1"]').forEach(el => { el.checked = true; });
+  renderGroupChoices();
+}
+function ogClearAllVisibleMenus() {
+  document.querySelectorAll('#ogRecipePicker .og-recipe-chk[data-visible="1"]').forEach(el => { el.checked = false; });
+  renderGroupChoices();
 }
 
 function saveGroupForm() {

@@ -80,7 +80,7 @@ async function buildEffectiveBom(c, recipeId, chosenOptions) {
     const qById = {}; opts.forEach(o => { qById[o.choice_id] = Number(o.qty) || 1; });
     const cr = (await c.query(
       `select id, effect_type, target_role, target_material_id, variant_recipe_id,
-              is_metadata_only, amount from option_choices where id=any($1::uuid[])`,
+              is_metadata_only, amount, quantity_mode, quantity_value from option_choices where id=any($1::uuid[])`,
       [ids]
     )).rows;
     const lr = (await c.query(
@@ -118,6 +118,28 @@ async function buildEffectiveBom(c, recipeId, chosenOptions) {
   for (const ch of choices) {
     if (ch.effect_type !== 'REPLACE') continue;
     const oldId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
+
+    // Additive: MATCH_SOURCE — the replacement's amount is the SOURCE
+    // material's own resolved amount in THIS recipe's BOM, captured before
+    // the delete below. If the source isn't present in this recipe's BOM
+    // (unresolvable), the choice contributes nothing — never guess a link
+    // amount as a fallback. null/'FIXED' (legacy rows) fall through
+    // untouched to the original fixed-link-amount behavior.
+    if (ch.quantity_mode === 'MATCH_SOURCE') {
+      const srcEntry = oldId ? bom.get(oldId) : null;
+      const sourceAmt = srcEntry ? (Number(srcEntry.amount) || 0) : null;
+      if (oldId) { bom.delete(oldId); if (ch.target_role) roleIndex.delete(ch.target_role); }
+      if (sourceAmt == null) continue;
+      for (const l of ch.links) {
+        if (!l.material_id) continue;
+        const e = bom.get(l.material_id) || { amount: 0 };
+        e.amount += sourceAmt;
+        bom.set(l.material_id, e);
+        if (ch.target_role) roleIndex.set(ch.target_role, l.material_id);
+      }
+      continue;
+    }
+
     if (oldId) { bom.delete(oldId); if (ch.target_role) roleIndex.delete(ch.target_role); }
     for (const l of ch.links) {
       if (!l.material_id) continue;
@@ -132,6 +154,29 @@ async function buildEffectiveBom(c, recipeId, chosenOptions) {
     if (ch.effect_type !== 'QUANTITY') continue;
     const matId = ch.target_material_id || (ch.target_role ? roleIndex.get(ch.target_role) : null);
     if (!matId) continue;
+
+    // Additive: PERCENT_OF_BASE / USE_BASE — resolved relative to this
+    // material's own amount in this recipe's BOM (as left by any prior
+    // REPLACE effect), never a guessed/global value. null/'FIXED' (legacy
+    // rows) fall through untouched to the original fixed-absolute behavior.
+    if (ch.quantity_mode === 'PERCENT_OF_BASE' || ch.quantity_mode === 'USE_BASE') {
+      const baseEntry = bom.get(matId);
+      if (!baseEntry) continue; // base amount unresolvable in this BOM — contribute nothing, never guess
+      const baseAmt = Number(baseEntry.amount) || 0;
+      let newAmt;
+      if (ch.quantity_mode === 'USE_BASE') {
+        newAmt = baseAmt;
+      } else {
+        const rawPct = ch.quantity_value;
+        const pct = (rawPct === null || rawPct === undefined || rawPct === '') ? NaN : Number(rawPct);
+        if (!isFinite(pct)) continue; // invalid/unresolvable percent — never fall back to a fixed quantity
+        newAmt = baseAmt * (pct / 100);
+      }
+      if (newAmt <= 0) bom.delete(matId);
+      else { baseEntry.amount = newAmt; bom.set(matId, baseEntry); }
+      continue;
+    }
+
     const newAmt = Number(ch.amount) || 0;
     if (newAmt <= 0) bom.delete(matId);
     else { const e = bom.get(matId) || { amount: 0 }; e.amount = newAmt; bom.set(matId, e); }

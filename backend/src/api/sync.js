@@ -232,14 +232,25 @@ router.post('/sync', async (req, res) => {
         withShop(b.option_groups || []), 'id');
 
       // option_choices
+      // quantity_mode/quantity_value drive the engine's quantity resolution;
+      // kitchen_note/add_menu_mode/mismatch_ack persist the owner's EXPLICIT
+      // guided-authoring decisions (schema-option-authoring.sql). All five
+      // must round-trip: the authoring UI's validation reads add_menu_mode /
+      // mismatch_ack / quantity_mode, so dropping them here would make a
+      // reloaded-but-previously-valid choice fail validation and get forced
+      // to enabled=false on the next save — silently pulling a working
+      // option off POS. Omitted-by-client ⇒ null / false, matching the
+      // column defaults exactly (legacy rows stay byte-identical).
       for (const c of (b.option_choices || [])) {
         await client.query(
-          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only,amount,target_material_id)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12,$13,(select id from materials where id = $14))
-           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12,amount=$13,target_material_id=(select id from materials where id = $14)`,
+          `insert into option_choices (id,group_id,label,price_add,effect_type,enabled,is_default,sort,max_qty,target_role,variant_recipe_id,is_metadata_only,amount,target_material_id,quantity_mode,quantity_value,kitchen_note,add_menu_mode,mismatch_ack)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,(select id from recipes where id = $11),$12,$13,(select id from materials where id = $14),$15,$16,$17,$18,$19)
+           on conflict (id) do update set group_id=$2,label=$3,price_add=$4,effect_type=$5,enabled=$6,is_default=$7,sort=$8,max_qty=$9,target_role=$10,variant_recipe_id=(select id from recipes where id = $11),is_metadata_only=$12,amount=$13,target_material_id=(select id from materials where id = $14),quantity_mode=$15,quantity_value=$16,kitchen_note=$17,add_menu_mode=$18,mismatch_ack=$19`,
           [c.id, c.group_id, c.label, c.price_add ?? 0, c.effect_type || 'NONE',
            c.enabled ?? true, c.is_default ?? false, c.sort ?? 0, c.max_qty ?? 1,
-           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false, c.amount ?? 0, c.target_material_id || null]);
+           c.target_role || '', c.variant_recipe_id || null, c.is_metadata_only ?? false, c.amount ?? 0, c.target_material_id || null,
+           c.quantity_mode || null, c.quantity_value ?? null,
+           c.kitchen_note || null, c.add_menu_mode || null, c.mismatch_ack ?? false]);
       }
 
       // option_choice_links: delete+reinsert for all groups synced
