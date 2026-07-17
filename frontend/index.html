@@ -14623,7 +14623,7 @@ function ogValidateChoice(c) {
 function ogChoiceSummary(c) {
   const bt = ogBlockTypeOf(c);
   if (!bt) return '';
-  const priceStr = c.priceAdd ? (c.priceAdd > 0 ? ` · เพิ่มราคา ${money(Math.abs(c.priceAdd))} บาท` : ` · ลดราคา ${money(Math.abs(c.priceAdd))} บาท`) : '';
+  const priceStr = c.priceAdd ? (c.priceAdd > 0 ? ` · เพิ่มราคา ${money(Math.abs(c.priceAdd))}` : ` · ลดราคา ${money(Math.abs(c.priceAdd))}`) : '';
   if (bt === 'INSTRUCTION_ONLY') return `แจ้งครัว: ${c.label ? c.label : '(ยังไม่ได้ระบุ)'} · ไม่มีผลต่อสต๊อก/ราคา`;
   if (bt === 'ADD_ONE_INGREDIENT') {
     const l = (c.links || [])[0] || {};
@@ -14635,8 +14635,13 @@ function ogChoiceSummary(c) {
     const from = matById(c.targetMaterialId);
     const to = matById(l.matId);
     const src = ogSourceIngredients().find(x => x.matId === c.targetMaterialId);
-    const modeStr = c.quantityMode === 'MATCH_SOURCE' ? ' (ตามสูตรแต่ละเมนู)' : (c.quantityMode === 'FIXED' ? ' (ปริมาณเดียวทุกเมนู)' : '');
-    return `เปลี่ยน${from ? from.name : '(ยังไม่ได้เลือก)'}${src ? ` ${src.amount} ${src.unit}` : ''} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'}${l.amount ? ` ${l.amount} ${to ? baseU(to) : ''}` : ''}${modeStr}${priceStr}`;
+    const isMatchSource = c.quantityMode === 'MATCH_SOURCE';
+    const modeStr = isMatchSource ? ' (ตามสูตรแต่ละเมนู)' : (c.quantityMode === 'FIXED' ? ' (ปริมาณเดียวทุกเมนู)' : '');
+    // MATCH_SOURCE ignores the stored link amount entirely (the engine
+    // inherits each recipe's own amount) — quoting it here would imply it
+    // matters, so never show a number in that mode (Founder screenshot fix).
+    const toAmountStr = isMatchSource ? '' : (l.amount ? ` ${l.amount} ${to ? baseU(to) : ''}` : '');
+    return `เปลี่ยน ${from ? from.name : '(ยังไม่ได้เลือก)'}${src ? ` ${src.amount} ${src.unit}` : ''} เป็น ${to ? to.name : '(ยังไม่ได้เลือก)'}${toAmountStr}${modeStr}${priceStr}`;
   }
   if (bt === 'CHANGE_ONE_QUANTITY') {
     const m = matById(c.targetMaterialId);
@@ -15070,6 +15075,87 @@ function ogSetKitchenNote(ci, val) {
   c.kitchenNote = val; // client-side only — no schema column beyond existing `label` (see LIMITATION note)
 }
 
+// ── Shared numeric-input handler (Founder UX fix) ──────────────────────────
+// Every quantity/price field in the Option Builder (replacement quantity,
+// fixed CHANGE_QUANTITY amount, percent-of-base value, price adjustment)
+// routes through these three functions so behaviour can never drift between
+// fields. Two root causes made typing feel like a broken spinner:
+//   (1) `+this.value` coerced the string to a number on EVERY keystroke —
+//       `+''` → 0, `+'1.'` → 1 — so clearing the field snapped to 0 and a
+//       partial decimal collapsed mid-typing.
+//   (2) `oninput` called a full renderGroupChoices()/ogSetQuantityValue-style
+//       re-render on every keystroke for the ADD/REPLACE amount and percent
+//       fields — renderGroupChoices rebuilds the ENTIRE choice list's
+//       innerHTML, so the focused input was destroyed and recreated on every
+//       character, losing focus/caret/selection. That re-render (not just the
+//       coercion) is the dominant cause of the "spinner-only" feel.
+// Contract:
+//   onfocus="ogNumFocus(this)"                    — el.select() so the whole
+//     value is highlighted; typing immediately replaces it (50 → 150).
+//   oninput="ogNumInput(this,ci,target)"          — keeps the RAW typed
+//     string as the source of truth on the element itself (el.dataset.raw)
+//     while focused. Only writes to the model when the string parses to a
+//     finite number; a valid-but-incomplete string ('', '-', '.', '1.')
+//     leaves the model untouched and NEVER re-renders the choice list — it
+//     only refreshes the read-only summary text (ogRefreshChoicePreview),
+//     which touches a DIFFERENT element than the one being typed in.
+//   onblur="ogNumBlur(this,ci,target)"            — parses the final string,
+//     clamps to min 0 (no other precision/rounding policy is invented — this
+//     codebase has none), commits it to the model, normalises the field's
+//     displayed value, then refreshes the summary once.
+// `target` selects which model field this instance drives:
+//   'amount'       → (c.links[0] || {}).amount   — ADD/REPLACE quantity
+//   'changeAmount' → c.amount                    — CHANGE_QUANTITY fixed amount
+//   'percent'      → c.quantityValue             — CHANGE_QUANTITY percent-of-base
+//   'price'        → c.priceAdd                  — price adjustment (all blocks)
+function ogNumFocus(el) {
+  if (el && typeof el.select === 'function') el.select();
+}
+function ogNumTargetSet(ci, target, num) {
+  const c = editGroupChoices[ci];
+  if (!c) return;
+  if (target === 'amount') {
+    if (!c.links) c.links = [];
+    if (!c.links[0]) c.links[0] = { id: uid(), matId: '', amount: 0 };
+    c.links[0].amount = num;
+  } else if (target === 'changeAmount') {
+    c.amount = num;
+  } else if (target === 'percent') {
+    c.quantityValue = num;
+  } else if (target === 'price') {
+    c.priceAdd = num;
+  }
+}
+function ogNumInput(el, ci, target) {
+  const raw = el.value;
+  el.dataset.raw = raw;
+  // A "complete" typed number: optional leading -, then digits with an
+  // optional .digits, OR a leading .digits. Deliberately EXCLUDES a bare
+  // trailing dot ('1.') and other partial forms ('', '-', '.') — parseFloat
+  // alone would accept '1.' as 1, silently collapsing a partial decimal the
+  // owner hasn't finished typing yet (Founder requirement: '1.' must not
+  // collapse to 1 while typing).
+  if (!/^-?(\d+(\.\d+)?|\.\d+)$/.test(raw)) return; // '', '-', '.', '1.' etc — model untouched, no re-render
+  ogNumTargetSet(ci, target, Number(raw));
+  ogRefreshChoicePreview(ci); // updates only the summary text node — never the focused input
+}
+function ogNumBlur(el, ci, target) {
+  const raw = el.dataset && el.dataset.raw != null ? el.dataset.raw : el.value;
+  const trimmed = String(raw == null ? '' : raw).trim();
+  let num;
+  if (trimmed === '' && target === 'percent') {
+    num = null; // percent-of-base is optional — matches legacy ogSetQuantityValue('') ⇒ null
+  } else {
+    num = parseFloat(trimmed);
+    if (!Number.isFinite(num)) num = 0;
+    if (num < 0) num = 0; // min 0 (Founder rule)
+  }
+  el.value = num == null ? '' : num;
+  if (el.dataset) delete el.dataset.raw;
+  ogNumTargetSet(ci, target, num);
+  renderGroupChoices(); // one full re-render on commit, not per keystroke
+}
+
 // ── Render helpers ─────────────────────────────────────────────────────────
 function ogRenderIntentStepHtml() {
   return `<div style="background:var(--surface-1);border:1px dashed var(--border-soft);border-radius:10px;padding:14px;margin-bottom:10px;">
@@ -15190,7 +15276,7 @@ function ogAddStep2Html(c, ci, extra) {
           <option value="">—เลือกวัตถุดิบ—</option>
           ${materials.filter(x=>!x.isConsumable).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
         </select>
-        <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <input type="number" step="1" inputmode="decimal" value="${l.amount||0}" onfocus="ogNumFocus(this)" oninput="ogNumInput(this,${ci},'amount')" onblur="ogNumBlur(this,${ci},'amount')" placeholder="จำนวน" style="width:110px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
         <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${m?baseU(m):''}</span>
       </div>
     </div>
@@ -15234,14 +15320,16 @@ function ogReplaceStep2Html(c, ci, sourceIngs, extra) {
       ${!sourceIngs.length ? `<div style="font-size:11px;color:#d97706;margin-top:4px;">${icon('alert-triangle')} ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน</div>` : ''}
     </div>
     <div>
-      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">② เปลี่ยนเป็น (วัตถุดิบใหม่ + จำนวน)</label>
+      <label style="font-size:11px;color:var(--color-text-main);font-weight:600;">② เปลี่ยนเป็น (วัตถุดิบใหม่${mode==='MATCH_SOURCE'?'':' + จำนวน'})</label>
       <div style="display:flex;gap:6px;margin-top:2px;">
         <select onchange="ogChoiceSetLink(${ci},0,'matId',this.value)" style="flex:2;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
           <option value="">—เลือกวัตถุดิบ—</option>
           ${materials.filter(x=>!x.isConsumable && x.id!==c.targetMaterialId).map(x=>`<option value="${x.id}"${x.id===l.matId?' selected':''}>${esc(x.name)} (${baseU(x)})</option>`).join('')}
         </select>
-        <input type="number" step="any" value="${l.amount||0}" oninput="ogChoiceSetLink(${ci},0,'amount',+this.value)" placeholder="จำนวน" style="width:90px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
-        <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${to?baseU(to):''}</span>
+        ${mode==='MATCH_SOURCE'
+          ? `<span style="font-size:12px;color:var(--color-text-muted);align-self:center;padding:5px 6px;">${icon('lock')} ตามสูตรแต่ละเมนู (ไม่ต้องระบุจำนวน)</span>`
+          : `<input type="number" step="1" inputmode="decimal" value="${l.amount||0}" onfocus="ogNumFocus(this)" oninput="ogNumInput(this,${ci},'amount')" onblur="ogNumBlur(this,${ci},'amount')" placeholder="จำนวน" style="width:110px;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+        <span style="font-size:12px;color:var(--color-text-muted);align-self:center;">${to?baseU(to):''}</span>`}
       </div>
     </div>
     <div>
@@ -15281,8 +15369,8 @@ function ogQuantityStep2Html(c, ci, sourceIngs, extra) {
     </select>
     ${!sourceIngs.length ? `<div style="font-size:11px;color:#d97706;">${icon('alert-triangle')} ต้องเชื่อมกลุ่มนี้กับเมนูที่มีสูตรก่อน</div>` : ''}
     <div style="display:flex;flex-direction:column;gap:4px;">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='FIXED'?'checked':''} onchange="ogSetQuantityMode(${ci},'FIXED')" style="width:auto;margin:0;"> กำหนดปริมาณใหม่ <input type="number" step="any" value="${c.amount||0}" oninput="editGroupChoices[${ci}].amount=+this.value;ogRefreshChoicePreview(${ci});" style="width:70px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> ${tm?baseU(tm):''} <span style="font-size:10px;color:var(--color-text-muted);">(0 = ตัดออก)</span></label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='PERCENT_OF_BASE'?'checked':''} onchange="ogSetQuantityMode(${ci},'PERCENT_OF_BASE')" style="width:auto;margin:0;"> คิดเป็นเปอร์เซ็นต์จากสูตรเดิม <input type="number" step="any" value="${c.quantityValue!=null?c.quantityValue:''}" oninput="ogSetQuantityValue(${ci},this.value)" placeholder="%" style="width:60px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> %</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='FIXED'?'checked':''} onchange="ogSetQuantityMode(${ci},'FIXED')" style="width:auto;margin:0;"> กำหนดปริมาณใหม่ <input type="number" step="1" inputmode="decimal" value="${c.amount||0}" onfocus="ogNumFocus(this)" oninput="ogNumInput(this,${ci},'changeAmount')" onblur="ogNumBlur(this,${ci},'changeAmount')" style="width:90px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> ${tm?baseU(tm):''} <span style="font-size:10px;color:var(--color-text-muted);">(0 = ตัดออก)</span></label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='PERCENT_OF_BASE'?'checked':''} onchange="ogSetQuantityMode(${ci},'PERCENT_OF_BASE')" style="width:auto;margin:0;"> คิดเป็นเปอร์เซ็นต์จากสูตรเดิม <input type="number" step="1" inputmode="decimal" value="${c.quantityValue!=null?c.quantityValue:''}" onfocus="ogNumFocus(this)" oninput="ogNumInput(this,${ci},'percent')" onblur="ogNumBlur(this,${ci},'percent')" placeholder="%" style="width:80px;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);"> %</label>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="radio" name="ogChgMode${ci}" ${mode==='USE_BASE'?'checked':''} onchange="ogSetQuantityMode(${ci},'USE_BASE')" style="width:auto;margin:0;"> ใช้ปริมาณตามสูตรเดิม</label>
     </div>
     ${!mode ? `<div style="font-size:11px;color:#d97706;">${icon('alert-triangle')} ต้องเลือกวิธีคำนวณปริมาณก่อนเผยแพร่</div>` : ''}
@@ -15303,7 +15391,7 @@ function ogVariantStep2Html(c, ci, excludeIds) {
 function ogPriceFieldHtml(c, ci) {
   return `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
     <span style="font-size:11px;color:var(--color-text-muted);">+ราคา</span>
-    <input type="number" step="any" value="${c.priceAdd||0}" oninput="editGroupChoices[${ci}].priceAdd=+this.value;ogRefreshChoicePreview(${ci});" placeholder="0" style="width:80px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
+    <input type="number" step="1" inputmode="decimal" value="${c.priceAdd||0}" onfocus="ogNumFocus(this)" oninput="ogNumInput(this,${ci},'price')" onblur="ogNumBlur(this,${ci},'price')" placeholder="0" style="width:100px;font-size:13px;padding:5px 8px;border-radius:7px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);">
   </div>`;
 }
 

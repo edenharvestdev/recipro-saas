@@ -127,6 +127,7 @@ const FRONT_FNS = [
   'ogResolveReplaceQuantity', 'ogResolveChangeQuantity', 'ogReplaceMismatches',
   'ogAddEligibleMenus', 'ogMenuSelectorState', 'ogImpactPreview',
   'ogSetQuantityMode', 'ogSetQuantityValue', 'ogSetAddMenuMode', 'ogAckMismatch', 'ogSetKitchenNote',
+  'ogNumFocus', 'ogNumTargetSet', 'ogNumInput', 'ogNumBlur',
   'ogRenderIntentStepHtml', 'ogRenderLegacyBadge', 'ogRenderImpactPreviewHtml',
   // rendering / form lifecycle (exercised for the round-trip + UI-text tests)
   'renderOptionsPage', 'openGroupForm', 'ogInstructionStep2Html', 'ogAddStep2Html',
@@ -851,6 +852,196 @@ function roundTrip(choice) {
     vBad.ok === false, vBad);
   check('22 that block still names the offending menu in clear Thai',
     vBad.items.some(it => !it.ok && /สมูทตี้ผลไม้/.test(it.label)), vBad.items);
+}
+
+// ===========================================================================
+// 23 — FOUNDER NUMERIC-INPUT UX FIX: the quantity/price fields behaved like a
+//      spinner because (a) `+this.value` coerced on every keystroke and
+//      (b) `oninput` triggered a full renderGroupChoices() that rebuilt the
+//      focused input, destroying focus/caret. Proves the shared
+//      ogNumFocus/ogNumInput/ogNumBlur handler fixes both, and that MATCH_
+//      SOURCE no longer shows/quotes a misleading replacement quantity.
+// ===========================================================================
+{
+  const api = build({ materials: ALL_MATERIALS, recipes: ALL_RECIPES });
+  api.setEditGroupChoices([{
+    id: 'c-num', label: 'เปลี่ยนเป็นนมโอ๊ต', priceAdd: 10, effectType: 'REPLACE', enabled: true, isDefault: false,
+    targetRole: '', targetMaterialId: MAT_MILK.id, variantRecipeId: null,
+    links: [{ matId: MAT_OATMILK.id, amount: 50 }], amount: 0, isMetadataOnly: false,
+    quantityMode: 'FIXED', quantityValue: null,
+  }]);
+
+  // A fake <input>: value/dataset/select(), enough to drive focus→input→blur
+  // exactly the way the browser would, without a real DOM.
+  function fakeInput(initialValue) {
+    return { value: String(initialValue), dataset: {}, selectCalled: 0, select() { this.selectCalled++; } };
+  }
+  function type(el, ci, target, text) { el.value = text; api.ogNumInput(el, ci, target); }
+
+  // 23.1 — replace 50 with 150 by typing: focus selects all, typed value wins.
+  {
+    const el = fakeInput(50);
+    api.ogNumFocus(el);
+    check('23.1 focus selects the whole value (el.select() called)', el.selectCalled === 1);
+    type(el, 0, 'amount', '150');
+    check('23.1 typing 150 after focus-select commits 150 live (via oninput)',
+      api.getEditGroupChoices()[0].links[0].amount === 150, api.getEditGroupChoices()[0].links[0]);
+    api.ogNumBlur(el, 0, 'amount');
+    check('23.1 blur keeps 150 committed', api.getEditGroupChoices()[0].links[0].amount === 150);
+  }
+
+  // 23.2 — clear and enter 250: the cleared intermediate state never becomes 0.
+  {
+    const el = fakeInput(150);
+    type(el, 0, 'amount', '');
+    check('23.2 clearing the field does NOT snap the model to 0 mid-typing',
+      api.getEditGroupChoices()[0].links[0].amount === 150, api.getEditGroupChoices()[0].links[0]);
+    type(el, 0, 'amount', '250');
+    check('23.2 typing 250 next commits 250', api.getEditGroupChoices()[0].links[0].amount === 250);
+  }
+
+  // 23.3 — 7.5 decimal survives (not truncated to 7).
+  {
+    const el = fakeInput(250);
+    type(el, 0, 'amount', '7.5');
+    check('23.3 typing 7.5 commits the exact decimal',
+      api.getEditGroupChoices()[0].links[0].amount === 7.5, api.getEditGroupChoices()[0].links[0]);
+  }
+
+  // 23.4 — 1250 (4-digit value, no clamping/mangling).
+  {
+    const el = fakeInput(7.5);
+    type(el, 0, 'amount', '1250');
+    check('23.4 typing a 4-digit value (1250) is not clamped or mangled',
+      api.getEditGroupChoices()[0].links[0].amount === 1250);
+  }
+
+  // 23.5 — backspace to empty then retype: intermediate empty never becomes
+  // 0, and the final retyped value still commits.
+  {
+    const el = fakeInput(1250);
+    type(el, 0, 'amount', '125');
+    type(el, 0, 'amount', '12');
+    type(el, 0, 'amount', '1');
+    type(el, 0, 'amount', '');
+    check('23.5 the intermediate empty string never becomes 0 in the model',
+      api.getEditGroupChoices()[0].links[0].amount === 1, api.getEditGroupChoices()[0].links[0]);
+    type(el, 0, 'amount', '99');
+    check('23.5 retyping after the empty intermediate commits the final value (99)',
+      api.getEditGroupChoices()[0].links[0].amount === 99);
+  }
+
+  // 23.6 — '1.' mid-typing does not collapse to 1.
+  {
+    const el = fakeInput(99);
+    type(el, 0, 'amount', '1.');
+    check("23.6 a trailing-dot partial decimal ('1.') does not collapse the model to 1",
+      api.getEditGroupChoices()[0].links[0].amount === 99, api.getEditGroupChoices()[0].links[0]);
+    type(el, 0, 'amount', '1.2');
+    check('23.6 completing the decimal commits 1.2', api.getEditGroupChoices()[0].links[0].amount === 1.2);
+  }
+
+  // 23.7 — oninput never re-renders the focused field (source-contract).
+  check('23.7 ogNumInput never calls renderGroupChoices (that rebuild destroyed focus/caret)',
+    !/renderGroupChoices\s*\(/.test(F.ogNumInput), F.ogNumInput);
+  check('23.7 ogNumInput never calls renderOptionsPage either', !/renderOptionsPage\s*\(/.test(F.ogNumInput));
+  check('23.7 ogNumInput only refreshes the summary text node (ogRefreshChoicePreview), never the input itself',
+    /ogRefreshChoicePreview/.test(F.ogNumInput));
+
+  // 23.8 — focus selects the entire value.
+  {
+    const el = fakeInput(42);
+    api.ogNumFocus(el);
+    check('23.8 ogNumFocus calls el.select()', el.selectCalled === 1);
+  }
+
+  // 23.9 — blur commits + clamps (negative → 0).
+  {
+    const el = fakeInput(-5);
+    el.dataset.raw = '-5';
+    api.ogNumBlur(el, 0, 'amount');
+    check('23.9 blur clamps a negative value to 0 (min-0 rule)',
+      api.getEditGroupChoices()[0].links[0].amount === 0, api.getEditGroupChoices()[0].links[0]);
+    check('23.9 blur also normalises the displayed field value to the clamped number', el.value === 0);
+  }
+
+  // 23 (contract) — every persisted target is reachable through the ONE
+  // shared setter, so behaviour can never drift between fields.
+  check('23 links[0].amount (ADD/REPLACE quantity) is reachable through ogNumTargetSet',
+    (() => { api.setEditGroupChoices([{ id: 'x', links: [] }]); api.ogNumTargetSet(0, 'amount', 33); return api.getEditGroupChoices()[0].links[0].amount === 33; })());
+  check('23 c.amount (CHANGE_QUANTITY fixed amount) is reachable through ogNumTargetSet',
+    (() => { api.setEditGroupChoices([{ id: 'x' }]); api.ogNumTargetSet(0, 'changeAmount', 44); return api.getEditGroupChoices()[0].amount === 44; })());
+  check('23 c.quantityValue (percent-of-base) is reachable through ogNumTargetSet',
+    (() => { api.setEditGroupChoices([{ id: 'x' }]); api.ogNumTargetSet(0, 'percent', 55); return api.getEditGroupChoices()[0].quantityValue === 55; })());
+  check('23 c.priceAdd (price adjustment) is reachable through ogNumTargetSet',
+    (() => { api.setEditGroupChoices([{ id: 'x' }]); api.ogNumTargetSet(0, 'price', 66); return api.getEditGroupChoices()[0].priceAdd === 66; })());
+
+  // percent field: empty commits to null (not 0) on blur — preserves the
+  // pre-existing ogSetQuantityValue('') ⇒ null semantics (optional field).
+  {
+    api.setEditGroupChoices([{ id: 'x', quantityMode: 'PERCENT_OF_BASE', quantityValue: 50 }]);
+    const el = fakeInput(50);
+    el.dataset.raw = '';
+    api.ogNumBlur(el, 0, 'percent');
+    check('23 an emptied percent field commits to null on blur, not 0',
+      api.getEditGroupChoices()[0].quantityValue === null, api.getEditGroupChoices()[0]);
+  }
+
+  // every Option Builder numeric field's SOURCE actually routes through the
+  // shared helper — guards against a future field quietly reintroducing
+  // `+this.value` or a per-keystroke render.
+  const numericFieldSrcs = [F.ogAddStep2Html, F.ogReplaceStep2Html, F.ogQuantityStep2Html, F.ogPriceFieldHtml].join('\n');
+  const numberInputTags = numericFieldSrcs.match(/<input type="number"[^>]*>/g) || [];
+  check('23 every Option Builder <input type="number"> uses onfocus="ogNumFocus(this)"',
+    numberInputTags.length > 0 && numberInputTags.every(t => /onfocus="ogNumFocus\(this\)"/.test(t)), numberInputTags);
+  check('23 every Option Builder <input type="number"> uses oninput="ogNumInput(...)"',
+    numberInputTags.every(t => /oninput="ogNumInput\(/.test(t)), numberInputTags);
+  check('23 every Option Builder <input type="number"> uses onblur="ogNumBlur(...)"',
+    numberInputTags.every(t => /onblur="ogNumBlur\(/.test(t)), numberInputTags);
+  check('23 no Option Builder numeric field still uses the old per-keystroke `+this.value` coercion',
+    !/\+this\.value/.test(numericFieldSrcs), numericFieldSrcs);
+
+  // MATCH_SOURCE hides the misleading editable replacement-quantity input.
+  const sourceIngsForHide = api.ogSourceIngredients();
+  const matchSourceChoice = {
+    id: 'c-ms', label: 'x', priceAdd: 0, effectType: 'REPLACE', enabled: true, isDefault: false,
+    targetRole: '', targetMaterialId: MAT_MILK.id, variantRecipeId: null,
+    links: [{ matId: MAT_OATMILK.id, amount: 49 }], amount: 0, isMetadataOnly: false,
+    quantityMode: 'MATCH_SOURCE', quantityValue: null,
+  };
+  const matchSourceHtml = api.ogReplaceStep2Html(matchSourceChoice, 0, sourceIngsForHide);
+  check('23 MATCH_SOURCE renders NO editable replacement-quantity <input>',
+    !/<input type="number"/.test(matchSourceHtml), matchSourceHtml);
+  check('23 MATCH_SOURCE still shows the "with" material select (only the quantity input is suppressed)',
+    (matchSourceHtml.match(/<select/g) || []).length === 2, matchSourceHtml);
+
+  const fixedChoiceForCompare = { ...matchSourceChoice, quantityMode: 'FIXED' };
+  const fixedHtml = api.ogReplaceStep2Html(fixedChoiceForCompare, 0, sourceIngsForHide);
+  check('23 FIXED mode (not MATCH_SOURCE) still renders the editable quantity input',
+    /<input type="number"/.test(fixedHtml), fixedHtml);
+
+  // MATCH_SOURCE summary never quotes the stored-but-ignored link amount (49).
+  const summaryMatchSource = api.ogChoiceSummary(matchSourceChoice);
+  check('23 MATCH_SOURCE summary does NOT quote the ignored stored amount (49)',
+    !/\b49\b/.test(summaryMatchSource), summaryMatchSource);
+  check('23 MATCH_SOURCE summary states the quantity follows each recipe',
+    /ตามสูตรแต่ละเมนู/.test(summaryMatchSource), summaryMatchSource);
+
+  // FIXED mode summary still quotes the real, meaningful fixed amount.
+  const summaryFixed = api.ogChoiceSummary(fixedChoiceForCompare);
+  check('23 FIXED-mode summary still quotes the actual configured amount (49)',
+    /\b49\b/.test(summaryFixed), summaryFixed);
+
+  // "เปลี่ยนEspresso" missing-space fix + "฿5.00 บาท" doubled-currency fix.
+  check('23 the REPLACE summary has a space between "เปลี่ยน" and the material name',
+    /เปลี่ยน \S/.test(summaryFixed), summaryFixed);
+  // (the sandbox's `money` stub renders plain digits — real money() prepends
+  // ฿ — either way the bug was the redundant trailing "บาท" doubling the
+  // currency indicator, which is what this asserts against.)
+  const summaryWithPrice = api.ogChoiceSummary({ ...fixedChoiceForCompare, priceAdd: 5 });
+  check('23 the price clause states the amount', /เพิ่มราคา 5/.test(summaryWithPrice), summaryWithPrice);
+  check('23 the price clause never doubles the currency indicator (no "บาท" suffix after the price)',
+    !/เพิ่มราคา[^·]*บาท/.test(summaryWithPrice), summaryWithPrice);
 }
 
 console.log(`\noption-builder-ux: ${passed} passed, ${failed} failed`);
