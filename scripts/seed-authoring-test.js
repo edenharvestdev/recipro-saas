@@ -64,16 +64,21 @@ const reset = process.argv.includes('--reset');
 
     // --- materials (purchase pair: `price` per `qty` of `unit`; `stock` is on-hand) ---
     // 'มล.' is an identity base unit, so every quantity resolves cleanly and block E's unit checks pass.
-    const mat = async (name, price, qty, stock, itemType = 'RAW') => (await c.query(
+    const matU = async (unit, name, price, qty, stock) => (await c.query(
       `insert into materials (shop_id, name, unit, price, qty, stock, low_stock, category, item_type)
-       values ($1,$2,'มล.',$3,$4,$5,$6,'วัตถุดิบ',$7) returning id, name`,
-      [shop.id, name, price, qty, stock, 500, itemType]
+       values ($1,$2,$3,$4,$5,$6,$7,'วัตถุดิบ','RAW') returning id, name`,
+      [shop.id, name, unit, price, qty, stock, 500]
     )).rows[0];
+    const mat  = (name, price, qty, stock) => matU('มล.', name, price, qty, stock);  // millilitres
+    const matG = (name, price, qty, stock) => matU('ก.',  name, price, qty, stock);  // grams
 
-    const espresso = await mat('Espresso',   600, 1000, 5000);  // 0.60 THB/ml
-    const milk     = await mat('Fresh Milk',  60, 1000, 20000); // 0.06 THB/ml
-    const oat      = await mat('Oat Milk',    95, 1000, 10000); // 0.095 THB/ml
-    const syrup    = await mat('Syrup',      120, 1000, 5000);  // 0.12 THB/ml
+    const espresso = await mat('Espresso',    600, 1000, 5000);  // 0.60  THB/ml
+    const milk     = await mat('Fresh Milk',   60, 1000, 20000); // 0.06  THB/ml
+    const oat      = await mat('Oat Milk',     95, 1000, 10000); // 0.095 THB/ml
+    const almond   = await mat('Almond Milk', 110, 1000, 10000); // 0.11  THB/ml — a 2nd replacement choice
+    const syrup    = await mat('Syrup',       120, 1000, 5000);  // 0.12  THB/ml
+    const water    = await mat('Water',         5, 1000, 50000); // exists only so Americano has NO Fresh Milk
+    const powder   = await matG('Tea Powder', 900, 1000, 2000);  // 0.90  THB/g — a non-milk base ingredient
 
     // --- recipes ---
     const rec = async (name, price) => (await c.query(
@@ -92,10 +97,25 @@ const reset = process.argv.includes('--reset');
     await item(latte.id, milk.id,     150, 'นม');
     await item(latte.id, syrup.id,    10,  'ความหวาน');
 
-    // Block E — a valid, complete, DIFFERENT recipe. Must publish.
+    // Contains Fresh Milk -> must appear in the "เปลี่ยนนม" eligible list.
     const iced = await rec('Iced Latte', 110);
-    await item(iced.id, espresso.id, 60,  'ช็อต');
-    await item(iced.id, milk.id,     180, 'นม');
+    await item(iced.id, espresso.id, 30,  'ช็อต');
+    await item(iced.id, milk.id,     150, 'นม');
+    await item(iced.id, syrup.id,    10,  'ความหวาน');
+
+    // NO Fresh Milk -> the eligibility filter must EXCLUDE this one. It is the
+    // whole point of the test: a milk option must be unlinkable from a black coffee.
+    const americano = await rec('Americano', 70);
+    await item(americano.id, espresso.id, 30,  'ช็อต');
+    await item(americano.id, water.id,    120, 'น้ำ');
+
+    // Contains Fresh Milk at a DIFFERENT base syrup amount (15 vs 10), so
+    // percent-of-base resolves per menu (50% -> 5 here, 7.5 there) and a fixed
+    // quantity shows a mismatch warning instead of applying silently.
+    const powderLatte = await rec('Tea Powder Latte Example', 120);
+    await item(powderLatte.id, powder.id, 3,   'ผง');
+    await item(powderLatte.id, milk.id,   150, 'นม');
+    await item(powderLatte.id, syrup.id,  15,  'ความหวาน');
 
     // Block E — deliberately empty. Must stay draft and block publication.
     const draft = await rec('Draft Recipe (ยังไม่ใส่วัตถุดิบ)', 0);
@@ -115,10 +135,19 @@ const reset = process.argv.includes('--reset');
   Base recipe     Espresso 30 ml + Fresh Milk 150 ml + Syrup 10 ml
   Base cost       ${baht(cost)} THB   (espresso ${baht(30*0.6)} + milk ${baht(150*0.06)} + syrup ${baht(10*0.12)})
 
-  Materials       Espresso    0.600 THB/ml
-                  Fresh Milk  0.060 THB/ml
-                  Oat Milk    0.095 THB/ml
-                  Syrup       0.120 THB/ml
+  Materials       Espresso     0.600 THB/ml     Almond Milk  0.110 THB/ml
+                  Fresh Milk   0.060 THB/ml     Water        0.005 THB/ml
+                  Oat Milk     0.095 THB/ml     Tea Powder   0.900 THB/g
+                  Syrup        0.120 THB/ml
+
+  "เปลี่ยนนม" (source = Fresh Milk) — the eligibility filter must show EXACTLY:
+     eligible   Latte · Iced Latte · Tea Powder Latte Example
+     EXCLUDED   Americano            (no Fresh Milk in its recipe)
+                Draft Recipe         (no ingredients at all)
+
+  Quantity modes  Latte + Iced Latte use Syrup 10 ml; Tea Powder Latte uses 15 ml,
+                  so "50% of base" must resolve 5 ml / 5 ml / 7.5 ml per menu, and a
+                  single fixed quantity must warn instead of applying silently.
 
   For block E     "Iced Latte"    complete + different  -> must publish
                   "Draft Recipe"  empty                 -> must stay draft, blocked
