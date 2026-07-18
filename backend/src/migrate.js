@@ -60,6 +60,7 @@ const files = [
   '../db/schema-permissions.sql',
   '../db/schema-printers.sql',
   '../db/schema-option-authoring.sql',
+  '../db/schema-pos-ops.sql',
   '../db/seed.sql',
 ];
 

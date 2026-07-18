@@ -24,6 +24,22 @@ function sortKeys(o) {
 }
 function eq(a, b) { return norm(a) === norm(b); }
 
+// POS Operations Manager (P0): availability change-detection that does NOT punish plain creation.
+// A brand-new recipe/material always carries pos_available:true (the frontend's default), so
+// treating "new row" as an automatic change (like rowChanged does for other fields) would force
+// EVERY staff recipe/material creation to also require pos_toggle_availability — breaking existing
+// recipe_edit-only staff. Only require the permission when the row is created/left in a NON-default
+// (unavailable) state, or when an existing row's availability actually differs from the DB.
+function availabilityChanged(incoming, dbRow) {
+  const availIn = Object.prototype.hasOwnProperty.call(incoming, 'pos_available') ? incoming.pos_available : undefined;
+  const reasonIn = Object.prototype.hasOwnProperty.call(incoming, 'pos_unavailable_reason') ? incoming.pos_unavailable_reason : undefined;
+  if (!dbRow) {
+    return availIn === false || (reasonIn != null && reasonIn !== '');
+  }
+  const fields = ['pos_available', 'pos_unavailable_reason'];
+  return rowChanged(incoming, dbRow, fields);
+}
+
 // Compare monitored fields of an incoming row vs its DB row. Returns true if any differs (a change).
 // Only fields the incoming row actually CONTAINS are considered — a field the client omitted is not
 // asserted as a change (avoids false positives from DB defaults / partial payloads). A brand-new id
@@ -81,6 +97,16 @@ async function checkSyncPermissions(client, req, b) {
     for (const r of b.recipes) {
       if (rowChanged(r, dbById[r.id], RECIPE_FIELDS) && !has('recipe_edit')) throw deny('RECIPE_READ_ONLY', 'recipes');
     }
+    // POS Operations Manager (P0): menu availability (concept B) is DELIBERATELY separate from
+    // recipe_edit — a manager toggling "sold out" must not need rights to edit the recipe formula,
+    // and (per Founder guardrail) an availability change must never be gated behind a permission
+    // whose denial could be mistaken for "hide the menu". Denial here only blocks the WRITE (the
+    // whole tx aborts, nothing partial persists) — it never flips availability itself.
+    for (const r of b.recipes) {
+      if (availabilityChanged(r, dbById[r.id]) && !has('pos_toggle_availability')) {
+        throw deny('POS_AVAILABILITY_PERMISSION_DENIED', 'recipes.pos_available');
+      }
+    }
     // recipe_items (BOM = formula/quantities) — compare the normalized item set per recipe.
     if (Array.isArray(b.recipe_items) || b.recipes.some((r) => Array.isArray(r.items))) {
       for (const r of b.recipes) {
@@ -106,6 +132,11 @@ async function checkSyncPermissions(client, req, b) {
       if (rowChanged(m, db, ['name', 'unit', 'stock_unit', 'item_type', 'qty', 'conv_qty']) && !has('recipe_edit')) throw deny('RECIPE_READ_ONLY', 'materials');
       // money cost = price. A null price is a no-cost user's redacted value being preserved (COALESCE) — not a change.
       if (m.price != null && rowChanged({ price: m.price }, db, ['price']) && !has('recipe_edit_cost')) throw deny('RECIPE_COST_READ_ONLY', 'materials.cost');
+      // POS Operations Manager (P0): see the recipes block above for the full rationale — same
+      // decoupling from recipe_edit, same "new row default-available never needs the permission".
+      if (availabilityChanged(m, db) && !has('pos_toggle_availability')) {
+        throw deny('POS_AVAILABILITY_PERMISSION_DENIED', 'materials.pos_available');
+      }
     }
   }
 

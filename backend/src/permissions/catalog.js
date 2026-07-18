@@ -19,6 +19,10 @@ const GROUPS = [
     { key: 'pos_view_cost', label: 'ดูต้นทุนหน้าขาย', sensitive: true },
     { key: 'pos_override_price', label: 'แก้ราคาขายเอง', sensitive: true },
     { key: 'pos_void', label: 'ยกเลิกบิล POS (เก่า)', sensitive: true },
+    // POS Operations Manager (P0): เปิด/ปิดขายเมนู-สินค้าจากหน้า POS ตรงๆ (concept B:
+    // menu availability) — แยกขาดจากสิทธิ์แก้สูตร (recipe_edit) โดยตั้งใจ ผู้จัดการหน้าร้าน
+    // ควรปิดขาย "ของหมด" ได้โดยไม่ต้องมีสิทธิ์แก้สูตร/ต้นทุนใดๆ
+    { key: 'pos_toggle_availability', label: 'เปิด/ปิดขายเมนูจากหน้า POS' },
   ] },
   { key: 'bills', label: 'บิล & การยกเลิก', perms: [
     { key: 'bill_view', label: 'ดูบิล' },
@@ -152,6 +156,7 @@ function hasPerm(perms, role, isSuperadmin, key) {
 const PRESETS = {
   front_store: {
     pos_view: true, pos_sell: true, pos_apply_discount: true, pos_apply_coupon: true, pos_open_delivery: true,
+    pos_toggle_availability: true, // ปิดขาย "ของหมด" เป็นงานหน้าร้านประจำวัน ไม่ใช่งานแก้สูตร
     bill_view: true, bill_create_draft: true, bill_edit_draft: true, bill_confirm: true, bill_print: true, bill_send_backoffice: true, bill_view_audit: true,
     recipe_view: true, recipe_view_instructions: true,
     production_view: true, production_view_instructions: true,
