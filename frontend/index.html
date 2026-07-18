@@ -9117,13 +9117,17 @@ function promptpayPayload(id, amount) {
   return p + _ppCRC16(p);
 }
 let _qrLibLoading = null;
+// โหลด qrcode-generator จากไฟล์ที่ฝังมากับแอปเท่านั้น (frontend/vendor/, ดู docs/vendored-dependencies.md)
+// — ไม่มี fallback ไปโหลดจาก CDN ภายนอกอีกต่อไป (เดิมโหลดจาก cdn.jsdelivr.net ทุกครั้งที่เปิดหน้าชำระเงิน)
+// ถ้าโหลดไฟล์ในเครื่องไม่สำเร็จ (เช่น deploy พลาด) ให้ error ชัดเจน ห้ามเงียบ/ห้ามทำให้ดูเหมือนจ่ายสำเร็จ
 function ensureQrLib() {
   if (window.qrcode) return Promise.resolve();
   if (_qrLibLoading) return _qrLibLoading;
   _qrLibLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
-    s.onload = resolve; s.onerror = () => reject(new Error('โหลดตัวสร้าง QR ไม่ได้ (ต้องมีเน็ต)'));
+    s.src = "./vendor/qrcode-generator-1.4.4.js";   // double-quoted on purpose — matches the VERSIONED_ASSETS cache-busting rewrite in backend/src/app.js
+    s.onload = () => { if (window.qrcode) resolve(); else reject(new Error('สร้าง QR ไม่ได้ — โหลดไลบรารีไม่สำเร็จ กรุณารีเฟรช')); };
+    s.onerror = () => reject(new Error('สร้าง QR ไม่ได้ — โหลดไลบรารีไม่สำเร็จ กรุณารีเฟรช'));
     document.head.appendChild(s);
   });
   return _qrLibLoading;
