@@ -3763,7 +3763,11 @@ function applyBootstrapData(data) {
       itemType: m.item_type || '',
       imgData: m.img_data || '',
       behaviorType: m.behavior_type || null,                                        // PR-2: null = legacy/derived
-      behaviorVersion: m.behavior_version != null ? Number(m.behavior_version) : null // PR-2: 2 = V2-saved
+      behaviorVersion: m.behavior_version != null ? Number(m.behavior_version) : null, // PR-2: 2 = V2-saved
+      // POS Operations Manager (P0): "พร้อมขายหน้า POS" — แยกขาดจาก showInPos/saleType (inclusion)
+      // legacy row (คอลัมน์ default true จริงเสมอ แต่กันเผื่อ null หลุดมาทางไหน) = พร้อมขายเหมือนเดิม
+      posAvailable: (m.pos_available == null ? true : !!m.pos_available),
+      posUnavailableReason: m.pos_unavailable_reason || null
     }));
     const itemsGroup = data.recipe_items || [];
     recipes = (data.recipes || []).map(r => ({
@@ -3774,6 +3778,10 @@ function applyBootstrapData(data) {
       inventoryMode: r.inventory_mode || 'inherit',
       recipeType: r.recipe_type || '', outputItemType: r.output_item_type || '',
       onMenu: (typeof r.on_menu === 'boolean' ? r.on_menu : null),
+      // POS Operations Manager (P0): "พร้อมขายหน้า POS" (concept B) — แยกขาดจาก onMenu (concept A:
+      // สูตรนี้อยู่ในระบบเมนูไหม). legacy row = พร้อมขายเหมือนเดิมทุกประการ (default true)
+      posAvailable: (r.pos_available == null ? true : !!r.pos_available),
+      posUnavailableReason: r.pos_unavailable_reason || null,
       optGroups: Array.isArray(r.opt_groups) ? r.opt_groups : (r.opt_groups ? JSON.parse(r.opt_groups) : []),
       imgData: r.img_data || '',
       items: itemsGroup.filter(it => it.recipe_id === r.id).map(it => ({
@@ -4236,7 +4244,10 @@ async function syncToSupabase() {
       item_type: m.itemType || null,
       img_data: m.imgData || null,
       behavior_type: m.behaviorType || null,
-      behavior_version: m.behaviorVersion != null ? m.behaviorVersion : null
+      behavior_version: m.behaviorVersion != null ? m.behaviorVersion : null,
+      // POS Operations Manager (P0): m.posAvailable undefined (not yet touched this session) → true,
+      // matching the bootstrap default and the DB column default — never silently flips to unavailable.
+      pos_available: m.posAvailable !== false, pos_unavailable_reason: m.posUnavailableReason || null
     })),
     recipes: recipes.map(r => ({
       id: r.id, code: r.code, name: r.name, sell_price: r.sell,
@@ -4245,7 +4256,9 @@ async function syncToSupabase() {
       category: r.category || null, opt_groups: r.optGroups || [],
       img_data: r.imgData || null, is_sop: r.isSop || false,
       recipe_type: r.recipeType || null, output_item_type: r.outputItemType || null,
-      on_menu: (typeof r.onMenu === 'boolean' ? r.onMenu : null)
+      on_menu: (typeof r.onMenu === 'boolean' ? r.onMenu : null),
+      // POS Operations Manager (P0): see materials.pos_available above — same undefined→true default.
+      pos_available: r.posAvailable !== false, pos_unavailable_reason: r.posUnavailableReason || null
     })),
     recipe_items: recipes.flatMap(r => (r.items || []).map(it => ({
       recipe_id: r.id, material_id: it.matId || null, amount: it.amount, role: it.role || '', sub_recipe_id: it.subId || null
@@ -4343,6 +4356,11 @@ async function syncToSupabase() {
     // shape, caps length, and writes one `logs` row per entry with action='category.<kind>'.
     // Cleared after a successful sync (see posCatCommit success path).
     _category_audit: Array.isArray(window._categoryAuditQueue) ? window._categoryAuditQueue.slice(0, 50) : [],
+    // P0: POS Operations Manager availability audit — one entry per available/unavailable toggle
+    // since the last successful save (see posSetAvailability()); sync.js validates shape, caps
+    // length, and writes one `logs` row per entry with action='menu.availability_change'.
+    // Cleared after a successful sync (see posSetAvailability's success path).
+    _availability_audit: Array.isArray(window._availabilityAuditQueue) ? window._availabilityAuditQueue.slice(0, 50) : [],
     shop: { name: settings.shopName },
     promotions: promotions.map(p => ({
       id: p.id, name: p.name, type: p.type, value: p.value,
@@ -7496,17 +7514,24 @@ function posScanEnter(inp) {
   const q = raw.toLowerCase();
   const rec = recipes.find(r => (r.onMenu != null ? !!r.onMenu : !r.isRaw) && (r.code || '').toLowerCase() === q);
   const mat = posSellableMats().find(m => (m.sku || '').toLowerCase() === q);
-  let hit = null;
-  if (rec) { addToCart(rec.id); hit = rec.name; }
-  else if (mat) { addMatToCart(mat.id); hit = mat.name; }
+  let hit = null, found = false;
+  // P0: scan/search-to-add is a direct entry point too — addToCart/addMatToCart already refuse +
+  // toast the reason when the item is closed-for-sale, so we just avoid ALSO showing a contradicting
+  // "เพิ่ม: x" (succeeded) or "ไม่พบสินค้า" (not found) toast on top of that refusal.
+  if (rec) { found = true; addToCart(rec.id); if (posItemAvailability(rec).available) hit = rec.name; }
+  else if (mat) { found = true; addMatToCart(mat.id); if (posItemAvailability(mat).available) hit = mat.name; }
   else {
     // ไม่เจอรหัสตรง — ถ้ากรองชื่อแล้วเหลือตัวเดียว ใส่ตัวนั้น
     const recs = recipes.filter(r => (r.onMenu != null ? !!r.onMenu : !r.isRaw) && ((r.name || '').toLowerCase().includes(q) || (r.code || '').toLowerCase().includes(q)));
     const mms = posSellableMats().filter(m => (m.name || '').toLowerCase().includes(q) || (m.sku || '').toLowerCase().includes(q));
-    if (recs.length + mms.length === 1) { if (recs[0]) { addToCart(recs[0].id); hit = recs[0].name; } else { addMatToCart(mms[0].id); hit = mms[0].name; } }
+    if (recs.length + mms.length === 1) {
+      found = true;
+      if (recs[0]) { addToCart(recs[0].id); if (posItemAvailability(recs[0]).available) hit = recs[0].name; }
+      else { addMatToCart(mms[0].id); if (posItemAvailability(mms[0]).available) hit = mms[0].name; }
+    }
   }
   if (hit) { inp.value = ''; posSearch = ''; renderPosGrid(); if (typeof ui !== 'undefined' && ui.toast) ui.toast('เพิ่ม: ' + hit); }
-  else if (typeof ui !== 'undefined' && ui.toast) ui.toast('ไม่พบสินค้า "' + raw + '"', 'warning');
+  else if (!found && typeof ui !== 'undefined' && ui.toast) ui.toast('ไม่พบสินค้า "' + raw + '"', 'warning');
 }
 
 function switchPosTab(tab) {
@@ -8295,6 +8320,163 @@ function posSortItemsByCategory(items) {
   });
 }
 
+// ===== POS Operations Manager (P0): Menu Availability (concept B) =====
+// เปิด/ปิดขายเมนู-สินค้าจากหน้า POS ตรงๆ — ไม่แตะ recipes.on_menu (concept A: อยู่ในระบบเมนูไหม),
+// ไม่แตะ materials.show_in_pos/sale_type (concept A ของวัตถุดิบ), ไม่แตะสูตร/สต๊อกใดๆ ทั้งสิ้น
+// รายการเหตุผลควบคุมตรงตาม Founder spec เป๊ะ — 'Other' เท่านั้นที่มีช่องข้อความสั้นแนบ
+const POS_AVAILABILITY_REASONS = ['ของหมด', 'ปิดขายชั่วคราว', 'ไม่ขายวันนี้', 'Seasonal', 'Kitchen unavailable', 'Other'];
+
+// อ่านสถานะ "พร้อมขาย" ของสูตร/วัตถุดิบแบบ pure — legacy (posAvailable undefined) = พร้อมขายเสมอ
+function posItemAvailability(item) {
+  return { available: !item || item.posAvailable !== false, reason: (item && item.posUnavailableReason) || null };
+}
+
+// ── audit queue: หนึ่ง event ต่อการเปิด/ปิดขาย 1 ครั้ง — ส่งไปกับ payload /api/sync
+// (_availability_audit) แล้ว sync.js เขียนลง logs หนึ่งแถวต่อ event (action='menu.availability_change')
+function posAvailCorrelation() { return 'avail_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+function posAvailAuditPush(ev) {
+  if (!Array.isArray(window._availabilityAuditQueue)) window._availabilityAuditQueue = [];
+  const row = {
+    action: 'menu.availability_change',
+    target_type: ev.target_type, target_id: ev.target_id, target_name: ev.target_name || null,
+    old: ev.old === false ? 'unavailable' : 'available',
+    new: ev.new === false ? 'unavailable' : 'available',
+    reason: ev.reason || null,
+    correlation: ev.correlation || posAvailCorrelation(),
+    at: new Date().toISOString()
+  };
+  window._availabilityAuditQueue.push(row);
+  if (window._availabilityAuditQueue.length > 50) window._availabilityAuditQueue = window._availabilityAuditQueue.slice(-50);
+  return row;
+}
+function posAvailAuditClear() { window._availabilityAuditQueue = []; }
+
+// ทุกการเปลี่ยน "พร้อมขาย" ต้องผ่านที่นี่ — kind: 'recipe' | 'material'
+// mutate ค่าใน memory ตรงๆ (เหมือนการแก้ field อื่นของ recipes/materials ทั่วแอป) แล้วปล่อยให้
+// saveAll() (debounced auto-save เดิม) เป็นคนบันทึกขึ้นคลาวด์ — ไม่เรียก syncToSupabase() ตรงๆ
+// ที่นี่ เพื่อไม่สร้าง auto-save ซ้อนกับ flow เดิม (guardrail: syncToSupabase ไม่มี in-flight guard)
+function posSetAvailability(kind, id, available, reason) {
+  const item = kind === 'material' ? matById(id) : recById(id);
+  if (!item) return;
+  if (!can('pos_toggle_availability')) { ui.toast('พนักงานไม่มีสิทธิ์เปิด/ปิดขายเมนู', 'warning'); return; }
+  const before = item.posAvailable !== false;
+  const cleanReason = available ? null : (reason || null);
+  item.posAvailable = !!available;
+  item.posUnavailableReason = cleanReason;
+  posAvailAuditPush({
+    target_type: kind, target_id: id, target_name: item.name,
+    old: before, new: !!available, reason: cleanReason
+  });
+  renderPosGrid();
+  saveAll();
+  ui.toast(available ? `เปิดขาย "${item.name}" แล้ว` : `ปิดขาย "${item.name}" แล้ว`, 'success');
+}
+
+// ── Compact manager surface: sheet เดียวใช้ทั้งเปิด/ปิด/เปลี่ยนเหตุผล ──
+let _posAvailSheetKind = null, _posAvailSheetId = null;
+function openPosAvailabilitySheet(kind, id) {
+  if (!can('pos_toggle_availability')) { ui.toast('พนักงานไม่มีสิทธิ์เปิด/ปิดขายเมนู', 'warning'); return; }
+  const item = kind === 'material' ? matById(id) : recById(id);
+  if (!item) return;
+  _posAvailSheetKind = kind; _posAvailSheetId = id;
+  const state = posItemAvailability(item);
+  _posAvailSheetPickedAvailable = state.available;
+  _posAvailSheetPickedReason = state.available ? null : (state.reason || POS_AVAILABILITY_REASONS[0]);
+  _posAvailOtherText = (!state.available && state.reason && !POS_AVAILABILITY_REASONS.slice(0, -1).includes(state.reason)) ? state.reason : '';
+  let ov = document.getElementById('posAvailOverlay');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'posAvailOverlay'; ov.className = 'modal-overlay';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  renderPosAvailabilitySheet();
+}
+function closePosAvailabilitySheet() {
+  const ov = document.getElementById('posAvailOverlay');
+  if (ov) ov.remove();
+}
+function renderPosAvailabilitySheet() {
+  const ov = document.getElementById('posAvailOverlay');
+  if (!ov) return;
+  const item = _posAvailSheetKind === 'material' ? matById(_posAvailSheetId) : recById(_posAvailSheetId);
+  if (!item) { closePosAvailabilitySheet(); return; }
+  // ใช้ค่าที่กำลังเลือกอยู่ใน sheet (ยังไม่บันทึก) ไม่ใช่ค่าจริงของ item — กันปุ่ม highlight ผิดระหว่างเลือก
+  const state = { available: _posAvailSheetPickedAvailable, reason: _posAvailSheetPickedReason };
+  const isOtherReason = state.reason != null && !POS_AVAILABILITY_REASONS.slice(0, -1).includes(state.reason);
+  ov.innerHTML = `<div style="background:var(--surface-1);border-radius:16px;max-width:420px;width:92%;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25);">
+      <h2 style="margin:0 0 4px;font-size:17px;"><span class="ico" data-icon="power"></span> ${esc(item.name)}</h2>
+      <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 14px;">เปิด/ปิดขายหน้า POS — ไม่กระทบสูตร/สต๊อก</p>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="btn ${state.available ? 'btn-primary' : 'btn-ghost'}" style="flex:1;" onclick="posAvailSheetPickAvailable()">พร้อมขาย</button>
+        <button class="btn ${!state.available ? '' : 'btn-ghost'}" style="flex:1;${!state.available ? 'background:#dc2626;color:#fff;border-color:#dc2626;' : ''}" onclick="posAvailSheetPickUnavailable()">ปิดขาย</button>
+      </div>
+      <div id="posAvailReasonBox" style="${state.available ? 'display:none;' : ''}">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">เหตุผล</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${POS_AVAILABILITY_REASONS.map(r => `<button class="pos-opt-chip" style="${(state.reason === r || (r === 'Other' && isOtherReason)) ? 'background:var(--color-primary);color:#fff;border-color:var(--color-primary);' : ''}" onclick="posAvailSheetPickReason('${esc(r)}')">${esc(r)}</button>`).join('')}
+        </div>
+        <input id="posAvailOtherInput" type="text" maxlength="200" placeholder="ระบุเหตุผลสั้นๆ (สำหรับ Other)"
+          value="${esc(isOtherReason ? state.reason : '')}"
+          style="width:100%;box-sizing:border-box;${(state.reason === 'Other' || isOtherReason) ? '' : 'display:none;'}"
+          class="form-input" oninput="_posAvailOtherText = this.value">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="closePosAvailabilitySheet()">ยกเลิก</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="posAvailSheetSave()">บันทึก</button>
+      </div>
+    </div>`;
+  renderIcons(ov);
+}
+let _posAvailSheetPickedAvailable = true;
+let _posAvailSheetPickedReason = null;
+let _posAvailOtherText = '';
+function posAvailSheetPickAvailable() { _posAvailSheetPickedAvailable = true; _posAvailSheetPickedReason = null; renderPosAvailabilitySheet(); }
+function posAvailSheetPickUnavailable() {
+  _posAvailSheetPickedAvailable = false;
+  if (!_posAvailSheetPickedReason) _posAvailSheetPickedReason = POS_AVAILABILITY_REASONS[0];
+  renderPosAvailabilitySheet();
+}
+function posAvailSheetPickReason(r) { _posAvailSheetPickedAvailable = false; _posAvailSheetPickedReason = r; renderPosAvailabilitySheet(); }
+function posAvailSheetSave() {
+  const kind = _posAvailSheetKind, id = _posAvailSheetId;
+  const available = _posAvailSheetPickedAvailable;
+  let reason = available ? null : (_posAvailSheetPickedReason || POS_AVAILABILITY_REASONS[0]);
+  if (!available && reason === 'Other') reason = (_posAvailOtherText || '').trim().slice(0, 200) || 'Other';
+  closePosAvailabilitySheet();
+  _posAvailSheetPickedAvailable = true; _posAvailSheetPickedReason = null; _posAvailOtherText = '';
+  posSetAvailability(kind, id, available, reason);
+}
+
+// ── P0: POS card integration — closed-for-sale is ALWAYS visually distinct from a stock warning
+// (ribbon + label vs inline colored text — never color alone) and is NEVER sellable, independent
+// of stock (concept D stays warning-only; concept B never looks at stock to decide anything).
+function posShowUnavailableReason(kind, id) {
+  const item = kind === 'material' ? matById(id) : recById(id);
+  if (!item) return;
+  const st = posItemAvailability(item);
+  ui.toast(st.reason ? `ปิดขายชั่วคราว: ${st.reason}` : 'ปิดขายชั่วคราว', 'warning');
+}
+// แถบ "ปิดขาย" มุมการ์ด (ทแยง) — คนละรูปทรงกับ .ppc-stock (ตัวอักษรสีล้วน) ของสต๊อกโดยเจตนา
+function posAvailBadgeHtml(item) {
+  const st = posItemAvailability(item);
+  if (st.available) return '';
+  const reasonTxt = st.reason ? esc(st.reason) : '';
+  return `<div class="ppc-closed-ribbon" title="${reasonTxt ? 'เหตุผล: ' + reasonTxt : 'ปิดขายชั่วคราว'}">ปิดขาย</div>`;
+}
+// ปุ่มเปิด/ปิดขายมุมการ์ด (one-click สู่ compact manager surface) — แสดงเฉพาะผู้มีสิทธิ์
+function posMgrToggleBtnHtml(kind, id) {
+  if (!can('pos_toggle_availability')) return '';
+  return `<button type="button" class="ppc-avail-toggle" title="เปิด/ปิดขายเมนูนี้" onclick="event.stopPropagation();openPosAvailabilitySheet('${kind}','${id}')"><span class="ico" data-icon="power"></span></button>`;
+}
+// ตัดสินใจว่าแตะการ์ดแล้วเกิดอะไร: ปิดขายอยู่ → เปิด sheet (ผู้มีสิทธิ์) หรือโชว์เหตุผลอ่านอย่างเดียว
+// (พนักงานไม่มีสิทธิ์) — พร้อมขาย → พฤติกรรมเดิม (เพิ่มลงตะกร้า/บล็อกเพราะสต๊อก แล้วแต่กรณี)
+function posCardTapHandler(kind, id, item, sellableExpr) {
+  if (!posItemAvailability(item).available) {
+    return can('pos_toggle_availability') ? `openPosAvailabilitySheet('${kind}','${id}')` : `posShowUnavailableReason('${kind}','${id}')`;
+  }
+  return sellableExpr;
+}
+
 function renderPosGrid() {
   renderPosCategoryBar();
   const grid = $('posProductGrid');
@@ -8321,10 +8503,13 @@ function renderPosGrid() {
   const matCardHtml = m => {
     const stock = Number(m.stock) || 0;
     const oos = stock <= 0;
+    const closed = !posItemAvailability(m).available;
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
     const price = m.sellPrice || m.salePrice2 || 0;
     const imgHtml = ppcImg(m.imgData, m.name);
-    return `<div class="pos-product-card has-img${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addMatToCart('${m.id}')`}">
+    const clickJs = posCardTapHandler('material', m.id, m, oos ? '' : `addMatToCart('${m.id}')`);
+    return `<div class="pos-product-card has-img${oos && !closed ? ' out-of-stock' : ''}${closed ? ' pos-mgr-closed' : ''}" onclick="${clickJs}">
+      ${posMgrToggleBtnHtml('material', m.id)}${posAvailBadgeHtml(m)}
       ${imgHtml}<span class="ppc-opts-badge" style="background:var(--color-secondary);">สินค้า</span>
       <div class="ppc-name">${esc(m.name)}</div>
       <div class="ppc-price">${money(price)}</div>
@@ -8341,7 +8526,10 @@ function renderPosGrid() {
 
     if (effectiveMode === 'non_stock') {
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
-      return `<div class="pos-product-card has-img" onclick="addToCart('${r.id}')">
+      const closed = !posItemAvailability(r).available;
+      const clickJs = posCardTapHandler('recipe', r.id, r, `addToCart('${r.id}')`);
+      return `<div class="pos-product-card has-img${closed ? ' pos-mgr-closed' : ''}" onclick="${clickJs}">
+        ${posMgrToggleBtnHtml('recipe', r.id)}${posAvailBadgeHtml(r)}
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
@@ -8368,7 +8556,10 @@ function renderPosGrid() {
           ? '<span style="color:#d97706;font-weight:600;">⚠ วัตถุดิบใกล้หมด</span>'
           : '<span style="color:#16a34a;">พร้อมขาย</span>';
       const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
-      return `<div class="pos-product-card has-img${!canMake ? ' out-of-stock' : ''}" onclick="${!canMake ? '' : `addToCart('${r.id}')`}">
+      const closed = !posItemAvailability(r).available;
+      const clickJs = posCardTapHandler('recipe', r.id, r, !canMake ? '' : `addToCart('${r.id}')`);
+      return `<div class="pos-product-card has-img${!canMake && !closed ? ' out-of-stock' : ''}${closed ? ' pos-mgr-closed' : ''}" onclick="${clickJs}">
+        ${posMgrToggleBtnHtml('recipe', r.id)}${posAvailBadgeHtml(r)}
         ${imgHtml}${optsIcon}
         <div class="ppc-name">${esc(r.name)}</div>
         ${r.detail ? `<div style="font-size:10px;color:var(--color-text-muted);line-height:1.25;margin:1px 4px;max-height:25px;overflow:hidden;">${esc(r.detail)}</div>` : ''}
@@ -8379,9 +8570,12 @@ function renderPosGrid() {
     // finished_goods: แสดง fgStock
     const stock = Number(r.fgStock) || 0;
     const oos = stock <= 0;
+    const closed = !posItemAvailability(r).available;
     const optsIcon = hasOpts(r) ? `<span class="ppc-opts-badge">มีตัวเลือก</span>` : '';
     const stockColor = stock > 5 ? '#16a34a' : stock > 0 ? '#d97706' : '#e53e3e';
-    return `<div class="pos-product-card has-img${oos ? ' out-of-stock' : ''}" onclick="${oos ? '' : `addToCart('${r.id}')`}">
+    const clickJs = posCardTapHandler('recipe', r.id, r, oos ? '' : `addToCart('${r.id}')`);
+    return `<div class="pos-product-card has-img${oos && !closed ? ' out-of-stock' : ''}${closed ? ' pos-mgr-closed' : ''}" onclick="${clickJs}">
+      ${posMgrToggleBtnHtml('recipe', r.id)}${posAvailBadgeHtml(r)}
       ${imgHtml}${optsIcon}
       <div class="ppc-name">${esc(r.name)}</div>
       <div class="ppc-price">${money(r.sell)}</div>
@@ -8414,6 +8608,9 @@ function renderPosGrid() {
 function addMatToCart(matId) {
   const m = matById(matId);
   if (!m) return;
+  // P0: closed-for-sale gate — belt-and-suspenders for entry points besides the card's own onclick
+  // (e.g. barcode scan posScanEnter()). Never sellable while pos_available===false.
+  if (!posItemAvailability(m).available) { posShowUnavailableReason('material', matId); return; }
   const price = m.sellPrice || m.salePrice2 || 0;
   const maxQty = Number(m.stock) || 0;
   if (maxQty <= 0) return;
@@ -8435,6 +8632,9 @@ function getRecipeOptGroups(recipeId) {
 function addToCart(recipeId) {
   const r = recById(recipeId);
   if (!r) return;
+  // P0: closed-for-sale gate — belt-and-suspenders for entry points besides the card's own onclick
+  // (e.g. barcode scan posScanEnter()). Never sellable while pos_available===false.
+  if (!posItemAvailability(r).available) { posShowUnavailableReason('recipe', recipeId); return; }
   const newGroups = getRecipeOptGroups(recipeId);
   if (newGroups.length > 0 || (r.optGroups || []).length > 0) {
     showPosOptSheet(recipeId);

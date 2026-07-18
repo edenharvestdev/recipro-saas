@@ -2073,6 +2073,60 @@ table.bd tfoot td.r { text-align: right; }
   border-color: transparent;
 }
 
+/* ── POS Operations Manager (P0): manager-closed-for-sale ────────────────────
+   Deliberately a DIFFERENT shape from .out-of-stock (a diagonal ribbon + text
+   label, not just dimming/color) so "closed by a person" is never confused
+   with "warning: stock is low/zero" at a glance. Still clickable (cursor
+   stays a pointer) — tapping opens the reason/re-enable sheet, it just never
+   adds to cart. */
+.pos-product-card.pos-mgr-closed {
+  opacity: 0.55;
+  filter: grayscale(0.85);
+}
+.pos-product-card.pos-mgr-closed:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: transparent;
+}
+.pos-product-card .ppc-closed-ribbon {
+  position: absolute;
+  top: 12px;
+  left: -32px;
+  width: 150px;
+  transform: rotate(-40deg);
+  transform-origin: center;
+  background: #111827;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-align: center;
+  padding: 3px 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  z-index: 2;
+  pointer-events: none;
+}
+.pos-product-card .ppc-avail-toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+}
+.pos-product-card .ppc-avail-toggle:hover { color: var(--color-primary); border-color: var(--color-primary); }
+.pos-product-card .ppc-avail-toggle .ico { width: 14px; height: 14px; }
+
 /* Product image */
 .pos-product-card .ppc-img {
   width: calc(100% + 24px);
