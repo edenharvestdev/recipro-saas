@@ -267,8 +267,8 @@ router.post('/selective-clone', async (req, res) => {
             } else if (conflictStrategy === 'update') {
               const supId = m.supplier_id ? (supMap.get(m.supplier_id) || null) : null;
               await c.query(
-                `update materials set name=$1, qty=$2, unit=$3, price=$4, sell_price=$5, supplier_id=$6, order_url=$7, low_stock=$8, category=$9, conv_qty=$10, stock_unit=$11, is_consumable=$12, sale_type=$13, show_in_pos=$14, sale_price_2=$15, item_type=$16, img_data=$17, updated_at=now() where id=$18`,
-                [m.name, m.qty, m.unit, m.price, m.sell_price, supId, m.order_url, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data, conf.dst_id]
+                `update materials set name=$1, qty=$2, unit=$3, price=$4, sell_price=$5, supplier_id=$6, order_url=$7, low_stock=$8, category=$9, conv_qty=$10, stock_unit=$11, is_consumable=$12, sale_type=$13, show_in_pos=$14, sale_price_2=$15, item_type=$16, img_data=$17, pos_available=$18, pos_unavailable_reason=$19, updated_at=now() where id=$20`,
+                [m.name, m.qty, m.unit, m.price, m.sell_price, supId, m.order_url, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data, m.pos_available ?? true, m.pos_unavailable_reason ?? null, conf.dst_id]
               );
               matMap.set(m.id, conf.dst_id); logs.push(`Updated material "${m.name}"`); counts.materials++; continue;
             }
@@ -281,9 +281,9 @@ router.post('/selective-clone', async (req, res) => {
           }
           usedNames.add(name); matMap.set(m.id, id);
           await c.query(
-            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
-            [id, dstShopId, sku, name, m.qty, m.unit, m.price, m.sell_price, m.supplier_id ? (supMap.get(m.supplier_id) || null) : null, m.order_url, 0, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data]
+            `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data, pos_available, pos_unavailable_reason)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+            [id, dstShopId, sku, name, m.qty, m.unit, m.price, m.sell_price, m.supplier_id ? (supMap.get(m.supplier_id) || null) : null, m.order_url, 0, m.low_stock, m.category, m.conv_qty, m.stock_unit, m.is_consumable, m.sale_type, m.show_in_pos, m.sale_price_2, m.item_type, m.img_data, m.pos_available ?? true, m.pos_unavailable_reason ?? null]
           );
           logs.push(`Created material "${name}"`); counts.materials++;
         }
@@ -300,10 +300,10 @@ router.post('/selective-clone', async (req, res) => {
               recMap.set(r.id, conf.dst_id); logs.push(`Skipped recipe "${r.name}" (already exists)`); continue;
             } else if (conflictStrategy === 'update') {
               await c.query(
-                `update recipes set name=$1, sell_price=$2, batch_yield=$3, yield_unit=$4, is_raw=$5, steps=$6, detail=$7, fg_low=$8, category=$9, opt_groups=$10, img_data=$11, is_sop=$12, recipe_type=$13, output_item_type=$14, on_menu=$15, inventory_mode=$16, updated_at=now() where id=$17`,
+                `update recipes set name=$1, sell_price=$2, batch_yield=$3, yield_unit=$4, is_raw=$5, steps=$6, detail=$7, fg_low=$8, category=$9, opt_groups=$10, img_data=$11, is_sop=$12, recipe_type=$13, output_item_type=$14, on_menu=$15, inventory_mode=$16, pos_available=$17, pos_unavailable_reason=$18, updated_at=now() where id=$19`,
                 [r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.detail, r.fg_low, r.category,
                  r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
-                 r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit', conf.dst_id]
+                 r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit', r.pos_available ?? true, r.pos_unavailable_reason ?? null, conf.dst_id]
               );
               recMap.set(r.id, conf.dst_id); logs.push(`Updated recipe "${r.name}"`); counts.recipes++; continue;
             }
@@ -316,11 +316,11 @@ router.post('/selective-clone', async (req, res) => {
           }
           usedNames.add(name); recMap.set(r.id, id);
           await c.query(
-            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode, pos_available, pos_unavailable_reason)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
             [id, dstShopId, code, name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps, r.detail, 0, r.fg_low, r.category,
              r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
-             r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit']
+             r.img_data, r.is_sop, r.recipe_type, r.output_item_type, r.on_menu, r.inventory_mode || 'inherit', r.pos_available ?? true, r.pos_unavailable_reason ?? null]
           );
           logs.push(`Created recipe "${name}"`); counts.recipes++;
         }
@@ -583,22 +583,24 @@ async function importIntoShop(c, dstShopId, data, opts = {}) {
   for (const m of data.materials || []) {
     const id = await genUUID(c); matMap.set(m.id, id);
     await c.query(
-      `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      `insert into materials (id, shop_id, sku, name, qty, unit, price, sell_price, supplier_id, order_url, stock, low_stock, category, conv_qty, stock_unit, is_consumable, sale_type, show_in_pos, sale_price_2, item_type, img_data, pos_available, pos_unavailable_reason)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
       [id, dstShopId, m.sku || null, m.name, m.qty, m.unit, m.price, m.sell_price, m.supplier_id ? (supMap.get(m.supplier_id) || null) : null,
        m.order_url || '', resetStock ? 0 : (m.stock || 0), m.low_stock || 0, m.category || null, m.conv_qty || null, m.stock_unit || null,
-       m.is_consumable ?? false, m.sale_type || 'INGREDIENT_ONLY', m.show_in_pos ?? false, m.sale_price_2 ?? null, m.item_type || null, m.img_data || null]);
+       m.is_consumable ?? false, m.sale_type || 'INGREDIENT_ONLY', m.show_in_pos ?? false, m.sale_price_2 ?? null, m.item_type || null, m.img_data || null,
+       m.pos_available ?? true, m.pos_unavailable_reason ?? null]);
     out.materials++;
   }
   for (const r of data.recipes || []) {
     const id = await genUUID(c); recMap.set(r.id, id);
     await c.query(
-      `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      `insert into recipes (id, shop_id, code, name, sell_price, batch_yield, yield_unit, is_raw, steps, detail, fg_stock, fg_low, category, opt_groups, img_data, is_sop, recipe_type, output_item_type, on_menu, inventory_mode, pos_available, pos_unavailable_reason)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
       [id, dstShopId, r.code, r.name, r.sell_price, r.batch_yield, r.yield_unit, r.is_raw, r.steps || '', r.detail || '',
        resetStock ? 0 : (r.fg_stock || 0), r.fg_low || 0, r.category || null,
        r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
-       r.img_data || null, r.is_sop || false, r.recipe_type || null, r.output_item_type || null, r.on_menu, r.inventory_mode || 'inherit']);
+       r.img_data || null, r.is_sop || false, r.recipe_type || null, r.output_item_type || null, r.on_menu, r.inventory_mode || 'inherit',
+       r.pos_available ?? true, r.pos_unavailable_reason ?? null]);
     out.recipes++;
   }
   for (const it of data.recipe_items || []) {

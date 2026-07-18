@@ -75,6 +75,48 @@ function normalizeCategoryAudit(list) {
   return out;
 }
 
+// ── POS Operations Manager (P0): granular availability audit ────────────────
+// เหมือน _category_audit เป๊ะ — client (posSetAvailability → payload._availability_audit)
+// รายงานเจตนาจริง (เปิด/ปิดขายเมนู 1 รายการต่อ 1 event) แทนให้ server มา diff เอง
+// (diff แยกไม่ออกว่า client ตั้งใจปิด vs ค่าที่ถูกเขียนทับจาก sync อื่นพร้อมกัน)
+// ความปลอดภัย: whitelist action/target_type, cap ความยาว, ตัด field ไม่รู้จักทิ้ง,
+// บังคับชนิด/ความยาวสตริง, ไม่รับ payload เต็ม/ความลับใดๆ
+const AVAILABILITY_AUDIT_ACTIONS = new Set(['menu.availability_change']);
+const AVAILABILITY_AUDIT_TARGET_TYPES = new Set(['recipe', 'material']);
+// รายการเหตุผลที่ควบคุมไว้ตรงตาม Founder spec เป๊ะ — 'Other' เท่านั้นที่มี free-text แนบ
+const AVAILABILITY_REASONS = new Set(['ของหมด', 'ปิดขายชั่วคราว', 'ไม่ขายวันนี้', 'Seasonal', 'Kitchen unavailable', 'Other']);
+const AVAILABILITY_AUDIT_MAX = 50;
+const AVAILABILITY_AUDIT_STR_MAX = 200;
+function normalizeAvailabilityAudit(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const e of list) {
+    if (!e || typeof e !== 'object') continue;
+    if (!AVAILABILITY_AUDIT_ACTIONS.has(e.action)) continue;
+    if (!AVAILABILITY_AUDIT_TARGET_TYPES.has(e.target_type)) continue;
+    const str = (v) => (v == null ? null : String(v).slice(0, AVAILABILITY_AUDIT_STR_MAX));
+    const reason = e.reason == null ? null : str(e.reason);
+    out.push({
+      action: e.action,
+      detail: {
+        target_type: e.target_type,
+        target_id: str(e.target_id),
+        target_name: str(e.target_name),
+        old: e.old === 'unavailable' ? 'unavailable' : (e.old === 'available' ? 'available' : null),
+        new: e.new === 'unavailable' ? 'unavailable' : 'available',
+        // ยังบันทึก reason แม้เป็นค่านอกรายการควบคุม (เช่น client เก่า) เพื่อไม่ทำหลักฐานหาย
+        // แต่ทำเครื่องหมายไว้ว่าไม่ตรงรายการที่ควบคุม — ไม่ใช้ค่านี้ไปคุมพฤติกรรมใดๆ
+        reason,
+        reason_controlled: reason != null ? AVAILABILITY_REASONS.has(reason) : null,
+        correlation: str(e.correlation),
+        at: str(e.at),
+      },
+    });
+    if (out.length >= AVAILABILITY_AUDIT_MAX) break;
+  }
+  return out;
+}
+
 router.post('/sync', async (req, res) => {
   const shopId = req.shopId;
   if (!shopId) return res.status(400).json({ error: 'No current shop' });
@@ -106,15 +148,26 @@ router.post('/sync', async (req, res) => {
         ['id', 'shop_id', 'name', 'note'], withShop(b.suppliers), 'id');
 
       await upsertRows(client, 'materials',
-        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type', 'img_data', 'behavior_type', 'behavior_version'],
-        withShop(b.materials), 'id', true, ['price']);   // A1: null price (redacted for no-cost users) preserves the stored cost
+        ['id', 'shop_id', 'sku', 'name', 'qty', 'unit', 'price', 'sell_price', 'supplier_id', 'order_url', 'stock', 'low_stock', 'category', 'conv_qty', 'stock_unit', 'is_consumable', 'sale_type', 'show_in_pos', 'sale_price_2', 'item_type', 'img_data', 'behavior_type', 'behavior_version', 'pos_available', 'pos_unavailable_reason'],
+        withShop((b.materials || []).map(m => ({
+          ...m,
+          // P0: pos_available is NOT NULL — a client that omits the field entirely (legacy client,
+          // hand-built payload, or any future integration unaware of this column) must NOT send an
+          // implicit undefined/null through to the INSERT (that would violate NOT NULL and 500 the
+          // whole sync). Coerce here so "field omitted" reads exactly like "column's own DEFAULT true".
+          pos_available: m.pos_available === false ? false : true,
+          pos_unavailable_reason: m.pos_unavailable_reason || null
+        }))), 'id', true, ['price']);   // A1: null price (redacted for no-cost users) preserves the stored cost
 
       await upsertRows(client, 'recipes',
-        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link', 'inventory_mode'],
+        ['id', 'shop_id', 'code', 'name', 'sell_price', 'batch_yield', 'yield_unit', 'is_raw', 'steps', 'fg_stock', 'fg_low', 'category', 'opt_groups', 'img_data', 'is_sop', 'recipe_type', 'output_item_type', 'on_menu', 'detail', 'link', 'inventory_mode', 'pos_available', 'pos_unavailable_reason'],
         withShop((b.recipes || []).map(r => ({
           ...r,
           opt_groups: r.opt_groups == null ? null : (typeof r.opt_groups === 'string' ? r.opt_groups : JSON.stringify(r.opt_groups)),
-          inventory_mode: r.inventory_mode || 'inherit'
+          inventory_mode: r.inventory_mode || 'inherit',
+          // P0: see materials.pos_available above — same NOT NULL safety coercion.
+          pos_available: r.pos_available === false ? false : true,
+          pos_unavailable_reason: r.pos_unavailable_reason || null
         }))), 'id', true);
 
       // recipe_items: ลบของสูตรในร้านนี้ทั้งหมดแล้วใส่ใหม่ (ตรงกับ logic เดิม)
@@ -311,6 +364,12 @@ router.post('/sync', async (req, res) => {
     // อยู่ใน detail jsonb. เขียนหลัง tx สำเร็จ + fire-and-forget เหมือน data.sync (audit พัง
     // ต้องไม่ทำให้การบันทึกของร้านพัง)
     for (const ev of normalizeCategoryAudit(b._category_audit)) {
+      logEvent(shopId, req.userId, ev.action, ev.detail);
+    }
+    // P0: หนึ่งแถวต่อการเปิด/ปิดขายเมนู 1 ครั้ง — actor=user_id, tenant=shop_id, รายละเอียด
+    // (target/old/new/reason/correlation/เวลา) อยู่ใน detail jsonb. เขียนหลัง tx สำเร็จ +
+    // fire-and-forget เหมือน data.sync/category audit (audit พังต้องไม่ทำให้การบันทึกพัง)
+    for (const ev of normalizeAvailabilityAudit(b._availability_audit)) {
       logEvent(shopId, req.userId, ev.action, ev.detail);
     }
     res.json({ ok: true, version: newVersion });
