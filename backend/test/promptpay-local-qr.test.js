@@ -119,3 +119,49 @@ test('bill-QR failure path shows a controlled Thai error, never leaves a broken 
   assert.ok(src.includes('สร้าง QR ไม่ได้'), 'expected the controlled Thai QR-failure message to be shown on load failure');
   assert.ok(!/src\s*=\s*["'`]https?:\/\//.test(src), 'the failure path must not fall back to any remote image URL');
 });
+
+// ─── menu.html (public online-ordering page — /menu/:token) ──────────────────────────────
+// Stream-5 verification found the SAME leak class in frontend/menu.html: every prepay
+// online order rendered <img src="https://promptpay.io/<merchant-id>/<total>.png">.
+// menu.html is a SEPARATE static page (served by app.js res.sendFile) — the index.html
+// fix (d1df845) never covered it, and this file previously only scanned index.html.
+// These tests close that audit gap.
+const menuHtml = fs.readFileSync(path.join(__dirname, '../../frontend/menu.html'), 'utf8');
+
+test('menu.html: no live promptpay.io (or other external QR-image host) request remains', () => {
+  // Comment lines (// … documenting the OLD leak) are allowed; any executable line is not.
+  const nonComment = menuHtml.split('\n').filter((l) =>
+    /promptpay\.io|api\.qrserver|chart\.googleapis/.test(l) && !/^\s*(\/\/|<!--|\*)/.test(l.trim()));
+  assert.deepStrictEqual(nonComment, [], 'menu.html must not contact any external QR host at runtime: ' + JSON.stringify(nonComment));
+});
+
+test('menu.html: renders the prepay QR locally with the vendored library via an ABSOLUTE path', () => {
+  assert.ok(menuHtml.includes("'/vendor/qrcode-generator-1.4.4.js'"),
+    'menu.html is served at /menu/:token — a relative ./vendor path would 404; must be absolute');
+  assert.ok(/function\s+renderPromptPayQr/.test(menuHtml), 'local QR renderer missing');
+  assert.ok(/function\s+promptpayPayload/.test(menuHtml), 'local EMVCo payload builder missing');
+  assert.ok(!/cdn\.jsdelivr|unpkg\.com|cdnjs\./.test(menuHtml), 'no CDN script on the public payment page');
+});
+
+test('menu.html: EMVCo payload copy produces byte-identical vectors to the index.html generator', () => {
+  const exM = (name) => {
+    const m = new RegExp('function\\s+' + name + '\\s*\\(').exec(menuHtml);
+    assert.ok(m, name + ' not found in menu.html');
+    let i = menuHtml.indexOf('{', m.index), d = 0; const s = m.index;
+    for (; i < menuHtml.length; i++) { if (menuHtml[i] === '{') d++; else if (menuHtml[i] === '}') { d--; if (!d) break; } }
+    return menuHtml.slice(s, i + 1);
+  };
+  const MM = new Function(exM('_ppTLV') + '\n' + exM('_ppCRC16') + '\n' + exM('promptpayPayload')
+    + '\nreturn { promptpayPayload };')();
+  for (const [id, amt] of [['0812345678', 135], ['0812345678', 7.5], ['0812345678', 1250]]) {
+    assert.strictEqual(MM.promptpayPayload(id, amt), M.promptpayPayload(id, amt),
+      `menu.html payload for ${id}/${amt} must equal the index.html generator`);
+  }
+});
+
+test('menu.html: QR failure path shows a controlled Thai message and never a remote fallback or false paid state', () => {
+  assert.ok(menuHtml.includes('แสดง QR ไม่สำเร็จ'), 'controlled Thai failure message missing');
+  const renderer = menuHtml.slice(menuHtml.indexOf('function renderPromptPayQr'));
+  assert.ok(!/https?:\/\//.test(renderer.slice(0, renderer.indexOf('\n// ') > 0 ? renderer.indexOf('\n// ') : 2000)),
+    'renderer must not reference any remote URL');
+});

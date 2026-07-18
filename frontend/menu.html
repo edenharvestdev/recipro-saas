@@ -556,7 +556,7 @@ async function submitOrder(){
     const pay = d.payment || PAYMENT;
     const prepay = pay.mode === 'prepay' && pay.promptpay;
     const qrBlock = prepay
-      ? `<div style="margin:10px 0;"><img src="https://promptpay.io/${encodeURIComponent(pay.promptpay)}/${Number(d.total).toFixed(2)}.png" alt="PromptPay QR" style="width:200px;height:200px;border:1px solid #ddd;border-radius:10px;background:#fff;padding:6px;"></div>
+      ? `<div style="margin:10px 0;display:flex;justify-content:center;"><div id="ppQrSlot" style="width:200px;height:200px;border:1px solid #ddd;border-radius:10px;background:#fff;padding:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#666;">กำลังสร้าง QR…</div></div>
          <p class="muted">สแกนพร้อมเพย์เพื่อโอน ${fmt(d.total)} แล้วแจ้งสลิปกับร้าน · ร้านจะเริ่มทำเมื่อยืนยันยอด</p>`
       : `<div style="margin:10px 0;padding:12px 14px;border-radius:14px;background:#fef3c7;border:1.5px solid #f6c453;color:#92400e;font-weight:700;font-size:14px;">💵 กรุณาติดต่อชำระเงินที่เคาน์เตอร์<div style="font-weight:400;font-size:12px;margin-top:3px;">แจ้งหมายเลขคิวกับพนักงาน · ร้านจะเริ่มทำหลังรับชำระ</div></div>`;
     LAST_ORDER = { order_no: d.order_no, queue: d.queue_number, total: d.total, name: body.customer_name || '', note: body.note || '',
@@ -567,8 +567,60 @@ async function submitOrder(){
       ${qrBlock}
       <button class="paybtn" style="background:#16a34a" onclick="saveBillPdf()">💾 บันทึกบิล (PDF)</button>
       <button class="paybtn" onclick="location.reload()">สั่งเพิ่ม</button></div>`;
+    if (prepay) renderPromptPayQr(pay.promptpay, d.total);   // สร้าง QR ในเครื่อง — ไม่ส่งข้อมูลร้านออกนอกระบบ
     CART=[]; updateBar();
   }catch(e){ alert('สั่งไม่สำเร็จ ลองใหม่'); }
+}
+// ── PromptPay QR ในเครื่อง (mirror ของ fix ใน index.html / commit d1df845) ─────────────────
+// เดิมหน้านี้ยิง <img src="https://promptpay.io/<เบอร์ร้าน>/<ยอด>.png"> ทุกออเดอร์ prepay
+// = ส่งเบอร์พร้อมเพย์ร้าน + ยอดเงิน ให้บริการภายนอกทุกครั้ง — ตอนนี้สร้าง payload EMVCo
+// และเรนเดอร์ QR ในเครื่องทั้งหมด ด้วยไลบรารีที่ vendor มากับแอป (ไม่มี CDN, ไม่มี fallback ภายนอก)
+function _ppTLV(id, val) { const v = String(val); return id + String(v.length).padStart(2, '0') + v; }
+function _ppCRC16(s) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < s.length; i++) {
+    crc ^= s.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+function promptpayPayload(id, amount) {
+  const t = String(id || '').replace(/[^0-9]/g, '');
+  if (!t) return '';
+  const type = t.length >= 15 ? '03' : (t.length >= 13 ? '02' : '01');
+  const target = type === '01' ? ('0000000000000' + t.replace(/^0/, '66')).slice(-13) : t;
+  const merchant = _ppTLV('00', 'A000000677010111') + _ppTLV(type, target);
+  const amt = Number(amount) > 0 ? Number(amount).toFixed(2) : null;
+  let p = _ppTLV('00', '01') + _ppTLV('01', amt ? '12' : '11') + _ppTLV('29', merchant)
+    + _ppTLV('53', '764') + (amt ? _ppTLV('54', amt) : '') + _ppTLV('58', 'TH');
+  p += '6304';
+  return p + _ppCRC16(p);
+}
+let _qrLibLoading = null;
+function ensureQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  if (_qrLibLoading) return _qrLibLoading;
+  _qrLibLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    // path สัมบูรณ์ — หน้านี้เสิร์ฟที่ /menu/:token ดังนั้น "./vendor/..." จะชี้ผิดที่
+    s.src = '/vendor/qrcode-generator-1.4.4.js';
+    s.onload = () => { if (window.qrcode) resolve(); else reject(new Error('qr lib load failed')); };
+    s.onerror = () => reject(new Error('qr lib load failed'));
+    document.head.appendChild(s);
+  });
+  return _qrLibLoading;
+}
+async function renderPromptPayQr(ppId, amount) {
+  const slot = document.getElementById('ppQrSlot'); if (!slot) return;
+  try {
+    await ensureQrLib();
+    const q = qrcode(0, 'M'); q.addData(promptpayPayload(ppId, amount)); q.make();
+    slot.style.padding = '0'; slot.innerHTML = q.createImgTag(4, 8);
+    const img = slot.querySelector('img'); if (img) { img.style.width = '100%'; img.style.height = '100%'; img.alt = 'PromptPay QR'; }
+  } catch (e) {
+    // ล้มเหลว = แจ้งชัด ๆ ให้ติดต่อร้าน — ห้ามเงียบ และห้ามทำให้ดูเหมือนจ่ายแล้ว
+    slot.innerHTML = '<div style="font-size:12px;color:#92400e;text-align:center;padding:8px;">แสดง QR ไม่สำเร็จ<br>กรุณาแจ้งพนักงานเพื่อชำระเงิน</div>';
+  }
 }
 // บันทึกบิลเป็น PDF บนมือถือลูกค้า — เปิดหน้าต่างพิมพ์ (มือถือเลือก "บันทึกเป็น PDF" ได้)
 function saveBillPdf(){
