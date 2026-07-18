@@ -6423,7 +6423,156 @@ function autoCheckOnQty(input) {
   if (chk) { chk.checked = (parseFloat(input.value) || 0) > 0; onStkCheck(); }
 }
 
+// ============================================================
+// Material Engine V2 (Track D): Receive Delta V2 — resolver-driven receive
+// computation + preview + server-side delta commit. Fully gated on
+// matEngineV2Enabled(); flag OFF → bulkReceive()/receiveMat() run their
+// original code paths untouched (see the early-return dispatch at the top of
+// each). Flag ON → the base-quantity to add and its cost/health verdict come
+// from window.MaterialResolver instead of the old UNITS[] math, ambiguous
+// units are BLOCKED rather than silently treated as factor 1, and the commit
+// posts mode:'delta' so the server adds the quantity atomically (FOR UPDATE)
+// instead of the client computing + POSTing an absolute value (lost-update
+// race). adjMat()/stocktake is NOT touched by any of this — it stays on
+// mode:'set' unconditionally, per the locked Founder decision.
+// ============================================================
+const RECEIVE_WARNING_TH = {
+  MAT_UNIT_AMBIGUOUS_NO_CONVERSION: "หน่วย 'ถุง/กล่อง/...' ยังไม่มีการแปลงหน่วย → ไปที่ฟอร์มวัตถุดิบ ระบุ 'ปริมาณต่อหน่วยซื้อ' + 'หน่วยตัดสต๊อก'",
+  MAT_INVALID_QUANTITY: 'จำนวนบรรจุ/ราคายังไม่ถูกต้อง',
+  MAT_KGL_OVERRIDE_UNCONFIRMED: 'ค่าที่กรอกไม่ตรงมาตรฐาน กก./ลิตร — ระบบยังให้รับเข้าได้ตามค่าที่ระบุ กรุณายืนยันในฟอร์มวัตถุดิบภายหลัง'
+};
+
+// computeReceiveV2: resolver-driven base-quantity + cost/health for ONE receive line.
+// Effective factor: explicit conv (m.convQty>0 && m.stockUnit) wins; otherwise the
+// registry factor for trusted (WEIGHT/VOLUME/COUNT) families; PACKAGING/UNKNOWN with
+// no explicit conversion is BLOCKED (never silently computed with factor 1).
+function computeReceiveV2(m, qty) {
+  const lu = window.MaterialResolver.lookupUnit(m.unit);
+  const res = window.MaterialResolver.resolveMaterialCost({
+    price: m.price, qty: m.qty, unit: m.unit, conv_qty: m.convQty, stock_unit: m.stockUnit
+  });
+  const hasExplicit = !!(m.convQty && Number(m.convQty) > 0 && m.stockUnit);
+  const factor = hasExplicit ? Number(m.convQty) : ((lu.trusted && lu.toBaseFactor != null) ? lu.toBaseFactor : null);
+  const blocked = !!res.receivingBlocked || factor == null;
+  const stockUnit = res.stockUnit || m.stockUnit || lu.canonicalUnit || m.unit;
+  const addBase = blocked ? 0 : qty * factor;
+  return { lu, res, factor, blocked, addBase, stockUnit };
+}
+
+// buildReceivePreviewV2: Founder Decision 7 — readable per-item preview before commit.
+// rows: [{ m, qty, addBase, stockUnit, res }] already-resolved (non-blocked) lines.
+// blockedRows: [{ m, qty, res }] ambiguous lines that will NOT be received.
+function buildReceivePreviewV2(rows, blockedRows) {
+  let html = `<div style="font-size:11px; color:var(--color-text-muted); margin-bottom:8px;">`
+    + `จำนวนที่รับ = ปริมาณที่ซื้อ (หน่วยซื้อ) · ปริมาณต่อหน่วยซื้อ = ตัวแปลงหน่วย (ตั้งค่าที่ฟอร์มวัตถุดิบ) · หน่วยตัดสต๊อก = หน่วยที่ใช้หักสต๊อกจริง</div>`;
+  html += rows.map(r => {
+    const badge = r.res.health === 'GREEN' ? '🟢' : (r.res.health === 'YELLOW' ? '🟡' : '🔴');
+    let line = `${badge} <b>${esc(r.m.name)}</b>: รับ ${r.qty.toLocaleString()} ${esc(r.m.unit)} → เพิ่มสต๊อก ${r.addBase.toLocaleString()} ${esc(r.stockUnit)}`;
+    if (r.res.costPerStockUnit != null) {
+      const value = r.res.costPerStockUnit * r.addBase;
+      line += `<br><span style="font-size:12px; color:var(--color-text-muted);">ต้นทุนต่อ 1 ${esc(r.stockUnit)} = ${r.res.costPerStockUnit.toFixed(3)} บาท (จาก Material Resolver) · มูลค่ารับเข้า ≈ ${value.toFixed(2)} บาท</span>`;
+    }
+    if (r.res.warningCode && RECEIVE_WARNING_TH[r.res.warningCode]) {
+      line += `<br><span style="font-size:12px; color:#b45309;">${esc(RECEIVE_WARNING_TH[r.res.warningCode])}</span>`;
+    }
+    return `<div style="margin-bottom:8px;">${line}</div>`;
+  }).join('');
+  if (blockedRows && blockedRows.length) {
+    html += `<div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border-soft);"><b>🔴 รับไม่ได้ — ต้องระบุการแปลงหน่วยก่อน</b>`;
+    html += blockedRows.map(r => {
+      const reason = (r.res.warningCode && RECEIVE_WARNING_TH[r.res.warningCode]) || 'ยังไม่สามารถคำนวณหน่วยได้';
+      return `<div style="margin-top:4px; font-size:12px;">• ${esc(r.m.name)} (${esc(r.m.unit)}): ${esc(reason)}</div>`;
+    }).join('');
+    html += `</div>`;
+  }
+  return html;
+}
+
+// pushReceiveDelta: parallel commit helper for delta-mode receives (Material Engine V2
+// flag ON only) — does NOT modify pushMovement's existing set-mode behavior/callers.
+// Cloud mode posts mode:'delta' so the server adds the quantity atomically under
+// FOR UPDATE (stock.js already supports this) and returns { before, after } from the
+// RESPONSE — the caller must trust that, not a locally-computed value. Mock mode has no
+// server, so it applies the delta to the in-memory value directly (single-tab, no race).
+async function pushReceiveDelta(mv) {
+  const rec = {
+    id: uid(), at: new Date().toISOString(), kind: 'receive', type: 'mat',
+    refType: mv.refType || 'material', refId: mv.refId, name: mv.name, unit: mv.unit || '',
+    old: 0, newVal: 0, delta: Number(mv.addBase) || 0, note: mv.note || '', price: 0
+  };
+  if (isMockMode) {
+    const m = matById(mv.refId);
+    const before = m ? matStockBase(m) : 0;
+    const after = Math.max(0, before + (Number(mv.addBase) || 0));
+    rec.old = before; rec.newVal = after;
+    adjLogs.unshift(rec);
+    localStorage.setItem('recipro_adj_logs', JSON.stringify(adjLogs.slice(0, 300)));
+    return { before, after };
+  }
+  try {
+    const r = await API.post('/api/stock/move', { ref_type: mv.refType || 'material', ref_id: mv.refId, mode: 'delta', value: mv.addBase, kind: 'receive', note: mv.note, unit: mv.unit });
+    if (r && typeof r.after === 'number') {
+      rec.old = r.before; rec.newVal = r.after;
+      if (r.movement_id) rec.id = r.movement_id;
+      stockMovements.unshift(rec);
+      return { before: r.before, after: r.after };
+    }
+  } catch (e) {}
+  return null; // network/server failure — caller leaves local stock untouched rather than guessing
+}
+
+// bulkReceiveV2: resolver-driven counterpart to bulkReceive(), reached only when the
+// flag is ON (see the dispatch at the top of bulkReceive()).
+async function bulkReceiveV2() {
+  const rows = [];
+  const blockedRows = [];
+  document.querySelectorAll('.stk-chk:checked').forEach(chk => {
+    const id = chk.dataset.id;
+    const qInput = document.querySelector(`.stk-recv-qty[data-id="${id}"]`);
+    const qty = parseFloat(qInput?.value) || 0;
+    const m = matById(id);
+    if (!m || qty <= 0) return;
+    const c = computeReceiveV2(m, qty);
+    if (c.blocked) { blockedRows.push({ m, qty, res: c.res }); return; }
+    rows.push({ matId: id, m, qty, addBase: c.addBase, stockUnit: c.stockUnit, res: c.res });
+  });
+
+  if (!rows.length && !blockedRows.length) {
+    ui.alert('กรอกจำนวนที่ต้องการรับเข้าในช่อง "รับเข้า" แล้วติ๊กเลือกก่อน', { icon: 'info' });
+    return;
+  }
+  if (!rows.length) {
+    await ui.alert('รับเข้าไม่ได้ — วัตถุดิบที่เลือกยังไม่มีการแปลงหน่วย กรุณาไปที่ฟอร์มวัตถุดิบ ระบุ "ปริมาณต่อหน่วยซื้อ" และ "หน่วยตัดสต๊อก" ก่อน', { icon: 'alert-triangle', variant: 'warning' });
+    return;
+  }
+
+  const html = buildReceivePreviewV2(rows, blockedRows);
+  const confirmed = await ui.confirm(html, { okText: 'ยืนยันรับเข้า', icon: 'package-plus', variant: 'success' });
+  if (!confirmed) return;
+
+  for (const r of rows) {
+    const m = matById(r.matId);
+    if (!m) continue;
+    const result = await pushReceiveDelta({ refType: 'material', refId: m.id, name: m.name, unit: r.stockUnit, addBase: r.addBase, note: `รับเข้า +${r.qty} ${m.unit}` });
+    if (result) m.stock = result.after;
+  }
+
+  stockReceiveLogs.unshift({
+    id: uid(),
+    receivedAt: new Date().toISOString(),
+    note: '',
+    lines: rows.map(r => ({ material_id: r.matId, material_name: r.m.name, qty: r.qty, unit: r.m.unit }))
+  });
+
+  saveAll();
+  render();
+}
+
 async function bulkReceive() {
+  // Material Engine V2 (Track D): flag ON → resolver-driven computation + preview +
+  // delta commit (see bulkReceiveV2). Flag OFF → original code below, untouched.
+  if (matEngineV2Enabled() && window.MaterialResolver) { await bulkReceiveV2(); return; }
+
   const rows = [];
   document.querySelectorAll('.stk-chk:checked').forEach(chk => {
     const id = chk.dataset.id;
@@ -6486,11 +6635,34 @@ function renderReceiveLogs() {
   }).join('');
 }
 
+// receiveMatV2: resolver-driven counterpart to receiveMat(), reached only when the flag
+// is ON (see the dispatch inside receiveMat()).
+async function receiveMatV2(m, qty) {
+  const c = computeReceiveV2(m, qty);
+  if (c.blocked) {
+    const reason = (c.res.warningCode && RECEIVE_WARNING_TH[c.res.warningCode]) || 'ยังไม่สามารถคำนวณหน่วยได้';
+    await ui.alert(`รับไม่ได้ — ต้องระบุการแปลงหน่วยก่อน<br><span style="font-size:12px;">${esc(reason)}</span>`, { icon: 'alert-triangle', variant: 'warning' });
+    return;
+  }
+  const html = buildReceivePreviewV2([{ m, qty, addBase: c.addBase, stockUnit: c.stockUnit, res: c.res }], []);
+  const confirmed = await ui.confirm(html, { okText: 'ยืนยันรับเข้า', icon: 'package-plus', variant: 'success' });
+  if (!confirmed) return;
+  const result = await pushReceiveDelta({ refType: 'material', refId: m.id, name: m.name, unit: c.stockUnit, addBase: c.addBase, note: `รับเข้า +${qty} ${m.unit}` });
+  if (result) m.stock = result.after;
+  saveAll();
+  render();
+}
+
 async function receiveMat(id) {
   const m = matById(id);
   const u = UNITS[m.unit] || { f: 1 };
   const v = await ui.prompt(`ป้อนจำนวนที่จะรับเข้าสำหรับ "${m.name}" (หน่วย: ${m.unit})\nระบบจะแปลงเป็นหน่วยย่อยสำหรับหักสูตรให้ทันที`, 1, { type: 'number', title: 'รับวัตถุดิบเข้าสต๊อก' });
   if (v === null || v === "") return;
+
+  // Material Engine V2 (Track D): flag ON → resolver-driven computation + preview +
+  // delta commit (see receiveMatV2). Flag OFF → original code below, untouched.
+  if (matEngineV2Enabled() && window.MaterialResolver) { await receiveMatV2(m, +v || 0); return; }
+
   const oldVal = matStockBase(m);
   const add = m.convQty ? (+v || 0) * m.convQty : (+v || 0) * u.f;
   m.stock = oldVal + add;
