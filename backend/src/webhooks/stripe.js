@@ -5,23 +5,34 @@ const { query } = require('../db');
 const stripe = require('../stripe');
 const billing = require('../api/billing');
 const { sendReceipt } = require('../email');
+const { guardSecret, WebhookConfigError } = require('./webhook-guard');
 const router = express.Router();
 
 router.post('/stripe', async (req, res) => {
   if (!stripe.hasKeys()) return res.status(503).send('stripe not configured');
 
-  const sig = req.headers['stripe-signature'];
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  let mode;
+  try {
+    mode = guardSecret(!!secret);   // fail closed: no secret -> WebhookConfigError (prod-safe)
+  } catch (e) {
+    console.error('[stripe-webhook] rejected: webhook secret not configured');
+    return res.status(503).send('webhook secret not configured');
+  }
+
+  const sig = req.headers['stripe-signature'];
   let event;
   try {
     // req.body เป็น Buffer (raw) จาก express.raw ใน app.js
-    if (secret) {
-      event = stripe.client().webhooks.constructEvent(req.body, sig, secret);
-    } else {
+    if (mode === 'bypass') {
+      // explicit dev/test-only bypass (never true in production) — no signature check
       event = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body));
+    } else {
+      event = stripe.client().webhooks.constructEvent(req.body, sig, secret);
     }
   } catch (e) {
-    return res.status(400).send(`Webhook Error: ${e.message}`);
+    console.error('[stripe-webhook] rejected: signature verification failed');
+    return res.status(401).send('invalid signature');
   }
 
   try {

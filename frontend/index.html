@@ -9117,16 +9117,26 @@ function promptpayPayload(id, amount) {
   return p + _ppCRC16(p);
 }
 let _qrLibLoading = null;
+// โหลด qrcode-generator จากไฟล์ที่ฝังมากับแอปเท่านั้น (frontend/vendor/, ดู docs/vendored-dependencies.md)
+// — ไม่มี fallback ไปโหลดจาก CDN ภายนอกอีกต่อไป (เดิมโหลดจาก cdn.jsdelivr.net ทุกครั้งที่เปิดหน้าชำระเงิน)
+// ถ้าโหลดไฟล์ในเครื่องไม่สำเร็จ (เช่น deploy พลาด) ให้ error ชัดเจน ห้ามเงียบ/ห้ามทำให้ดูเหมือนจ่ายสำเร็จ
 function ensureQrLib() {
   if (window.qrcode) return Promise.resolve();
   if (_qrLibLoading) return _qrLibLoading;
   _qrLibLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
-    s.onload = resolve; s.onerror = () => reject(new Error('โหลดตัวสร้าง QR ไม่ได้ (ต้องมีเน็ต)'));
+    s.src = "./vendor/qrcode-generator-1.4.4.js";   // double-quoted on purpose — matches the VERSIONED_ASSETS cache-busting rewrite in backend/src/app.js
+    s.onload = () => { if (window.qrcode) resolve(); else reject(new Error('สร้าง QR ไม่ได้ — โหลดไลบรารีไม่สำเร็จ กรุณารีเฟรช')); };
+    s.onerror = () => reject(new Error('สร้าง QR ไม่ได้ — โหลดไลบรารีไม่สำเร็จ กรุณารีเฟรช'));
     document.head.appendChild(s);
   });
   return _qrLibLoading;
+}
+// มาสก์เลขพร้อมเพย์/บัญชี — ใช้เฉพาะตอน log/console เท่านั้น (ไม่ใช้กับป้าย QR ที่ลูกค้าเห็น ซึ่งร้านโชว์เลขของตัวเองได้)
+function maskMerchantId(id) {
+  const s = String(id || '').replace(/[^0-9]/g, '');
+  if (s.length <= 4) return s ? '*'.repeat(s.length) : '';
+  return '*'.repeat(s.length - 4) + s.slice(-4);
 }
 async function showQrReceive() {
   if (!posCart.length) { ui.alert('ยังไม่มีสินค้าในตะกร้า', { icon: 'shopping-cart' }); return; }
@@ -10157,10 +10167,14 @@ function renderDoc() {
 
   const payBlock = (d.pay && payInfo) ? `<div class="bd-pay"><b>ช่องทางชำระเงิน:</b> ${payInfo}<br>ยอดที่ต้องชำระ <b>${money(c.grand)}</b> (${bahtText(c.grand)})</div>` : '';
 
+  // สร้าง QR พร้อมเพย์แบบ "ในเครื่อง" ทั้งหมด (EMVCo payload เอง + qrcode-generator ที่ฝังมากับแอป)
+  // — ไม่ส่งเบอร์พร้อมเพย์หรือยอดเงินออกไปบริการภายนอกใดๆ (เดิมส่งไป promptpay.io)
   let qrCodeHtml = '';
+  let qrSlotId = '';
   if (settings.pp && d.pay) {
     const totalAmount = c.grand.toFixed(2);
-    qrCodeHtml = `<img src="https://promptpay.io/${settings.pp}/${totalAmount}.png" style="width:120px; height:120px; border:1px solid #ddd; padding:4px; border-radius:8px; margin-top:5px;">`;
+    qrSlotId = 'bdQrSlot_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    qrCodeHtml = `<div id="${qrSlotId}" style="width:120px;height:120px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;border:1px solid #ddd;border-radius:8px;padding:4px;text-align:center;">กำลังสร้าง QR…</div>`;
   }
 
   $('billDoc').innerHTML = `
@@ -10206,6 +10220,27 @@ function renderDoc() {
       <div class="box"><div class="line"></div><div class="cap">${d.sigR}</div></div>
     </div>
   `;
+  if (qrSlotId) renderBillPromptPayQr(qrSlotId, settings.pp, c.grand.toFixed(2));
+}
+// เติม QR พร้อมเพย์ของใบเอกสาร (บิล/ใบเสร็จ) แบบ async หลังใส่ innerHTML — สร้างในเครื่องล้วนๆ
+// ไม่มี fallback ไปโหลดจากที่อื่นถ้าไลบรารีโหลดไม่สำเร็จ: แสดงข้อความผิดพลาดที่ควบคุมได้ ไม่ใช่ QR ค้าง/ภาพเสีย
+async function renderBillPromptPayQr(slotId, ppId, amountStr) {
+  const slot = document.getElementById(slotId);
+  if (!slot) return;
+  try {
+    await ensureQrLib();
+    if (!document.body.contains(slot)) return;   // เอกสารถูก render ใหม่ทับไปแล้วระหว่างรอโหลด
+    const q = qrcode(0, 'M');
+    q.addData(promptpayPayload(ppId, amountStr));
+    q.make();
+    slot.outerHTML = '<div style="width:120px;">' + q.createImgTag(4, 4) + '</div>';
+  } catch (e) {
+    console.warn('[bill-qr] สร้าง QR ไม่ได้ pp=' + maskMerchantId(ppId) + ':', e.message);
+    if (document.body.contains(slot)) {
+      slot.textContent = 'สร้าง QR ไม่ได้ — โหลดไลบรารีไม่สำเร็จ กรุณารีเฟรช';
+      slot.style.cssText += 'color:#dc2626;font-size:11px;';
+    }
+  }
 }
 
 // ============================================================

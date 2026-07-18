@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { query } = require('../db');
 const slipverify = require('../slipverify');
+const { guardSecret, WebhookConfigError } = require('../webhooks/webhook-guard');
 const router = express.Router();
 
 const OMISE_API = 'https://api.omise.co';
@@ -146,13 +147,15 @@ async function markDisplayPaid(shopId) {
 
 // ตรวจ HMAC-SHA256 signature จาก Omise webhook (ถ้าตั้ง OMISE_WEBHOOK_SECRET)
 // Omise ใช้ header "Opn-Signature" กับ HMAC-SHA256(raw_body, webhook_secret)
+// FAIL-CLOSED (see webhooks/webhook-guard.js): no secret -> WebhookConfigError; missing/invalid
+// signature -> Error. Both stop processing before any pay_charges mutation.
 function verifyOmiseHmac(rawBody, req) {
   const secret = process.env.OMISE_WEBHOOK_SECRET;
-  if (!secret) return; // ไม่ได้ตั้ง — ข้าม (fail open)
+  const mode = guardSecret(!!secret);   // throws WebhookConfigError if unconfigured (prod-safe)
+  if (mode === 'bypass') return;        // explicit dev/test-only bypass, never true in production
   const sig = req.headers['opn-signature'] || req.headers['x-opn-signature'] || '';
   if (!sig) {
-    console.warn('[omise-webhook] OMISE_WEBHOOK_SECRET ตั้งแล้วแต่ไม่มี Opn-Signature header');
-    return; // log warning แต่ไม่บล็อก (กัน Omise เวอร์ชั่นเก่า)
+    throw Object.assign(new Error('missing Opn-Signature header'), { code: 'WEBHOOK_SIG_MISSING' });
   }
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
   const sigBuf = Buffer.from(sig.length === expected.length ? sig : '', 'hex');
@@ -164,10 +167,23 @@ function verifyOmiseHmac(rawBody, req) {
 
 // Webhook (public, ไม่ต้อง auth) — Omise เรียกเมื่อ charge สำเร็จ → mark paid + เด้งจอ
 async function omiseWebhook(req, res) {
+  // parse raw body (express.raw middleware ใน app.js ส่งมาเป็น Buffer)
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+
+  // Verify BEFORE any parsing/mutation below. Fail closed: config error -> 503, bad/missing
+  // signature -> 401. Never leak the secret or the raw payload in logs.
   try {
-    // parse raw body (express.raw middleware ใน app.js ส่งมาเป็น Buffer)
-    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
     verifyOmiseHmac(rawBody, req);
+  } catch (e) {
+    if (e instanceof WebhookConfigError) {
+      console.error('[omise-charge-webhook] rejected: webhook secret not configured');
+      return res.status(503).json({ ok: false, error: 'webhook not configured' });
+    }
+    console.error('[omise-charge-webhook] rejected: signature verification failed (' + (e.code || 'invalid') + ')');
+    return res.status(401).json({ ok: false, error: 'invalid signature' });
+  }
+
+  try {
     const ev = JSON.parse(rawBody.toString('utf8'));
     const ch = ev.data || {};
     const chargeId = ch.id;
@@ -178,7 +194,12 @@ async function omiseWebhook(req, res) {
       if (shopId) await markDisplayPaid(shopId);
     }
     res.json({ ok: true });
-  } catch (e) { res.status(200).json({ ok: true }); }   // ตอบ 200 เสมอ กัน Omise retry ถล่ม
+  } catch (e) {
+    // Post-verification processing error (e.g. malformed JSON, DB hiccup) — still answer 200 to
+    // avoid an Omise retry storm. Verification failures above never reach this branch.
+    console.error('[omise-charge-webhook] processing error:', e.message);
+    res.status(200).json({ ok: true });
+  }
 }
 
 module.exports = router;

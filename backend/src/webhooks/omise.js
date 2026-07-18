@@ -6,27 +6,46 @@ const { query } = require('../db');
 const omise = require('../omise');
 const billing = require('../api/billing');
 const { sendReceipt } = require('../email');
+const { guardSecret, WebhookConfigError } = require('./webhook-guard');
 const router = express.Router();
 
 // ตรวจ HMAC signature (ถ้าตั้ง OMISE_WEBHOOK_SECRET) — เหมือนใน api/pay.js
+// FAIL-CLOSED (see webhook-guard.js): no secret -> WebhookConfigError; missing/invalid
+// signature -> Error. Neither path lets processing continue.
 function verifyHmac(rawBody, req) {
   const secret = process.env.OMISE_WEBHOOK_SECRET;
-  if (!secret) return;
+  const mode = guardSecret(!!secret);   // throws WebhookConfigError if unconfigured (prod-safe)
+  if (mode === 'bypass') return;        // explicit dev/test-only bypass, never true in production
   const sig = req.headers['opn-signature'] || req.headers['x-opn-signature'] || '';
-  if (!sig) { console.warn('[omise-webhook] missing Opn-Signature'); return; }
+  if (!sig) {
+    throw Object.assign(new Error('missing Opn-Signature header'), { code: 'WEBHOOK_SIG_MISSING' });
+  }
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
   const sigBuf = Buffer.from(sig.length === expected.length ? sig : '', 'hex');
   const expBuf = Buffer.from(expected, 'hex');
   if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-    throw new Error('Invalid webhook signature');
+    throw Object.assign(new Error('invalid webhook signature'), { code: 'WEBHOOK_SIG_INVALID' });
   }
 }
 
 router.post('/omise', async (req, res) => {
+  // parse raw body (express.raw middleware ใน app.js)
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+
+  // Verify BEFORE any parsing/mutation below. Fail closed: config error -> 503, bad/missing
+  // signature -> 401. Never leak the secret or the raw payload in logs.
   try {
-    // parse raw body (express.raw middleware ใน app.js)
-    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
     verifyHmac(rawBody, req);
+  } catch (e) {
+    if (e instanceof WebhookConfigError) {
+      console.error('[omise-webhook] rejected: webhook secret not configured');
+      return res.status(503).json({ error: 'webhook not configured' });
+    }
+    console.error('[omise-webhook] rejected: signature verification failed (' + (e.code || 'invalid') + ')');
+    return res.status(401).json({ error: 'invalid signature' });
+  }
+
+  try {
     const evt = JSON.parse(rawBody.toString('utf8'));
     if (!evt || !evt.key) return res.status(400).send('bad event');
 
