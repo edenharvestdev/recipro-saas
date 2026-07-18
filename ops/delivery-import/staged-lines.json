@@ -1,0 +1,3045 @@
+{
+ "generated_period": "2026-06-22_2026-06-30",
+ "drafts": [
+  {
+   "shop": "HB01",
+   "shopId": "581c5f9b-bc79-4270-8ad8-98a288be7933",
+   "shopName": "HB01-Ladprao107",
+   "platform": "LINE_MAN",
+   "sheet": "LM22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "0a43ec29-f87c-4385-829a-c3aba8e60bd1",
+     "menu_code": "HBC01M06C",
+     "menu_name": "Classic Clear Matcha Yame Okumidori",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1f3d452f-62d5-437d-97ce-f6910ce1f374",
+     "menu_code": "HBC01M01C",
+     "menu_name": "Classic Clear Matcha Kagoshima Asanoka",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "351cb2d0-1d59-4e4f-97d9-24a97f753a4b",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "441b41e5-2178-4bdf-8599-1332be797637",
+     "menu_code": "HBC01M06L",
+     "menu_name": "Classic Matcha Latte Uji Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "263efe3d-f673-44e1-a315-3c75954dc453",
+     "menu_code": "HBC01M26L",
+     "menu_name": "Classic Matcha Latte Kagoshima Okumidori",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3a9e7ee4-d606-4899-9e8e-33548a0bee96",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "bf712f3b-b16c-4574-9915-1574771a57ad",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f81730aa-db44-4531-9406-7406fec5c038",
+     "menu_code": "HBC01M01L",
+     "menu_name": "Classic Matcha Latte Kagoshima Asanoka",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a78e7501-67b1-4420-9f73-4c3d753e1a6a",
+     "menu_code": "HBC01M31L",
+     "menu_name": "Classic Matcha Latte Kagoshima Hiri",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "90b0ec4f-9777-4c3b-9548-142bd2956802",
+     "menu_code": "HBC02H02L",
+     "menu_name": "Classic Hojicha Latte Kokoro",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "293733d0-8be0-4e11-87ed-9e80aeeaba1d",
+     "menu_code": "HBR02M21C/HBR02M23C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a1927918-0666-48c7-b38e-5320b4bec9c5",
+     "menu_code": "HBR05M21C",
+     "menu_name": "Kori Osmanthus Matcha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fa9a7a4e-11dd-42b1-b097-2d6ad814cd85",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b58f5cbd-6506-4fc1-a66f-3b51420a5774",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 26,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a206913d-65ee-4dc4-9637-31b20c6b4fdd",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3035656e-f6a8-4c30-9a68-cadd02a323e8",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ff7819ed-bafc-442f-a4e7-d378eb1061da",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 11,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "803cbda3-2f91-4a70-9840-7e90d67126f9",
+     "menu_code": "HBF02M18L",
+     "menu_name": "Coconut Milk Whisk Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cd777918-3b03-463a-adc5-75611ec6dead",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a1842c0b-1b87-4a4d-876e-300a8bafd1b3",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f89aa4c1-64d2-4a81-9f19-80e878313d57",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "301b6e90-a96d-4e8c-b342-a7716febabd7",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ea883271-2e83-4640-aab2-d8d04e3166ae",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3053169f-278c-45e5-ab21-7c86cdab286a",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "2326d5b0-c2c2-4bdb-9200-ef75c4bdaf59",
+     "menu_code": "HBT02",
+     "menu_name": "Topping Cream Cheese",
+     "quantity": 2,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "18e0c7ce-3fbc-4c46-abb9-ade3360acfe8",
+     "menu_code": "HBT08",
+     "menu_name": "Topping Red Bean Puree",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "3deb590e-84dc-44c8-9566-0fc32184da51",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2d60f218-3152-4848-9ffe-b522aae4d230",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2c692b29-741a-4b79-b771-54c8eebdd134",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "82ecfd70-14a3-4ac5-a350-e6a2b26651ac",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 20,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "4f538650-1654-41fa-aab5-2b2359082bd3",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 27,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "09518a3f-3d1a-4511-8053-3d01fc285d5c",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "69eec750-c3f7-40c1-8ec8-9c508bd9e65a",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 11,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 228,
+   "accepted_units": 172,
+   "held_units": 56,
+   "client_request_id": "agg:HB01:LINE_MAN:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:LM22-30/06"
+  },
+  {
+   "shop": "HB02",
+   "shopId": "2a91e65b-cd05-4110-8878-883482ba9228",
+   "shopName": "HB02-Samyan",
+   "platform": "LINE_MAN",
+   "sheet": "LM22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "07628c1d-d4ba-4b28-ac22-b5acdbfaffed",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f0e6d8e4-4515-4cad-b7a3-a9685e2205b7",
+     "menu_code": "HBC01M01L",
+     "menu_name": "Classic Matcha Latte Kagoshima Asanoka",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "25948f39-506c-4500-8479-aa3756cc016b",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 15,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "708df57c-b8fd-4d14-bf25-ef29287e6e27",
+     "menu_code": "HBC02H02C",
+     "menu_name": "Classic Clear Hojicha Kokoro",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cbe51852-283e-4c02-a426-2d07d00433b9",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "e633f731-8263-4e85-9612-e42bac4f1916",
+     "menu_code": "HBR02M21C/HBR02M23C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fc3628d3-0e1e-4880-8d76-b4edf316df1d",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "02934840-b5fb-41b4-9bf9-077b064208dc",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c8a3596f-dd44-4a34-98af-276c9fda29d1",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 13,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cf3af210-0079-4bad-877d-0cb4de43c7d6",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 25,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8da5154a-782f-4637-98b9-726ad506cfd0",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "848a2d62-9628-413d-b1a8-7f85d392cd54",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "13c599c6-0576-4a5d-af36-adc4f89f5bdf",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3862494d-c29d-4cb7-9ec4-2e0b8a5a8fde",
+     "menu_code": "HBM06M18L",
+     "menu_name": "Matcha Milk Mochi Taro Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dcb88546-03ca-4fd0-92ba-0e7ce20408e1",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ef00b6e6-bf73-4e7c-8b58-1130cacf38ac",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 15,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b20a736d-5aa8-4209-87a9-16c4e508d080",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4bfc101c-652f-43de-bf2a-6d6e2bf1ce59",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0cad06f3-3dc1-4bc3-b30f-7b8e72c0ee10",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "539503de-3795-457a-8363-d4de0eccdcf3",
+     "menu_code": "HBS03M29L",
+     "menu_name": "Matcha Creamcheese Mochi Skewer",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9744b9c3-372b-4982-9a88-94a1750678fc",
+     "menu_code": "HBS04H02L",
+     "menu_name": "Kokoro Hojicha Honey Comb Velvet",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "80a98eca-cd4a-4cef-94e5-01a513f612fa",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0bd67bea-ac1e-4460-8fec-4a88432b91c3",
+     "menu_code": "HBN03",
+     "menu_name": "Osmanthus Honey Coconut",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ff5699be-9cbf-4914-808d-e5427c01539e",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4fa20c6c-cbe4-4361-883f-6ff989215638",
+     "menu_code": "HBN05T01",
+     "menu_name": "Jasmine Thai Tea Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "03bdc36f-9d63-4378-8c15-071dadf5104b",
+     "menu_code": "HBN07",
+     "menu_name": "Honey Lemon Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6f081b6b-8598-4cc7-938f-6bade0c1b36a",
+     "menu_code": "HBN09",
+     "menu_name": "Ichigo Ume Refresher",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6e6d771e-0042-4aaf-a821-ff9781493da1",
+     "menu_code": "HBT02",
+     "menu_name": "Topping Cream Cheese",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "e8c05287-d2d1-48cf-a433-8716d225a547",
+     "menu_code": "HBT03",
+     "menu_name": "Topping Milk Mochi",
+     "quantity": 2,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "af68594d-c2ef-44f7-909e-d7402a3e91e2",
+     "menu_code": "HBT05",
+     "menu_name": "Topping Crispy Coco",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "59eb0b38-4e2e-45bf-986a-34c6d03f17c2",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "60dfcc3c-4112-4c33-89f8-8001b2877133",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a7740719-6999-4a96-ba23-2279ede33ad6",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a88a6a34-5112-4972-8f4d-8a2952e01614",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8eaf09ae-6e00-4f5b-82ac-8779462ded1c",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 19,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "b4937f5d-0cf4-4e45-af7e-085edb79cab3",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 35,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "5b1b32b5-6c6b-4244-9931-dcffb484a216",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "4f652eac-f482-47bd-b47d-baadaed5ce3a",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "0e3f46dc-304d-419b-a008-2cfc20f6cf87",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9f675572-dba6-46ed-97e6-37b998028bd0",
+     "menu_code": "HBPC05M21C",
+     "menu_name": "Clear Matcha Pink Coconut",
+     "quantity": 3,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 274,
+   "accepted_units": 209,
+   "held_units": 65,
+   "client_request_id": "agg:HB02:LINE_MAN:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:LM22-30/06"
+  },
+  {
+   "shop": "HB03",
+   "shopId": "116a5eda-3b6b-4c2c-97a8-3393fa8a1115",
+   "shopName": "HB03-Nawamin111",
+   "platform": "LINE_MAN",
+   "sheet": "LM22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "117d818d-3e00-406d-8071-2220221007db",
+     "menu_code": "HBC01M01C",
+     "menu_name": "Classic Clear Matcha Kagoshima Asanoka",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1db544a2-67ba-4884-8155-9088126f03e9",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1981f3bc-3b4a-464b-9851-298afde19c0a",
+     "menu_code": "HBC01M40C",
+     "menu_name": "Classic Clear Matcha O-Matcha Sou",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "aa54959e-46b4-479c-8fe3-b4565bfee683",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6d89a4f0-ed1c-4be0-8b74-eac206c6dc5a",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "5a7218f4-226c-4c12-9689-c7c567879c01",
+     "menu_code": "HBC01M30L",
+     "menu_name": "Classic Matcha Latte Kagoshima Loishi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9ca0ff53-4c15-48b0-97d4-b51071234106",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "abcf63a1-1d72-4222-8a04-17a121286d94",
+     "menu_code": "HBC02H02C",
+     "menu_name": "Classic Clear Hojicha Kokoro",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b37ec88e-6d7b-49ed-b5c1-43a920e65f0e",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 12,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "06be3fd8-fc1f-4ae3-876a-04c728d6949f",
+     "menu_code": "HBR02M21C/HBR02M23C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a9c563de-61d0-4c0e-a29b-bdaa3506f8dd",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8c5e37ae-4659-4f45-b623-5c105f4b7c6c",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "64b4a344-311f-45b8-bff4-663f254a8786",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 64,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9c81e65c-9bee-4a93-9cc7-00f0325708c1",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cbb67d80-f378-4c99-b34c-6f618add17ea",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 97,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "70aa8e6a-8f38-4953-b898-b0e68f5b61d9",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "34264263-3350-4550-8345-11580c702556",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6d9fae70-2972-4ce2-932b-559bd78a24ef",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "bec69c6d-c395-4b2e-af16-daffd834ab94",
+     "menu_code": "HBM06M18L",
+     "menu_name": "Matcha Milk Mochi Taro Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "39db13d1-6ecd-4eee-b313-3d6045dcb71f",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9efe8cad-8eb5-420f-a331-396f5c55096f",
+     "menu_code": "HBF02M18L",
+     "menu_name": "Coconut Milk Whisk Latte",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c943272e-dd55-46f0-9872-07184585678e",
+     "menu_code": "HBF03",
+     "menu_name": "Matcha Cloud Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "20e26d97-fab2-45d5-a16c-37de7c0895dc",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dae745d1-9a6e-46f7-82ad-96bafa4bd094",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "01e53a03-2ef1-4387-97c7-3e88cd808cea",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 13,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7ea7ffbc-574e-44d2-9546-163c9527ad48",
+     "menu_code": "HBS04H02L",
+     "menu_name": "Kokoro Hojicha Honey Comb Velvet",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "39ddce93-52ab-4909-bb1b-3655d1889920",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "79b150cf-89fc-48bf-a557-801cbb6a55a5",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "81413e14-90f6-448d-ab7d-a7fc43d379d6",
+     "menu_code": "HBN05T01",
+     "menu_name": "Jasmine Thai Tea Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "59db2c91-2e61-4d47-9854-e639cfce55aa",
+     "menu_code": "HBN06T01",
+     "menu_name": "Jasmine Taro Milk Tea Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "31ced765-3302-4e1d-8071-fc206f563d6e",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f8d8a56e-3dc2-47c7-8077-4aa703c0a670",
+     "menu_code": "HBT02",
+     "menu_name": "Topping Cream Cheese",
+     "quantity": 3,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ff791450-d2aa-4bd9-a7f6-3b7fcedca1cd",
+     "menu_code": "HBT05",
+     "menu_name": "Topping Crispy Coco",
+     "quantity": 3,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "6decfa1a-d1d6-4207-af7b-c5fc85aaea7d",
+     "menu_code": "HBT06",
+     "menu_name": "Topping Caramel Comb Toffee Crispy",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "aa3607ae-5abc-497c-9acd-f66d07e411fe",
+     "menu_code": "HBT07",
+     "menu_name": "Topping Taro Puree",
+     "quantity": 3,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "76fcd3ad-52da-485c-9b95-5a2ac7b988f7",
+     "menu_code": "HBT10",
+     "menu_name": "Topping Fresh Strawberry Honey",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "fe8b1a9e-237c-4a8b-9394-0f500810347e",
+     "menu_code": "HBT11",
+     "menu_name": "Topping Velvet Milk Foam",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "596f236a-3697-4ed4-947a-ca8595aec628",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "f70faa9b-b5d2-436e-a9eb-4415f02c2144",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d674ef00-ad5d-4ed2-8add-34141ceedd28",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "aa575e1c-d18e-4b15-8a5f-9b186e88ce9a",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 9,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "95204a33-dbbb-4200-b633-aa096836dd64",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 25,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8e7cdf08-d837-4954-85ea-38950e349826",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 46,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "71938129-53bd-497a-93ad-061322361fe6",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "7d4d4ddd-95a6-4717-a623-f1f919ddc13b",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 14,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2824ccc8-d6c7-40cc-9fb9-80122d73de8b",
+     "menu_code": "HBD14A",
+     "menu_name": "Milk Caramel Custard Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "36327eb3-3c60-4744-8a43-0bd22608dd0e",
+     "menu_code": "HBPC05M21C",
+     "menu_name": "Clear Matcha Pink Coconut",
+     "quantity": 1,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 430,
+   "accepted_units": 389,
+   "held_units": 41,
+   "client_request_id": "agg:HB03:LINE_MAN:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:LM22-30/06"
+  },
+  {
+   "shop": "HB04",
+   "shopId": "3ebea0b3-f3a9-40ae-b6b4-080e4b48efcc",
+   "shopName": "HB04-Saphan Khwai",
+   "platform": "LINE_MAN",
+   "sheet": "LM22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "37f1defb-1464-443d-932d-26b648f36e05",
+     "menu_code": "HBC01M31C",
+     "menu_name": "Classic Clear Matcha Kagoshima Loishi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "58c505ca-9c82-48c9-8c43-907ecab940e2",
+     "menu_code": "HBC01M26C",
+     "menu_name": "Classic Clear Matcha Kagoshima Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "61c8445c-cb04-4fc6-ba0f-b5e1f2ed6cb3",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "968d7aec-ec0b-47bd-beff-a15dc974a3e9",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "2b1c5588-7469-4e02-9d13-c829ac248335",
+     "menu_code": "HBC02H02L",
+     "menu_name": "Classic Hojicha Latte Kokoro",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b6a80a2a-3927-4255-9c68-c70ca09c53b8",
+     "menu_code": "HBC03G01C",
+     "menu_name": "Classic Clear Genmaicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "204be03b-249f-4f7b-8e78-094c62c93571",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "db7c911e-3808-4548-ab20-30b2fc9c4ade",
+     "menu_code": "HBR02M21C/HBR02M23C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7ab0025b-7a2a-4c58-b2c2-21733a23b403",
+     "menu_code": "HBR03M21C/HBR03M23C",
+     "menu_name": "Matcha Honey Lime (Home Made)",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "d50584d3-ed87-48c8-aac5-6ed9ee399968",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "537ca15a-816f-4a31-91c1-a22a6ed814db",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 15,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dd62db8d-7df2-460a-ab41-c9342f8987f5",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 16,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b119c2a8-192c-48df-b9c7-27387f68e8ab",
+     "menu_code": "HBR08H03C",
+     "menu_name": "Clear Hojicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "989bd14e-a8c6-4a68-a720-4fc01c49158f",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0c371570-ab05-46b4-ac8e-dd8cdc316980",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 35,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c1f642f8-94cc-4480-883d-3587e6e508e6",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7566c10a-2e8d-49ce-9e4b-3bd75c770178",
+     "menu_code": "HBM04M18L",
+     "menu_name": "Matcha Mango Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "91406b4d-4ef9-449b-af84-ceda3f9659ad",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7f094ff7-0385-448a-9766-1b04a98e2f79",
+     "menu_code": "HBM06M18L",
+     "menu_name": "Matcha Milk Mochi Taro Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dc2d2867-984c-4f66-a7f7-8730f33d5a41",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "59911e2a-b75e-4755-a723-973bd769bf20",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f7dcdd22-9582-487d-ab75-a9a770483fae",
+     "menu_code": "HBF03",
+     "menu_name": "Matcha Cloud Latte",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "de1712fa-85c8-4239-8d97-0117e4289be1",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 9,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "15c0186b-b49d-4d83-897b-861f7e9317dc",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fef0efa1-82a8-4cf1-abc9-bf1b1994fe82",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a34063be-7e09-4594-a1ca-e7e1e8534d42",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cc3bbc9e-46db-4e1c-94fc-96224962acf5",
+     "menu_code": "HBN02",
+     "menu_name": "Orange Yuzu Soda",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "54921b62-c90c-45e5-9033-5de526d4dcf8",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 13,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c6a65d9f-9fb7-4e67-9e89-677e36a4e5d7",
+     "menu_code": "HBN07",
+     "menu_name": "Honey Lemon Soda",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a642d50a-2b49-48ca-a38f-d00d4dce5bd8",
+     "menu_code": "HBN08",
+     "menu_name": "Aged Honey Lime & Plum",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "07a1d569-97f9-477b-af15-8c7be583ad1f",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4c72800e-0d2d-4ecc-a0b9-30494eefd397",
+     "menu_code": "HBT05",
+     "menu_name": "Topping Crispy Coco",
+     "quantity": 2,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "197a52ce-dc0c-4083-9e4d-7316ab51f575",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8f1d257d-de78-4124-93be-b6c2a853c598",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8a5f9e5c-9eb1-4a0a-b5af-8579aa1f0344",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d138bd66-7359-486b-8d8d-5fb563d78567",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d5a5d953-8d1a-45aa-bbed-d6713c5a46aa",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 38,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "7a056f1b-fedf-4708-bd79-7577a1db57ff",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 47,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "b9f9ec30-e3ee-4f2c-824f-b1c9b356bddf",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "bfdccd25-9b12-4eb7-b4b7-4e9e280b15a1",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "6ac95492-501f-4e60-82e6-7045f82374e6",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 4,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 366,
+   "accepted_units": 290,
+   "held_units": 76,
+   "client_request_id": "agg:HB04:LINE_MAN:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:LM22-30/06"
+  },
+  {
+   "shop": "HB01",
+   "shopId": "581c5f9b-bc79-4270-8ad8-98a288be7933",
+   "shopName": "HB01-Ladprao107",
+   "platform": "GRAB",
+   "sheet": "Grab22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "1f3d452f-62d5-437d-97ce-f6910ce1f374",
+     "menu_code": "HBC01M01C",
+     "menu_name": "Classic Clear Matcha Kagoshima Asanoka",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "351cb2d0-1d59-4e4f-97d9-24a97f753a4b",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0a43ec29-f87c-4385-829a-c3aba8e60bd1",
+     "menu_code": "HBC01M06C",
+     "menu_name": "Classic Clear Matcha Yame Okumidori",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3a9e7ee4-d606-4899-9e8e-33548a0bee96",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f81730aa-db44-4531-9406-7406fec5c038",
+     "menu_code": "HBC01M01L",
+     "menu_name": "Classic Matcha Latte Kagoshima Asanoka",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a78e7501-67b1-4420-9f73-4c3d753e1a6a",
+     "menu_code": "HBC01M31L",
+     "menu_name": "Classic Matcha Latte Kagoshima Hiri",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "685116a1-e49e-49b7-a5bd-f58549683f1a",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8ec81b71-5dcd-474a-a938-242e83e1736f",
+     "menu_code": "HBC03G01L",
+     "menu_name": "Classic Genmaicha Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "64e9cf9e-2289-42bb-ab24-97aa1bb41b06",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "293733d0-8be0-4e11-87ed-9e80aeeaba1d",
+     "menu_code": "HBR02M21C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7455fcfd-ce34-4292-bd60-772c87941cd8",
+     "menu_code": "HBR03M21C",
+     "menu_name": "Matcha Honey Lime (Home Made)",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7535d4d0-a59f-4681-aa1e-7ede5ec064e0",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a6bc3db2-8295-4b0a-8b30-9603de02400e",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6da598a0-2929-4686-a0e7-41d8da0fecfe",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 19,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "60063334-828b-4363-8561-0ba37181ab9a",
+     "menu_code": "HBR08H03C",
+     "menu_name": "Clear Hojicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fa9a7a4e-11dd-42b1-b097-2d6ad814cd85",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 100,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b58f5cbd-6506-4fc1-a66f-3b51420a5774",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 42,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a206913d-65ee-4dc4-9637-31b20c6b4fdd",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3035656e-f6a8-4c30-9a68-cadd02a323e8",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b28a9565-2602-47f3-af6a-ba17cc8ac4f3",
+     "menu_code": "HBM04M18L",
+     "menu_name": "Matcha Mango Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ed3d5c0c-85d6-46d8-be6a-425a5725df91",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b85bf252-2e60-4786-9888-d50587119edf",
+     "menu_code": "HBM06M18L",
+     "menu_name": "Matcha Milk Mochi Taro Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "691ae3fc-745f-4193-8931-1c21950da52f",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ff7819ed-bafc-442f-a4e7-d378eb1061da",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 11,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "803cbda3-2f91-4a70-9840-7e90d67126f9",
+     "menu_code": "HBF02M18L",
+     "menu_name": "Coconut Milk Whisk Latte",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6e61e9a5-477a-4205-a770-44b2f2c3ca96",
+     "menu_code": "HBF03",
+     "menu_name": "Matcha Cloud Latte",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "301b6e90-a96d-4e8c-b342-a7716febabd7",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f29a4344-47e3-423a-b9f9-1f40f89f6196",
+     "menu_code": "HBN02",
+     "menu_name": "Orange Yuzu Soda",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ea883271-2e83-4640-aab2-d8d04e3166ae",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "27ba9ce0-6a3d-4378-9e7a-f19ec94c579d",
+     "menu_code": "HBN05T01",
+     "menu_name": "Jasmine Thai Tea Mochi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3053169f-278c-45e5-ab21-7c86cdab286a",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "3deb590e-84dc-44c8-9566-0fc32184da51",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2d60f218-3152-4848-9ffe-b522aae4d230",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "4e0bbaf8-9e1c-44b2-81cc-679228d6d6dc",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2c692b29-741a-4b79-b771-54c8eebdd134",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "82ecfd70-14a3-4ac5-a350-e6a2b26651ac",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 43,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "4f538650-1654-41fa-aab5-2b2359082bd3",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 16,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "09518a3f-3d1a-4511-8053-3d01fc285d5c",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "69eec750-c3f7-40c1-8ec8-9c508bd9e65a",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a3807376-7ee3-46d8-8f30-4ac7c2028370",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 4,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 404,
+   "accepted_units": 336,
+   "held_units": 68,
+   "client_request_id": "agg:HB01:GRAB:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:Grab22-30/06"
+  },
+  {
+   "shop": "HB02",
+   "shopId": "2a91e65b-cd05-4110-8878-883482ba9228",
+   "shopName": "HB02-Samyan",
+   "platform": "GRAB",
+   "sheet": "Grab22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "2205f270-aff6-4da9-a443-34f3a0d702a8",
+     "menu_code": "HBC01M08C",
+     "menu_name": "Classic Clear Matcha Gyokuro Yame",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0379630f-0dee-4d5d-95fb-f2d34e74e5a9",
+     "menu_code": "HBC01M01C",
+     "menu_name": "Classic Clear Matcha Kagoshima Asanoka",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "54520c13-acfe-4f01-b0fe-74dce64967f5",
+     "menu_code": "HBC01M09C",
+     "menu_name": "Classic Clear Matcha Organic Yabukita",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "07628c1d-d4ba-4b28-ac22-b5acdbfaffed",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "50dab725-3965-4422-ab88-06226e33eb8e",
+     "menu_code": "HBC01M06L",
+     "menu_name": "Classic Matcha Latte Uji Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "d4745388-2d29-4a4a-b412-f2aa7f9bde52",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "893c5915-1da8-498f-b28e-a6a02d014f29",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f0e6d8e4-4515-4cad-b7a3-a9685e2205b7",
+     "menu_code": "HBC01M01L",
+     "menu_name": "Classic Matcha Latte Kagoshima Asanoka",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "25948f39-506c-4500-8479-aa3756cc016b",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 13,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "708df57c-b8fd-4d14-bf25-ef29287e6e27",
+     "menu_code": "HBC02H02C",
+     "menu_name": "Classic Clear Hojicha Kokoro",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1f9dfc12-8c11-4275-8cd3-208bcc49e421",
+     "menu_code": "HBC02H01C",
+     "menu_name": "Classic Clear Hojicha Kaori",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c4cdc290-6114-4c3d-b4ba-dff56b2f28ae",
+     "menu_code": "HBC02H02L",
+     "menu_name": "Classic Hojicha Latte Kokoro",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "89a4a058-f70a-441c-9f84-74b674370753",
+     "menu_code": "HBC03G01C",
+     "menu_name": "Classic Clear Genmaicha",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cbe51852-283e-4c02-a426-2d07d00433b9",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 79,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "e633f731-8263-4e85-9612-e42bac4f1916",
+     "menu_code": "HBR02M21C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "35fd4530-b5f6-4133-928c-598590be4928",
+     "menu_code": "HBR03M21C",
+     "menu_name": "Matcha Honey Lime (Home Made)",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fc3628d3-0e1e-4880-8d76-b4edf316df1d",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f02ce9dc-fbcc-425d-bd64-148543c945c2",
+     "menu_code": "HBR05M21C",
+     "menu_name": "Kori Osmanthus Matcha",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "02934840-b5fb-41b4-9bf9-077b064208dc",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c8a3596f-dd44-4a34-98af-276c9fda29d1",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 25,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1d2fc2dd-1e8e-4705-b62c-ae5200a513e5",
+     "menu_code": "HBR08H03C",
+     "menu_name": "Clear Hojicha",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "282f33b9-19e7-407b-9eaa-77ca3a9faf0a",
+     "menu_code": "HBR09M21C",
+     "menu_name": "Clear Matcha Chrysanthemum",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "549d9c42-ae26-46f5-ab35-b726d124b18e",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 110,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cf3af210-0079-4bad-877d-0cb4de43c7d6",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 171,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8da5154a-782f-4637-98b9-726ad506cfd0",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "848a2d62-9628-413d-b1a8-7f85d392cd54",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1ca97739-2dc0-483d-b75d-ecbffe02be87",
+     "menu_code": "HBM04M18L",
+     "menu_name": "Matcha Mango Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "13c599c6-0576-4a5d-af36-adc4f89f5bdf",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 56,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3862494d-c29d-4cb7-9ec4-2e0b8a5a8fde",
+     "menu_code": "HBM06M18L",
+     "menu_name": "Matcha Milk Mochi Taro Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "74f1ce16-f21e-43d2-b02c-458bd41f4d96",
+     "menu_code": "HBM07M18L",
+     "menu_name": "Matcha Milk Mochi Red Bean Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dcb88546-03ca-4fd0-92ba-0e7ce20408e1",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 11,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ef00b6e6-bf73-4e7c-8b58-1130cacf38ac",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 35,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0b485671-a373-4bcd-b4b6-73d7593f865a",
+     "menu_code": "HBF02M18L",
+     "menu_name": "Coconut Milk Whisk Latte",
+     "quantity": 23,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "100cdf3a-19be-4ed6-9640-4e3b23c25274",
+     "menu_code": "HBF03",
+     "menu_name": "Matcha Cloud Latte",
+     "quantity": 12,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "d3714247-8cb7-4120-9763-12feb5cf48a5",
+     "menu_code": "HBF04",
+     "menu_name": "Matcha Cheesecake Cloud",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b20a736d-5aa8-4209-87a9-16c4e508d080",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4bfc101c-652f-43de-bf2a-6d6e2bf1ce59",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "80a98eca-cd4a-4cef-94e5-01a513f612fa",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "864355ab-b005-4cc9-a656-b675a36c5f19",
+     "menu_code": "HBN02",
+     "menu_name": "Orange Yuzu Soda",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0bd67bea-ac1e-4460-8fec-4a88432b91c3",
+     "menu_code": "HBN03",
+     "menu_name": "Osmanthus Honey Coconut",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ff5699be-9cbf-4914-808d-e5427c01539e",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 11,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4fa20c6c-cbe4-4361-883f-6ff989215638",
+     "menu_code": "HBN05T01",
+     "menu_name": "Jasmine Thai Tea Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "03bdc36f-9d63-4378-8c15-071dadf5104b",
+     "menu_code": "HBN07",
+     "menu_name": "Honey Lemon Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "abdef25f-cd90-41f1-89d0-e780c825469d",
+     "menu_code": "HBN08",
+     "menu_name": "Aged Honey Lime & Plum",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "164d0302-e821-48ed-b38d-3d02be86944e",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 2,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6e6d771e-0042-4aaf-a821-ff9781493da1",
+     "menu_code": "HBT02",
+     "menu_name": "Topping Cream Cheese",
+     "quantity": 7,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "e8c05287-d2d1-48cf-a433-8716d225a547",
+     "menu_code": "HBT03",
+     "menu_name": "Topping Milk Mochi",
+     "quantity": 4,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "af68594d-c2ef-44f7-909e-d7402a3e91e2",
+     "menu_code": "HBT05",
+     "menu_name": "Topping Crispy Coco",
+     "quantity": 11,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d62885f5-437c-49b6-97b4-bd51f01d2caf",
+     "menu_code": "HBT06",
+     "menu_name": "Topping Caramel Comb Toffee Crispy",
+     "quantity": 2,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "59eb0b38-4e2e-45bf-986a-34c6d03f17c2",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "60dfcc3c-4112-4c33-89f8-8001b2877133",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a7740719-6999-4a96-ba23-2279ede33ad6",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a88a6a34-5112-4972-8f4d-8a2952e01614",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8eaf09ae-6e00-4f5b-82ac-8779462ded1c",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 56,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "b4937f5d-0cf4-4e45-af7e-085edb79cab3",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 38,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "5b1b32b5-6c6b-4244-9931-dcffb484a216",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "4f652eac-f482-47bd-b47d-baadaed5ce3a",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 17,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "213a8c5f-16d5-4444-828e-865ca605ed67",
+     "menu_code": "HBD14A",
+     "menu_name": "Milk Caramel Custard Mochi",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "0e3f46dc-304d-419b-a008-2cfc20f6cf87",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 5,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 1058,
+   "accepted_units": 816,
+   "held_units": 242,
+   "client_request_id": "agg:HB02:GRAB:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:Grab22-30/06"
+  },
+  {
+   "shop": "HB03",
+   "shopId": "116a5eda-3b6b-4c2c-97a8-3393fa8a1115",
+   "shopName": "HB03-Nawamin111",
+   "platform": "GRAB",
+   "sheet": "Grab22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "a76a4429-1afb-428c-808a-9753cfd043b3",
+     "menu_code": "HBC01M06C",
+     "menu_name": "Classic Clear Matcha Yame Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "117d818d-3e00-406d-8071-2220221007db",
+     "menu_code": "HBC01M01C",
+     "menu_name": "Classic Clear Matcha Kagoshima Asanoka",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "853611ad-8c96-4508-b546-52fcfabccc66",
+     "menu_code": "HBC01M31C",
+     "menu_name": "Classic Clear Matcha Kagoshima Loishi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1db544a2-67ba-4884-8155-9088126f03e9",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "1981f3bc-3b4a-464b-9851-298afde19c0a",
+     "menu_code": "HBC01M40C",
+     "menu_name": "Classic Clear Matcha O-Matcha Sou",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "44414de3-4b39-4647-aa64-8c9eaef71f2d",
+     "menu_code": "HBC01M26L",
+     "menu_name": "Classic Matcha Latte Kagoshima Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "aa54959e-46b4-479c-8fe3-b4565bfee683",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 12,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6d89a4f0-ed1c-4be0-8b74-eac206c6dc5a",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 12,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9375ccb8-0bbb-4bc7-b2c8-a86fe683a970",
+     "menu_code": "HBC01M01L",
+     "menu_name": "Classic Matcha Latte Kagoshima Asanoka",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "5a7218f4-226c-4c12-9689-c7c567879c01",
+     "menu_code": "HBC01M30L",
+     "menu_name": "Classic Matcha Latte Kagoshima Loishi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7de039b2-65a0-4713-bba0-12a56bc831e0",
+     "menu_code": "HBC01M31L",
+     "menu_name": "Classic Matcha Latte Kagoshima Hiri",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9ca0ff53-4c15-48b0-97d4-b51071234106",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0a7686af-900c-4e91-b838-c44db4783df2",
+     "menu_code": "HBC01M40L",
+     "menu_name": "Classic Matcha Latte O-Matcha Sou",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "abcf63a1-1d72-4222-8a04-17a121286d94",
+     "menu_code": "HBC02H02C",
+     "menu_name": "Classic Clear Hojicha Kokoro",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "acadc5a8-2d2c-4f6e-a745-8190bec45e70",
+     "menu_code": "HBC02H01C",
+     "menu_name": "Classic Clear Hojicha Kaori",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "e9cea576-404f-411f-a1fc-2f36ce662ab1",
+     "menu_code": "HBC03G01C",
+     "menu_name": "Classic Clear Genmaicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "66a6dc77-b426-4022-9b31-1cef421b4ec0",
+     "menu_code": "HBC03G01L",
+     "menu_name": "Classic Genmaicha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b37ec88e-6d7b-49ed-b5c1-43a920e65f0e",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 31,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "06be3fd8-fc1f-4ae3-876a-04c728d6949f",
+     "menu_code": "HBR02M21C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 9,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a6ed5e3d-9022-499c-a89d-715b97f42401",
+     "menu_code": "HBR03M21C",
+     "menu_name": "Matcha Honey Lime (Home Made)",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a9c563de-61d0-4c0e-a29b-bdaa3506f8dd",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "2b58646b-4ba8-496b-9812-88b9dc623bc9",
+     "menu_code": "HBR05M21C",
+     "menu_name": "Kori Osmanthus Matcha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8c5e37ae-4659-4f45-b623-5c105f4b7c6c",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "64b4a344-311f-45b8-bff4-663f254a8786",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 14,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "393ab512-f085-445c-bd17-66aab54bc9b9",
+     "menu_code": "HBR08H03C",
+     "menu_name": "Clear Hojicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "aa881974-7e17-434c-853b-4b001b7d1a85",
+     "menu_code": "HBR09M21C",
+     "menu_name": "Clear Matcha Chrysanthemum",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9c81e65c-9bee-4a93-9cc7-00f0325708c1",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "cbb67d80-f378-4c99-b34c-6f618add17ea",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 44,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "70aa8e6a-8f38-4953-b898-b0e68f5b61d9",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "34264263-3350-4550-8345-11580c702556",
+     "menu_code": "HBM03M18L",
+     "menu_name": "Osmanthus Matcha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6d9fae70-2972-4ce2-932b-559bd78a24ef",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6c16a933-b8a0-4479-bd31-1f4e6e2503dc",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "39db13d1-6ecd-4eee-b313-3d6045dcb71f",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 13,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "9efe8cad-8eb5-420f-a331-396f5c55096f",
+     "menu_code": "HBF02M18L",
+     "menu_name": "Coconut Milk Whisk Latte",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6f8456fe-0e8e-4a52-bd45-7ec980bd0c11",
+     "menu_code": "HBF04",
+     "menu_name": "Matcha Cheesecake Cloud",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "20e26d97-fab2-45d5-a16c-37de7c0895dc",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dae745d1-9a6e-46f7-82ad-96bafa4bd094",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "01e53a03-2ef1-4387-97c7-3e88cd808cea",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "64c8d8a9-f8fe-46f9-b23c-1f77eb5da8a7",
+     "menu_code": "HBS03M29L",
+     "menu_name": "Matcha Creamcheese Mochi Skewer",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7ea7ffbc-574e-44d2-9546-163c9527ad48",
+     "menu_code": "HBS04H02L",
+     "menu_name": "Kokoro Hojicha Honey Comb Velvet",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "48cc5fe9-e47d-41b4-965a-191e0e0716c1",
+     "menu_code": "HBS09M29",
+     "menu_name": "Matcha Tiramisu Lady",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "39ddce93-52ab-4909-bb1b-3655d1889920",
+     "menu_code": "HBN01",
+     "menu_name": "Honey Lime Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "65c96089-a985-414f-9417-984dad6f4755",
+     "menu_code": "HBN02",
+     "menu_name": "Orange Yuzu Soda",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "59d711d3-5969-4275-84f4-ab105e55dabf",
+     "menu_code": "HBN03",
+     "menu_name": "Osmanthus Honey Coconut",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "79b150cf-89fc-48bf-a557-801cbb6a55a5",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7c16ca55-c735-4bff-96ce-2877d4053fe8",
+     "menu_code": "HBN07",
+     "menu_name": "Honey Lemon Soda",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f8d8a56e-3dc2-47c7-8077-4aa703c0a670",
+     "menu_code": "HBT02",
+     "menu_name": "Topping Cream Cheese",
+     "quantity": 3,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "5f6e6ce0-ceb5-44d7-af7f-5432774c028f",
+     "menu_code": "HBT03",
+     "menu_name": "Topping Milk Mochi",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "be84178c-c429-49cd-99b5-5967ac43b8fc",
+     "menu_code": "HBT08",
+     "menu_name": "Topping Red Bean Puree",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "596f236a-3697-4ed4-947a-ca8595aec628",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "f70faa9b-b5d2-436e-a9eb-4415f02c2144",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d674ef00-ad5d-4ed2-8add-34141ceedd28",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "aa575e1c-d18e-4b15-8a5f-9b186e88ce9a",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "95204a33-dbbb-4200-b633-aa096836dd64",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 19,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8e7cdf08-d837-4954-85ea-38950e349826",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 17,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "71938129-53bd-497a-93ad-061322361fe6",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "7d4d4ddd-95a6-4717-a623-f1f919ddc13b",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "2824ccc8-d6c7-40cc-9fb9-80122d73de8b",
+     "menu_code": "HBD14A",
+     "menu_name": "Milk Caramel Custard Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "a74d0e3a-60d0-42d2-b09a-0dd9fdee49db",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 3,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 386,
+   "accepted_units": 309,
+   "held_units": 77,
+   "client_request_id": "agg:HB03:GRAB:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:Grab22-30/06"
+  },
+  {
+   "shop": "HB04",
+   "shopId": "3ebea0b3-f3a9-40ae-b6b4-080e4b48efcc",
+   "shopName": "HB04-Saphan Khwai",
+   "platform": "GRAB",
+   "sheet": "Grab22-30/06",
+   "sales_date_from": "2026-06-22",
+   "sales_date_to": "2026-06-30",
+   "lines": [
+    {
+     "menu_type": "recipe",
+     "ref_id": "37f1defb-1464-443d-932d-26b648f36e05",
+     "menu_code": "HBC01M31C",
+     "menu_name": "Classic Clear Matcha Kagoshima Loishi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6afe4fb9-4812-4649-9bc6-6759e9b0ad2e",
+     "menu_code": "HBC01M10C",
+     "menu_name": "Classic Clear Matcha Yame Saemidori",
+     "quantity": 8,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "81ecc5be-b69f-4593-a1b7-c3fb465e211e",
+     "menu_code": "HBC01M06C",
+     "menu_name": "Classic Clear Matcha Yame Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "58c505ca-9c82-48c9-8c43-907ecab940e2",
+     "menu_code": "HBC01M26C",
+     "menu_name": "Classic Clear Matcha Kagoshima Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "6098790c-0e2f-4882-aa23-7f9db30b76fe",
+     "menu_code": "HBC01M06L",
+     "menu_name": "Classic Matcha Latte Uji Okumidori",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "d370ce21-2884-4f0d-88cc-f2e63d5047cf",
+     "menu_code": "HBC01M26L",
+     "menu_name": "Classic Matcha Latte Kagoshima Okumidori",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "a43ac0ee-ef84-47ae-b825-349128f8de44",
+     "menu_code": "HBC01M10L",
+     "menu_name": "Classic Matcha Latte Yame Saemidori",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "61c8445c-cb04-4fc6-ba0f-b5e1f2ed6cb3",
+     "menu_code": "HBC01M11L",
+     "menu_name": "Classic Matcha Latte Yame Okumidori",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0303004c-1a8a-4115-b85b-72d6c6e4f595",
+     "menu_code": "HBC01M30L",
+     "menu_name": "Classic Matcha Latte Kagoshima Loishi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "968d7aec-ec0b-47bd-beff-a15dc974a3e9",
+     "menu_code": "HBC01M15L",
+     "menu_name": "Classic Matcha Latte Yame Hojun",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "8bc3815f-07b2-4d6e-a76c-8bdd9bb13c6e",
+     "menu_code": "HBC02H04C",
+     "menu_name": "Classic Clear Kōbashii Hōjicha",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b366ae69-b30a-40c8-8834-521696b60154",
+     "menu_code": "HBC02H04L",
+     "menu_name": "Classic Hojicha Latte Kōbashii Hōjicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "ed02cc8b-4938-4046-aa36-84334bccaefc",
+     "menu_code": "HBC03G01L",
+     "menu_name": "Classic Genmaicha Latte",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "204be03b-249f-4f7b-8e78-094c62c93571",
+     "menu_code": "HBR01M21C",
+     "menu_name": "Clear Matcha",
+     "quantity": 23,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "db7c911e-3808-4548-ab20-30b2fc9c4ade",
+     "menu_code": "HBR02M21C",
+     "menu_name": "Matcha Honey Lemon (Home Made)",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7ab0025b-7a2a-4c58-b2c2-21733a23b403",
+     "menu_code": "HBR03M21C",
+     "menu_name": "Matcha Honey Lime (Home Made)",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "d50584d3-ed87-48c8-aac5-6ed9ee399968",
+     "menu_code": "HBR04M21C",
+     "menu_name": "Kirei Yuzu Matcha",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "537ca15a-816f-4a31-91c1-a22a6ed814db",
+     "menu_code": "HBR06M21C",
+     "menu_name": "Clear Matcha Coconut Jasmine Tea",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dd62db8d-7df2-460a-ab41-c9342f8987f5",
+     "menu_code": "HBR07M21C",
+     "menu_name": "Clear Matcha Coconut",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "b119c2a8-192c-48df-b9c7-27387f68e8ab",
+     "menu_code": "HBR08H03C",
+     "menu_name": "Clear Hojicha",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "989bd14e-a8c6-4a68-a720-4fc01c49158f",
+     "menu_code": "HBM09M29L",
+     "menu_name": "Hibi Cold Whisk Latte",
+     "quantity": 6,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "0c371570-ab05-46b4-ac8e-dd8cdc316980",
+     "menu_code": "HBM01M18L",
+     "menu_name": "Matcha Latte (Milk Whisk)",
+     "quantity": 67,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "c1f642f8-94cc-4480-883d-3587e6e508e6",
+     "menu_code": "HBM02M18L",
+     "menu_name": "Matcha Latte Milk Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "7566c10a-2e8d-49ce-9e4b-3bd75c770178",
+     "menu_code": "HBM04M18L",
+     "menu_name": "Matcha Mango Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "91406b4d-4ef9-449b-af84-ceda3f9659ad",
+     "menu_code": "HBM05M18L",
+     "menu_name": "Matcha Strawberry Latte",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "dc2d2867-984c-4f66-a7f7-8730f33d5a41",
+     "menu_code": "HBM08H03L",
+     "menu_name": "Hojicha Latte (Milk Whisk)",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "59911e2a-b75e-4755-a723-973bd769bf20",
+     "menu_code": "HBF01",
+     "menu_name": "Coconut on Cloud",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "de1712fa-85c8-4239-8d97-0117e4289be1",
+     "menu_code": "HBF05M18L",
+     "menu_name": "Matcha Cream Cheese Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "15c0186b-b49d-4d83-897b-861f7e9317dc",
+     "menu_code": "HBF06M18L",
+     "menu_name": "Jasmine Thai Tea x Matcha Latte",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "fef0efa1-82a8-4cf1-abc9-bf1b1994fe82",
+     "menu_code": "HBS02M15L",
+     "menu_name": "Matcha Velvet Whisk Latte Cold Foam",
+     "quantity": 22,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "54921b62-c90c-45e5-9033-5de526d4dcf8",
+     "menu_code": "HBN04T01",
+     "menu_name": "Jasmine Thai Tea",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "3bff8815-fdda-4521-ab46-6a10835c607b",
+     "menu_code": "HBN05T01",
+     "menu_name": "Jasmine Thai Tea Mochi",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "63ba0227-c8b9-4cbc-9986-fb26755c67d1",
+     "menu_code": "HBN09",
+     "menu_name": "Ichigo Ume Refresher",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "07a1d569-97f9-477b-af15-8c7be583ad1f",
+     "menu_code": "HBT01",
+     "menu_name": "Topping Matcha Cloud",
+     "quantity": 1,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "f04d9bdf-1b9e-411d-a034-dbb25f05183d",
+     "menu_code": "HBT03",
+     "menu_name": "Topping Milk Mochi",
+     "quantity": 3,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "recipe",
+     "ref_id": "4c72800e-0d2d-4ecc-a0b9-30494eefd397",
+     "menu_code": "HBT05",
+     "menu_name": "Topping Crispy Coco",
+     "quantity": 5,
+     "kind": "topping"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "197a52ce-dc0c-4083-9e4d-7316ab51f575",
+     "menu_code": "HBD04A",
+     "menu_name": "Black Truffle Financier",
+     "quantity": 3,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8f1d257d-de78-4124-93be-b6c2a853c598",
+     "menu_code": "HBD04B",
+     "menu_name": "Citrus Noisette Financier",
+     "quantity": 1,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "8a5f9e5c-9eb1-4a0a-b5af-8579aa1f0344",
+     "menu_code": "HBD04D",
+     "menu_name": "Matcha Noisette Financier",
+     "quantity": 4,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d138bd66-7359-486b-8d8d-5fb563d78567",
+     "menu_code": "HBD04E",
+     "menu_name": "Noisette Financier",
+     "quantity": 5,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "d5a5d953-8d1a-45aa-bbed-d6713c5a46aa",
+     "menu_code": "HBD06M",
+     "menu_name": "Tiramisu Matcha (Homemade)",
+     "quantity": 31,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "7a056f1b-fedf-4708-bd79-7577a1db57ff",
+     "menu_code": "HBD11",
+     "menu_name": "Mochi Butter Bun",
+     "quantity": 10,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "b9f9ec30-e3ee-4f2c-824f-b1c9b356bddf",
+     "menu_code": "HBD12M",
+     "menu_name": "Matcha Mochi Kinako Caramel",
+     "quantity": 7,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "bfdccd25-9b12-4eb7-b4b7-4e9e280b15a1",
+     "menu_code": "HBD13",
+     "menu_name": "Premium Banana Cheesecake",
+     "quantity": 11,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "83705801-d4be-456f-ad8e-fd8260019859",
+     "menu_code": "HBD14A",
+     "menu_name": "Milk Caramel Custard Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    },
+    {
+     "menu_type": "material",
+     "ref_id": "6ac95492-501f-4e60-82e6-7045f82374e6",
+     "menu_code": "HBD14B",
+     "menu_name": "Peach Caramel Custard Mochi",
+     "quantity": 2,
+     "kind": "menu"
+    }
+   ],
+   "source_units": 400,
+   "accepted_units": 294,
+   "held_units": 106,
+   "client_request_id": "agg:HB04:GRAB:2026-06-22_2026-06-30:1ormPlOZvLpnjFggfxY3KnTX2AxDSKCQIHL9TMSqpBwg:Grab22-30/06"
+  }
+ ]
+}
