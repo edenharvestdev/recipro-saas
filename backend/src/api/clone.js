@@ -418,9 +418,9 @@ router.post('/selective-clone', async (req, res) => {
               const id = await genUUID(c);
               choMap.set(ch.id, id);
               await c.query(
-                `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-                [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount]
+                `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, quantity_mode, quantity_value, kitchen_note, add_menu_mode, mismatch_ack)
+                 values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+                [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, ch.quantity_mode ?? null, ch.quantity_value ?? null, ch.kitchen_note ?? null, ch.add_menu_mode ?? null, ch.mismatch_ack ?? false]
               );
               counts.option_choices++;
             }
@@ -431,9 +431,9 @@ router.post('/selective-clone', async (req, res) => {
           const id = await genUUID(c);
           choMap.set(ch.id, id);
           await c.query(
-            `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-            [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount]
+            `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, quantity_mode, quantity_value, kitchen_note, add_menu_mode, mismatch_ack)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+            [id, group_id, ch.label, ch.price_add, ch.effect_type, ch.enabled, ch.is_default, ch.sort, ch.max_qty, ch.target_role, targetMatId, varRecId, ch.is_metadata_only, ch.amount, ch.quantity_mode ?? null, ch.quantity_value ?? null, ch.kitchen_note ?? null, ch.add_menu_mode ?? null, ch.mismatch_ack ?? false]
           );
           counts.option_choices++;
         }
@@ -625,11 +625,11 @@ async function importIntoShop(c, dstShopId, data, opts = {}) {
     if (!group_id) continue;
     const id = await genUUID(c); choMap.set(ch.id, id);
     await c.query(
-      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      `insert into option_choices (id, group_id, label, price_add, effect_type, enabled, is_default, sort, max_qty, target_role, target_material_id, variant_recipe_id, is_metadata_only, amount, quantity_mode, quantity_value, kitchen_note, add_menu_mode, mismatch_ack)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
       [id, group_id, ch.label, ch.price_add ?? 0, ch.effect_type || 'NONE', ch.enabled ?? true, ch.is_default ?? false, ch.sort ?? 0, ch.max_qty ?? 1,
        ch.target_role || '', ch.target_material_id ? (matMap.get(ch.target_material_id) || null) : null,
-       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0]);
+       ch.variant_recipe_id ? (recMap.get(ch.variant_recipe_id) || null) : null, ch.is_metadata_only ?? false, ch.amount ?? 0, ch.quantity_mode ?? null, ch.quantity_value ?? null, ch.kitchen_note ?? null, ch.add_menu_mode ?? null, ch.mismatch_ack ?? false]);
     out.option_choices++;
   }
   for (const l of data.option_choice_links || []) {
