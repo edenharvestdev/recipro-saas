@@ -438,9 +438,20 @@
         <div class="glass-card">
           <h2><span class="ico" data-icon="utensils"></span> สั่งผลิตเข้าร้าน</h2>
           <div class="grid-2" style="margin-bottom: 15px;">
-            <div class="field">
+            <div class="field" style="position:relative;">
               <label>เลือกสูตรที่ต้องการผลิต</label>
-              <select id="prodRecipe" onchange="renderProdPreview()"></select>
+              <!-- P0 searchable selector: the real value lives on the hidden <select> below
+                   (id="prodRecipe") — produce()/renderProdPreview()/produceShortcut() keep
+                   reading sel.value exactly as before, so selection is ALWAYS the recipe's
+                   real id, never the display name typed into the text box. -->
+              <input id="prodRecipeSearch" type="text" autocomplete="off"
+                     placeholder="พิมพ์ชื่อสูตร (ไทย/อังกฤษ) หรือรหัส..."
+                     oninput="prodRecipeSearchInput(this)"
+                     onfocus="prodRecipeSearchFocus(this)"
+                     onblur="prodRecipeSearchBlur()"
+                     onkeydown="prodRecipeSearchKeydown(event)">
+              <select id="prodRecipe" onchange="renderProdPreview()" style="display:none;" aria-hidden="true" tabindex="-1"></select>
+              <div id="prodRecipeResults" class="prod-recipe-dropdown" style="display:none;position:absolute;z-index:50;top:100%;left:0;right:0;margin-top:2px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:8px;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.15);"></div>
             </div>
             <div class="field">
               <label>จำนวนรอบการทำสูตร</label>
@@ -6145,7 +6156,16 @@ function renderRecipeList() {
   }
   renderPagerEl('recipePager', total, REC_PAGE_SIZE, recPage, 'gotoRecPage');
 
-  if ($('prodRecipe')) $('prodRecipe').innerHTML = recipes.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+  if ($('prodRecipe')) {
+    // Rebuilding <option>s resets selectedIndex to 0 unless we restore the
+    // previous value explicitly — preserve the operator's selection across
+    // re-renders (e.g. after produce()) instead of silently jumping back to
+    // whatever recipe happens to be first in the list.
+    const prevId = $('prodRecipe').value;
+    $('prodRecipe').innerHTML = recipes.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+    if (prevId && recipes.some(r => r.id === prevId)) $('prodRecipe').value = prevId;
+    if (typeof syncProdRecipeSearchDisplay === 'function') syncProdRecipeSearchDisplay();
+  }
 }
 
 // ชั้นเมนู: แสดง/ซ่อนช่องราคาตามสวิตช์ "นำขึ้นเมนู"
@@ -6216,6 +6236,139 @@ function renderAlerts() {
   }
 }
 
+// ============================================================
+// PRODUCTION RECIPE SEARCH (P0 stock-production-ux) — searchable selector
+// replacing the plain <select id="prodRecipe"> browse-only dropdown.
+// ------------------------------------------------------------------------
+// Contract (see docs/stock-production-ux-audit.md for the full audit):
+//   • The hidden <select id="prodRecipe"> remains the single source of
+//     truth for "which recipe is selected" — produce()/renderProdPreview()/
+//     produceShortcut() are UNCHANGED and keep reading sel.value, which is
+//     always r.id. The search box only ever WRITES sel.value via
+//     selectProdRecipe(id); it never matches or stores by display name.
+//   • prodRecipeSearchInput() is debounced and — like ogNumInput() above —
+//     NEVER re-renders the element the user is typing in. It only ever
+//     rewrites the sibling #prodRecipeResults dropdown.
+//   • Matching is a plain case-folded substring test. Thai has no case to
+//     fold, so .toLowerCase() is a no-op on Thai text and a real fold on
+//     English/ASCII — one code path correctly covers both scripts.
+// ------------------------------------------------------------------------
+let prodSearchQuery = '';
+let prodSearchActiveIdx = -1;
+let prodSearchOpen = false;
+let prodSearchDebounceTimer = null;
+
+// Pure filter — no DOM reads. Empty query browses every recipe (sorted by
+// name) so opening the box with no typing still lets you scan the list.
+function prodRecipeMatches(query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  const list = q
+    ? recipes.filter(r => {
+        const name = String(r.name || '').toLowerCase();
+        const code = String(r.code || '').toLowerCase();
+        return name.includes(q) || code.includes(q);
+      })
+    : recipes.slice();
+  return list.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+}
+
+function prodRecipeSearchInput(el) {
+  prodSearchOpen = true;
+  const val = el.value;
+  clearTimeout(prodSearchDebounceTimer);
+  prodSearchDebounceTimer = setTimeout(() => {
+    prodSearchQuery = val;
+    prodSearchActiveIdx = 0;
+    renderProdRecipeResults();
+  }, 150);
+}
+
+function prodRecipeSearchFocus(el) {
+  prodSearchOpen = true;
+  prodSearchQuery = el.value || '';
+  prodSearchActiveIdx = prodRecipeMatches(prodSearchQuery).length ? 0 : -1;
+  renderProdRecipeResults();
+}
+
+function prodRecipeSearchBlur() {
+  // A click on a result fires on mousedown (before blur) via selectProdRecipe,
+  // so by the time blur reaches here the box is already closed either way.
+  prodSearchOpen = false;
+  renderProdRecipeResults();
+}
+
+function prodRecipeSearchKeydown(e) {
+  const matches = prodRecipeMatches(prodSearchQuery);
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    prodSearchOpen = true;
+    prodSearchActiveIdx = Math.min((prodSearchActiveIdx < 0 ? -1 : prodSearchActiveIdx) + 1, matches.length - 1);
+    renderProdRecipeResults();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    prodSearchOpen = true;
+    prodSearchActiveIdx = Math.max(prodSearchActiveIdx - 1, 0);
+    renderProdRecipeResults();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (prodSearchOpen && matches[prodSearchActiveIdx]) selectProdRecipe(matches[prodSearchActiveIdx].id);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    prodSearchOpen = false;
+    prodSearchActiveIdx = -1;
+    renderProdRecipeResults();
+  }
+}
+
+function renderProdRecipeResults() {
+  const box = $('prodRecipeResults');
+  if (!box) return;
+  if (!prodSearchOpen) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  const matches = prodRecipeMatches(prodSearchQuery);
+  if (!matches.length) {
+    box.innerHTML = `<div style="padding:10px 12px;color:var(--color-text-muted);font-size:13px;">ไม่พบสูตรที่ตรงกัน ลองคำอื่น</div>`;
+    box.style.display = '';
+    return;
+  }
+  if (prodSearchActiveIdx >= matches.length) prodSearchActiveIdx = matches.length - 1;
+  box.innerHTML = matches.map((r, i) => {
+    const active = i === prodSearchActiveIdx;
+    return `<div onmousedown="event.preventDefault();selectProdRecipe('${r.id}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;${active ? 'background:var(--surface-2);' : ''}">
+      <b>${esc(r.name)}</b>${r.code ? ` <span style="font-size:11px;color:var(--color-text-muted);">[${esc(r.code)}]</span>` : ''}
+      ${r.category ? `<span style="font-size:11px;color:var(--color-text-muted);"> · ${esc(r.category)}</span>` : ''}
+    </div>`;
+  }).join('');
+  box.style.display = '';
+}
+
+// Sets the ONLY thing that matters — the hidden select's value (r.id) — then
+// closes the dropdown and refreshes the preview. Never writes r.name anywhere
+// the app later reads back as an identifier.
+function selectProdRecipe(id) {
+  const sel = $('prodRecipe');
+  if (sel) sel.value = id;
+  const r = recById(id);
+  const input = $('prodRecipeSearch');
+  if (input) input.value = r ? r.name : '';
+  prodSearchQuery = '';
+  prodSearchActiveIdx = -1;
+  prodSearchOpen = false;
+  renderProdRecipeResults();
+  renderProdPreview();
+}
+
+// Keeps the visible text box showing the name of whatever sel.value actually
+// is. Guarded on activeElement so a data-driven re-render (e.g. after
+// produce()) never clobbers text the owner is mid-typing.
+function syncProdRecipeSearchDisplay() {
+  const input = $('prodRecipeSearch');
+  if (!input || document.activeElement === input) return;
+  const sel = $('prodRecipe');
+  const r = sel ? recById(sel.value) : null;
+  input.value = r ? r.name : '';
+}
+
 function renderProdPreview() {
   const r = recById($('prodRecipe').value);
   const rounds = Math.max(1, +$('prodRounds').value || 1);
@@ -6235,7 +6388,17 @@ function renderProdPreview() {
   }).join('');
 
   const made = (r.batchYield || 1) * rounds;
-  $('prodPreview').innerHTML = `<div class="table-scroll"><table class="lst">
+  // P1: selected-item preview — name, unit, current FG stock, ingredient
+  // count. Purely presentational: reads existing fields (r.fgStock, r.items),
+  // stores nothing new, and does not touch the need/have table above.
+  const fgStock = Number(r.fgStock) || 0;
+  const summary = `<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;padding:10px 12px;background:var(--surface-1);border:1px solid var(--border-soft);border-radius:8px;font-size:13px;">
+    <div><b>${esc(r.name)}</b>${r.code ? ` <span style="color:var(--color-text-muted);font-size:11px;">[${esc(r.code)}]</span>` : ''} <span style="color:var(--color-text-muted);">(${esc(r.yieldUnit || 'หน่วย')})</span></div>
+    <div>${icon('package')} คงเหลือในคลัง: <b>${fgStock.toLocaleString()} ${esc(r.yieldUnit || '')}</b></div>
+    <div>${icon('list')} ส่วนผสม: <b>${(r.items || []).length}</b> รายการ</div>
+  </div>`;
+
+  $('prodPreview').innerHTML = summary + `<div class="table-scroll"><table class="lst">
     <thead>
       <tr>
         <th>วัตถุดิบ</th>
@@ -6324,8 +6487,10 @@ function produceShortcut(id) {
   const sel = $('prodRecipe');
   if (!sel) return;
   sel.value = id;
+  if (typeof syncProdRecipeSearchDisplay === 'function') syncProdRecipeSearchDisplay();
   if (typeof renderProdPreview === 'function') renderProdPreview();
-  sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const target = $('prodRecipeSearch') || sel;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function adjFg(id) {
