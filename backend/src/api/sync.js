@@ -25,6 +25,56 @@ async function upsertRows(client, table, cols, rows, conflict, touchUpdatedAt, c
   }
 }
 
+// ── RC-3: pos_categories ต้องมาพร้อม _base_version เสมอ ──────────────────────
+// production client ส่ง _base_version มาทุกครั้งที่ส่ง shop_settings (frontend/index.html
+// syncToSupabase() ตั้ง _base_version: dataVersion เสมอ) — payload ที่เขียน pos_categories
+// แต่ไม่มี _base_version = client เก่า/ทำมือ ห้ามถือว่า "ไม่ส่งเวอร์ชัน = ชนไม่ได้" กับ field
+// ที่ RC-1/RC-2 ปกป้องอยู่ ให้ตีเป็น conflict เหมือนเวอร์ชันไม่ตรงจริง
+// แคบเฉพาะ pos_categories (ไม่เหมารวม shop_settings ทั้งก้อน) เพื่อไม่ให้ legacy partial sync
+// ที่ไม่แตะ pos_categories เลยพัง — ดู backend/test/permissions.test.js (legacy full-sync)
+function posCategoriesWriteNeedsBaseVersion(b) {
+  return !!(b && b.shop_settings && b.shop_settings.pos_categories !== undefined && b._base_version == null);
+}
+
+// ── I: granular category audit ───────────────────────────────────────────────
+// client (frontend posCatCommit → payload._category_audit) ส่งรายการการเปลี่ยนสถานะหมวด
+// มาให้ server เขียนลงตาราง logs หนึ่งแถวต่อ event (action='category.<kind>' + detail jsonb)
+// เลือกวิธี client-reported แทนการ diff ฝั่ง server เพราะ diff ได้แค่ "ก่อน/หลัง" ของทั้งอาเรย์
+// ซึ่งแยกไม่ออกว่า rename หรือ delete+create (ค่าเดิมหาย ค่าใหม่โผล่เหมือนกัน) และแยก reorder
+// จาก rename ไม่ได้เมื่อทำหลายอย่างในรอบ sync เดียว — client รู้เจตนาที่แท้จริง
+// ความปลอดภัย: whitelist action, cap ความยาว, ตัด field ที่ไม่รู้จักทิ้ง, บังคับชนิด/ความยาว
+// สตริง และไม่รับ payload เต็ม/ความลับใดๆ (detail มีเฉพาะข้อมูลหมวด)
+const CATEGORY_AUDIT_ACTIONS = new Set([
+  'category.create', 'category.rename', 'category.reorder',
+  'category.archive', 'category.restore', 'category.delete',
+  'category.assignment_change',
+]);
+const CATEGORY_AUDIT_MAX = 50;      // กัน log flood จาก client ที่ผิดปกติ
+const CATEGORY_AUDIT_STR_MAX = 200; // ชื่อหมวดยาวผิดปกติ = ตัดทิ้ง ไม่เก็บทั้งก้อน
+function normalizeCategoryAudit(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const e of list) {
+    if (!e || typeof e !== 'object') continue;
+    if (!CATEGORY_AUDIT_ACTIONS.has(e.action)) continue;   // ไม่รู้จัก → ทิ้งเงียบ
+    const str = (v) => (v == null ? null : String(v).slice(0, CATEGORY_AUDIT_STR_MAX));
+    out.push({
+      action: e.action,
+      detail: {
+        old: str(e.old),
+        new: str(e.new),
+        count: Number.isFinite(Number(e.count)) ? Number(e.count) : 0,
+        correlation: str(e.correlation),
+        result: e.result === 'failed' ? 'failed' : 'ok',
+        reason: e.result === 'failed' ? str(e.reason) : null,
+        at: str(e.at),
+      },
+    });
+    if (out.length >= CATEGORY_AUDIT_MAX) break;
+  }
+  return out;
+}
+
 router.post('/sync', async (req, res) => {
   const shopId = req.shopId;
   if (!shopId) return res.status(400).json({ error: 'No current shop' });
@@ -39,6 +89,10 @@ router.post('/sync', async (req, res) => {
       const vr = await client.query('select coalesce(data_version,0) v from shop_settings where shop_id = $1', [shopId]);
       const current = vr.rows[0] ? Number(vr.rows[0].v) : 0;
       if (b._base_version != null && Number(b._base_version) !== current) {
+        const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
+      }
+      // RC-3: เขียน pos_categories โดยไม่ส่ง _base_version = ปฏิเสธแบบเดียวกับ version conflict
+      if (posCategoriesWriteNeedsBaseVersion(b)) {
         const err = new Error('version_conflict'); err.code = 'CONFLICT'; err.currentVersion = current; throw err;
       }
       newVersion = current + 1;
@@ -241,6 +295,13 @@ router.post('/sync', async (req, res) => {
       suppliers: (b.suppliers || []).length, materials: (b.materials || []).length,
       recipes: (b.recipes || []).length, bills: (b.bills || []).length,
     });
+    // I: หนึ่งแถวต่อการเปลี่ยนสถานะหมวดหนึ่งครั้ง — actor=user_id, tenant/branch=shop_id,
+    // ที่เหลือ (ค่าเดิม/ค่าใหม่/จำนวนสินค้าที่กระทบ/correlation/ผลลัพธ์/เหตุผลที่ล้มเหลว/เวลา)
+    // อยู่ใน detail jsonb. เขียนหลัง tx สำเร็จ + fire-and-forget เหมือน data.sync (audit พัง
+    // ต้องไม่ทำให้การบันทึกของร้านพัง)
+    for (const ev of normalizeCategoryAudit(b._category_audit)) {
+      logEvent(shopId, req.userId, ev.action, ev.detail);
+    }
     res.json({ ok: true, version: newVersion });
     // S1: สำรองอัตโนมัติ (ไม่บล็อก response, พังก็ไม่กระทบ sync)
     maybeAutoSnapshot(shopId).catch(() => {});
