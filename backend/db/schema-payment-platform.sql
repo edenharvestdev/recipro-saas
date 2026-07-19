@@ -48,13 +48,57 @@
 --    items_json blob on `bills` is completely untouched.
 --  - Idempotency backbone: `payment_provider_events` unique (provider,event_id) for webhook
 --    dedupe (mirrors the delivery/printers precedent of partial-unique-index-as-guard).
+--
+-- ══════════════════════════════════════════════════════════════════════════════════════════
+-- INTEGER SATANG MONEY MODEL (Founder-approved — supersedes any float/NUMERIC money column in
+-- this file's original draft) — 1 baht = 100 satang; e.g. 385.50 THB is stored as 38550.
+-- ══════════════════════════════════════════════════════════════════════════════════════════
+-- Every payment-platform monetary column below is authoritative as an INTEGER (BIGINT) number
+-- of satang, named with an explicit `_satang` suffix. The ONLY place baht<->satang conversion
+-- happens is backend/src/payments/money.js (bahtToSatang/satangToDisplay) — every write path in
+-- backend/src/payments/service.js converts exactly once, at the API boundary.
+--
+-- Source-of-truth boundary (do not blur this):
+--   (A) LEGACY app tables/columns — bills.net_sales, bills.gross_sales, bills.discount, and
+--       every menu/product price (recipes.sell_price etc.) — stay float/NUMERIC baht, UNTOUCHED,
+--       forever. Nothing in this file converts them; legacy display/behavior is byte-identical.
+--   (B) NEW immutable bill-item satang snapshots — bill_items.*_satang below — captured ONCE at
+--       payment-platform bill-creation time via money.js, from whatever baht price the legacy
+--       menu/product record held at that instant. The legacy record is never touched.
+--   (C) NEW payment-platform records (payment_intents, payment_transactions, payment_allocations,
+--       payment_refunds, payment_reconciliation_records, bill_adjustments, and the new
+--       bills.amount_due_satang column) — satang-only, BIGINT, authoritative for this platform.
+--
+-- Why table definitions below are retyped in place (not merely widened): every table in this
+-- file is BRAND NEW and has NEVER run against any live/production database (this whole file only
+-- ships on unmerged branches — see the header above). Retyping a column that has never existed
+-- outside a local dev DB carries none of the risk an in-place retype of a live table would; it is
+-- exactly as safe as if the column had been typed BIGINT from the very first draft. `bills` itself
+-- is a pre-existing LIVE-SHAPED table, so its satang column is added strictly ADDITIVELY
+-- (ADD COLUMN IF NOT EXISTS, nullable) alongside — never replacing — the untouched legacy
+-- net_sales/gross_sales/discount columns.
 
 -- ── bills: additive columns only, both nullable/false-default so legacy + non-platform rows
 --    are byte-identical to today ──
 ALTER TABLE bills
   ADD COLUMN IF NOT EXISTS payment_state             TEXT DEFAULT NULL,   -- NULL = legacy/no platform
   ADD COLUMN IF NOT EXISTS paid_state                TEXT NOT NULL DEFAULT 'UNPAID',
-  ADD COLUMN IF NOT EXISTS kitchen_release_eligible   BOOLEAN NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS kitchen_release_eligible   BOOLEAN NOT NULL DEFAULT false,
+  -- Authoritative amount-due for PAYMENT-PLATFORM bills only (payment_state IS NOT NULL), in
+  -- satang. NULL for legacy bills (payment_state IS NULL) — legacy code never reads this column.
+  -- This is a NEW, additive column; bills.net_sales/gross_sales (legacy, float, untouched) keep
+  -- being written by service.js purely for backward-compatible display/reporting, but are no
+  -- longer the source of truth for the payment invariant — amount_due_satang is.
+  ADD COLUMN IF NOT EXISTS amount_due_satang          BIGINT DEFAULT NULL;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_bills_amount_due_satang_nonneg'
+  ) THEN
+    ALTER TABLE bills ADD CONSTRAINT chk_bills_amount_due_satang_nonneg
+      CHECK (amount_due_satang IS NULL OR amount_due_satang >= 0);
+  END IF;
+END $$;
 
 -- Widen the existing lifecycle_status CHECK to also allow CANCELLED (the payment-platform's own
 -- simplified Bill machine: DRAFT -> CONFIRMED -> (VOIDED | CANCELLED)). Widening only — every
@@ -103,6 +147,9 @@ END $$;
 
 -- ── bill_items — normalized lines for bills created through the NEW payment-platform path only.
 --    Legacy bills (items_json) never get rows here. ──
+-- Money columns are satang BIGINT (immutable snapshot at bill-creation time, converted ONCE from
+-- the legacy menu/product baht price via backend/src/payments/money.js — see the satang-model
+-- header note above). `qty` stays NUMERIC — it is a quantity, not a monetary amount.
 CREATE TABLE IF NOT EXISTS bill_items (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id               UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
@@ -111,10 +158,10 @@ CREATE TABLE IF NOT EXISTS bill_items (
   ref_id                UUID,
   name_snapshot         TEXT NOT NULL,
   qty                   NUMERIC NOT NULL DEFAULT 1,
-  unit_price_snapshot   NUMERIC NOT NULL DEFAULT 0,
-  line_gross            NUMERIC NOT NULL DEFAULT 0,
-  line_discount         NUMERIC NOT NULL DEFAULT 0,
-  line_net              NUMERIC NOT NULL DEFAULT 0,
+  unit_price_satang     BIGINT NOT NULL DEFAULT 0 CHECK (unit_price_satang >= 0),
+  line_gross_satang     BIGINT NOT NULL DEFAULT 0 CHECK (line_gross_satang >= 0),
+  line_discount_satang  BIGINT NOT NULL DEFAULT 0 CHECK (line_discount_satang >= 0),
+  line_net_satang       BIGINT NOT NULL DEFAULT 0 CHECK (line_net_satang >= 0),   -- "subtotal" for the line
   chosen_options        JSONB DEFAULT '[]',
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -128,7 +175,7 @@ CREATE TABLE IF NOT EXISTS bill_adjustments (
   shop_id         UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
   bill_id         UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
   adjustment_type TEXT NOT NULL DEFAULT 'DISCOUNT' CHECK (adjustment_type IN ('DISCOUNT','SERVICE_CHARGE','TAX','OTHER')),
-  amount          NUMERIC NOT NULL DEFAULT 0,
+  amount_satang   BIGINT NOT NULL DEFAULT 0 CHECK (amount_satang >= 0),
   reason          TEXT,
   created_by      UUID REFERENCES users(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -168,7 +215,7 @@ CREATE TABLE IF NOT EXISTS payment_intents (
                       CHECK (status IN ('CREATED','AWAITING_PAYMENT','QR_DISPLAYED','AWAITING_MANUAL_CONFIRMATION',
                                          'INITIATED','VERIFICATION_PENDING',
                                          'CONFIRMED','FAILED','EXPIRED','CANCELLED')),
-  amount_due          NUMERIC NOT NULL,
+  amount_due_satang   BIGINT NOT NULL CHECK (amount_due_satang > 0),
   currency            TEXT NOT NULL DEFAULT 'THB',
   merchant_reference  TEXT NOT NULL,
   provider_ref        TEXT,
@@ -202,8 +249,8 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   intent_id             UUID REFERENCES payment_intents(id) ON DELETE SET NULL,
   method                TEXT NOT NULL CHECK (method IN ('CASH','STATIC_QR','DYNAMIC_QR')),
   provider              TEXT NOT NULL DEFAULT 'NONE' CHECK (provider IN ('NONE','MOCK')),
-  expected_amount       NUMERIC NOT NULL,
-  paid_amount           NUMERIC,
+  expected_amount_satang BIGINT NOT NULL CHECK (expected_amount_satang > 0),
+  paid_amount_satang    BIGINT CHECK (paid_amount_satang IS NULL OR paid_amount_satang >= 0),
   currency              TEXT NOT NULL DEFAULT 'THB',
   status                TEXT NOT NULL DEFAULT 'RECEIVED'
                         CHECK (status IN ('RECEIVED','VERIFYING','CONFIRMED','FAILED',
@@ -218,12 +265,12 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   reconciliation_status TEXT DEFAULT NULL CHECK (reconciliation_status IS NULL OR reconciliation_status IN
                         ('MATCHED','AMOUNT_MISMATCH','MISSING_IN_PROVIDER','MISSING_IN_SYSTEM','DUPLICATE',
                          'SETTLEMENT_PENDING','RECONCILED')),
-  refund_total          NUMERIC NOT NULL DEFAULT 0,
+  refund_total_satang   BIGINT NOT NULL DEFAULT 0 CHECK (refund_total_satang >= 0),
   provider_verified     BOOLEAN NOT NULL DEFAULT false,   -- true only for adapter-verified (dynamic QR); false for cash/static-QR manual confirms
   cashier_id            UUID REFERENCES users(id),
   terminal_id           TEXT,
-  amount_received       NUMERIC,               -- CASH only
-  change_amount         NUMERIC,               -- CASH only
+  amount_received_satang BIGINT CHECK (amount_received_satang IS NULL OR amount_received_satang >= 0),  -- CASH only
+  change_amount_satang  BIGINT CHECK (change_amount_satang IS NULL OR change_amount_satang >= 0),        -- CASH only
   slip_ref              TEXT,                  -- STATIC_QR optional slip attachment reference
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -259,9 +306,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_txn_idx
 --    one ACTIVE REFUND allocation. status=VOID exists so an allocation can be superseded without
 --    ever deleting history (mirrors the reversal-linkage doctrine in bill_stock_movements —
 --    schema-bill-correction.sql). Invariant enforced in backend/src/payments/allocations.js,
---    inside the same transaction that locks the bill row FOR UPDATE:
---      SUM(amount WHERE kind='PAYMENT' AND status='ACTIVE')
---        - SUM(amount WHERE kind='REFUND' AND status='ACTIVE')  <=  bill's canonical amount_due
+--    inside the same transaction that locks the bill row FOR UPDATE (all in satang, integer,
+--    NO epsilon — see backend/src/payments/allocations.js):
+--      SUM(allocated_amount_satang WHERE kind='PAYMENT' AND status='ACTIVE')
+--        - SUM(allocated_amount_satang WHERE kind='REFUND' AND status='ACTIVE')
+--        <=  bills.amount_due_satang
 --    bills.paid_state (UNPAID/PARTIALLY_PAID/PAID) is the stored projection of that same sum,
 --    written atomically alongside the allocation. ──
 CREATE TABLE IF NOT EXISTS payment_allocations (
@@ -275,7 +324,7 @@ CREATE TABLE IF NOT EXISTS payment_allocations (
   -- allocation rows too. Protection against orphaning in ordinary statements is identical.
   transaction_id          UUID NOT NULL REFERENCES payment_transactions(id),
   kind                    TEXT NOT NULL CHECK (kind IN ('PAYMENT','REFUND')),
-  amount                  NUMERIC NOT NULL CHECK (amount > 0),
+  allocated_amount_satang BIGINT NOT NULL CHECK (allocated_amount_satang > 0),
   status                  TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','VOID')),
   created_by              UUID REFERENCES users(id),
   created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -294,7 +343,7 @@ CREATE TABLE IF NOT EXISTS payment_refunds (
   shop_id                 UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
   payment_transaction_id  UUID NOT NULL REFERENCES payment_transactions(id) ON DELETE CASCADE,
   status                  TEXT NOT NULL DEFAULT 'REQUESTED' CHECK (status IN ('REQUESTED','APPROVED','REJECTED')),
-  amount                  NUMERIC NOT NULL,
+  refunded_amount_satang  BIGINT NOT NULL CHECK (refunded_amount_satang > 0),
   reason                  TEXT,
   requested_by            UUID REFERENCES users(id),
   approved_by             UUID REFERENCES users(id),
@@ -307,13 +356,18 @@ CREATE INDEX IF NOT EXISTS payment_refunds_txn_idx ON payment_refunds (payment_t
 CREATE INDEX IF NOT EXISTS payment_refunds_shop_idx ON payment_refunds (shop_id);
 
 -- ── payment_reconciliation_records — F.13 contract, data-model only this cycle. Flags/records
---    match status between system transactions and provider/bank statements. ──
+--    match status between system transactions and provider/bank statements. The three amount
+--    columns are all satang, all nullable (a flag can be raised before any of the three sides is
+--    known — e.g. MISSING_IN_PROVIDER has no provider_amount_satang yet). ──
 CREATE TABLE IF NOT EXISTS payment_reconciliation_records (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id                 UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
   payment_transaction_id  UUID REFERENCES payment_transactions(id) ON DELETE CASCADE,
   status                  TEXT NOT NULL CHECK (status IN ('MATCHED','AMOUNT_MISMATCH','MISSING_IN_PROVIDER',
                                                            'MISSING_IN_SYSTEM','DUPLICATE','SETTLEMENT_PENDING','RECONCILED')),
+  expected_amount_satang   BIGINT CHECK (expected_amount_satang IS NULL OR expected_amount_satang >= 0),   -- system's own transaction amount
+  provider_amount_satang   BIGINT CHECK (provider_amount_satang IS NULL OR provider_amount_satang >= 0),   -- what the provider/bank statement reported
+  settlement_amount_satang BIGINT CHECK (settlement_amount_satang IS NULL OR settlement_amount_satang >= 0), -- actually settled/received amount
   notes                   TEXT,
   flagged_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   resolved_at             TIMESTAMPTZ,
