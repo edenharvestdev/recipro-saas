@@ -268,7 +268,12 @@ CREATE TABLE IF NOT EXISTS payment_allocations (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id                 UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
   bill_id                 UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
-  transaction_id          UUID NOT NULL REFERENCES payment_transactions(id) ON DELETE RESTRICT,
+  -- NO ACTION (not RESTRICT) deliberately: both are "cannot delete a transaction that still has
+  -- allocations", but RESTRICT checks IMMEDIATELY and would abort a legitimate multi-path
+  -- cascade (deleting a shop cascades bills -> transactions AND allocations in one statement);
+  -- NO ACTION defers the check to end-of-statement, by which point the cascade has removed the
+  -- allocation rows too. Protection against orphaning in ordinary statements is identical.
+  transaction_id          UUID NOT NULL REFERENCES payment_transactions(id),
   kind                    TEXT NOT NULL CHECK (kind IN ('PAYMENT','REFUND')),
   amount                  NUMERIC NOT NULL CHECK (amount > 0),
   status                  TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','VOID')),
