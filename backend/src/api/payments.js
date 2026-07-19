@@ -247,6 +247,15 @@ router.post('/online-orders/mock-submit', requirePerm('bill_create_draft'), asyn
 
 const DASHBOARD_PERMS = ['billing_view', 'payment_review'];
 
+// Cheap probe for the SPA nav gate: while the platform flag is OFF this never runs (the app.js
+// mount 503s first), so a 200 here means "flag ON and caller may see the dashboard". The frontend
+// only un-hides the dashboard nav item after this returns 200 — which keeps the flag-off UI
+// byte-identical (the nav item ships hidden in static HTML) without leaking the flag state into
+// /api/bootstrap (guard test G3 proves that payload is flag-independent).
+router.get('/status', requireAnyPerm(DASHBOARD_PERMS), (req, res) => {
+  res.json({ enabled: true });
+});
+
 router.get('/dashboard', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
   try {
     const f = req.query || {};
@@ -276,7 +285,8 @@ router.get('/dashboard', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
               t.id AS transaction_id, t.method, t.provider, t.status AS transaction_status,
               i.status AS intent_status, t.reconciliation_status,
               b.created_at AS bill_created_at, t.confirmed_at, i.expires_at,
-              t.confirmed_by, t.provider_txn_id,
+              t.confirmed_by, COALESCE(u.email, t.confirmed_by) AS confirmed_by_name,
+              t.provider_txn_id, t.provider_verified,
               (t.paid_amount IS NOT NULL AND t.expected_amount IS NOT NULL AND
                abs(t.paid_amount - t.expected_amount) < 0.01) AS amount_matches,
               (t.reconciliation_status IS NOT NULL AND t.reconciliation_status <> 'MATCHED') AS manual_review_flag
@@ -284,6 +294,7 @@ router.get('/dashboard', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
          LEFT JOIN payment_transactions t ON t.bill_id = b.id
          LEFT JOIN payment_intents i ON i.id = t.intent_id
          LEFT JOIN orders o ON o.id = COALESCE(t.order_id, i.order_id)
+         LEFT JOIN users u ON u.id::text = t.confirmed_by
         WHERE ${clauses.join(' AND ')}
         ORDER BY b.created_at DESC LIMIT 200`,
       params
