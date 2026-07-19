@@ -212,6 +212,7 @@ router.post('/reconciliation/:transactionId/flag', requirePerm('reconciliation_v
     const out = await tx((c) => svc.flagReconciliation(c, {
       shopId: req.shopId, userId: req.userId, userName: req.userName, transactionId: req.params.transactionId,
       status: b.status || 'AMOUNT_MISMATCH', notes: b.notes,
+      expectedAmount: b.expected_amount, providerAmount: b.provider_amount, settlementAmount: b.settlement_amount,
     }));
     res.status(201).json(out);
   } catch (e) { handleError(e, res); }
@@ -281,14 +282,14 @@ router.get('/dashboard', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
     if (f.manual_review === '1') { clauses.push(`t.reconciliation_status IS NOT NULL AND t.reconciliation_status <> 'MATCHED'`); }
 
     const rows = (await query(
-      `SELECT b.id AS bill_id, b.number AS bill_no, o.order_no, b.net_sales AS amount, b.paid_state, b.payment_state,
+      `SELECT b.id AS bill_id, b.number AS bill_no, o.order_no, b.amount_due_satang AS amount_satang, b.paid_state, b.payment_state,
               t.id AS transaction_id, t.method, t.provider, t.status AS transaction_status,
               i.status AS intent_status, t.reconciliation_status,
               b.created_at AS bill_created_at, t.confirmed_at, i.expires_at,
               t.confirmed_by, COALESCE(u.email, t.confirmed_by) AS confirmed_by_name,
               t.provider_txn_id, t.provider_verified,
-              (t.paid_amount IS NOT NULL AND t.expected_amount IS NOT NULL AND
-               abs(t.paid_amount - t.expected_amount) < 0.01) AS amount_matches,
+              (t.paid_amount_satang IS NOT NULL AND t.expected_amount_satang IS NOT NULL AND
+               t.paid_amount_satang = t.expected_amount_satang) AS amount_matches,
               (t.reconciliation_status IS NOT NULL AND t.reconciliation_status <> 'MATCHED') AS manual_review_flag
          FROM bills b
          LEFT JOIN payment_transactions t ON t.bill_id = b.id

@@ -12,11 +12,22 @@
 //   - Stock is untouched by this module entirely — this platform's Bill is a payment/money
 //     aggregate, not a stock-deduction aggregate (stock deduction is bills.js's existing,
 //     untouched concern).
+//
+// MONEY MODEL (Founder-approved satang directive): every amount that crosses the
+// backend/src/api/payments.js boundary from a client (baht-denominated, human-typed — "100",
+// "10.50") is converted EXACTLY ONCE via backend/src/payments/money.js#bahtToSatang and is
+// INTEGER SATANG from that point on: stored in *_satang DB columns, compared with strict
+// integer === (no epsilon, anywhere), and passed to the mock provider adapter as opaque integer
+// amounts (mirroring how real gateways like Omise/Stripe natively use minor units). Legacy
+// bills.net_sales/gross_sales stay float baht, populated only for backward-compatible
+// display/reporting — never read back as the authoritative amount (that is
+// bills.amount_due_satang, see backend/src/payments/allocations.js#billAmountDue).
 const { tx } = require('../db');
 const { assertTransition } = require('./state-machine');
 const { writeAllocation, billAmountDue, activeAllocationTotals } = require('./allocations');
 const { auditLog } = require('./audit');
 const { getAdapter } = require('./provider-registry');
+const { bahtToSatang, satangToDisplay, cashChangeSatang } = require('./money');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID = (s) => typeof s === 'string' && UUID_RE.test(s);
@@ -53,15 +64,24 @@ async function lockIntent(c, shopId, intentId) {
 // ── BILL (payment-platform Bill aggregate: DRAFT -> CONFIRMED -> (VOIDED | CANCELLED)) ──
 
 async function createBill(c, { shopId, userId, userName, amountDue, currency, items }) {
-  const amt = Number(amountDue);
-  if (!(amt > 0)) err('AMOUNT_DUE_INVALID', 400, 'amount_due must be > 0');
+  let amountDueSatang;
+  try {
+    amountDueSatang = bahtToSatang(amountDue);
+  } catch (e) {
+    err('AMOUNT_DUE_INVALID', 400, e.message, { moneyCode: e.code });
+  }
+  if (!(amountDueSatang > 0)) err('AMOUNT_DUE_INVALID', 400, 'amount_due must be > 0');
+  // bills.net_sales/gross_sales are LEGACY, non-authoritative baht display columns — populated
+  // for backward-compatible reporting only, derived once from the validated satang amount so
+  // they always agree with amount_due_satang. amount_due_satang is what allocations.js reads.
+  const legacyDisplayAmount = Number(satangToDisplay(amountDueSatang));
   const billId = (await c.query(
     `INSERT INTO bills (shop_id, doc_type, items_json, lifecycle_status, status, gross_sales, net_sales,
-           discount, business_date, created_by, updated_by)
-     VALUES ($1,'sale',$2,'DRAFT','wait',$3,$3,0,CURRENT_DATE,$4,$4) RETURNING id`,
-    [shopId, JSON.stringify(items || []), amt, userId]
+           discount, business_date, created_by, updated_by, amount_due_satang)
+     VALUES ($1,'sale',$2,'DRAFT','wait',$3,$3,0,CURRENT_DATE,$4,$4,$5) RETURNING id`,
+    [shopId, JSON.stringify(items || []), legacyDisplayAmount, userId, amountDueSatang]
   )).rows[0].id;
-  await auditLog(c, shopId, userId, userName, billId, 'BILL_CREATED', null, { amount_due: amt, currency: currency || 'THB' });
+  await auditLog(c, shopId, userId, userName, billId, 'BILL_CREATED', null, { amount_due_satang: amountDueSatang, currency: currency || 'THB' });
   const bill = (await c.query('SELECT * FROM bills WHERE id=$1', [billId])).rows[0];
   return { bill };
 }
@@ -78,7 +98,7 @@ async function confirmBill(c, { shopId, userId, userName, billId }) {
   );
   // NOTE: this deliberately does NOT set status='paid' — that welding is exactly what the
   // Founder brief requires removing. Payment confirmation is a fully separate event below.
-  await auditLog(c, shopId, userId, userName, billId, 'BILL_CONFIRMED', null, { number, amount_due: billAmountDue(bill) });
+  await auditLog(c, shopId, userId, userName, billId, 'BILL_CONFIRMED', null, { number, amount_due_satang: billAmountDue(bill) });
   const out = (await c.query('SELECT * FROM bills WHERE id=$1', [billId])).rows[0];
   return { bill: out, already: false };
 }
@@ -110,13 +130,22 @@ async function createIntent(c, { shopId, userId, billId, method, amount, currenc
     if (existing) return { intent: existing, already: true };
   }
 
-  const amountDue = billAmountDue(bill);
+  const amountDueSatang = billAmountDue(bill);
   const { net } = await activeAllocationTotals(c, shopId, billId);
-  const remaining = amountDue - net;
-  if (remaining <= 0.005) err('BILL_ALREADY_FULLY_PAID', 409, 'bill has no remaining balance to pay');
-  const intentAmount = amount != null ? Number(amount) : remaining;
-  if (!(intentAmount > 0)) err('INTENT_AMOUNT_INVALID', 400);
-  if (intentAmount > remaining + 0.005) err('INTENT_AMOUNT_EXCEEDS_REMAINING', 409, null, { remaining, requested: intentAmount });
+  const remainingSatang = amountDueSatang - net;
+  if (remainingSatang <= 0) err('BILL_ALREADY_FULLY_PAID', 409, 'bill has no remaining balance to pay');
+  let intentAmountSatang;
+  if (amount != null) {
+    try {
+      intentAmountSatang = bahtToSatang(amount);
+    } catch (e) {
+      err('INTENT_AMOUNT_INVALID', 400, e.message, { moneyCode: e.code });
+    }
+  } else {
+    intentAmountSatang = remainingSatang;
+  }
+  if (!(intentAmountSatang > 0)) err('INTENT_AMOUNT_INVALID', 400);
+  if (intentAmountSatang > remainingSatang) err('INTENT_AMOUNT_EXCEEDS_REMAINING', 409, null, { remainingSatang, requestedSatang: intentAmountSatang });
 
   const merchantReference = 'MREF-' + billId.slice(0, 8) + '-' + Date.now();
   let providerRef = null;
@@ -126,7 +155,7 @@ async function createIntent(c, { shopId, userId, billId, method, amount, currenc
   if (method === 'DYNAMIC_QR') {
     const adapter = getAdapter('MOCK');
     const created = await adapter.createPaymentIntent({
-      amount: intentAmount, currency: currency || 'THB', merchantReference,
+      amount: intentAmountSatang, currency: currency || 'THB', merchantReference,
       expiresAt: expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     });
     providerRef = created.providerTxnId;
@@ -135,15 +164,15 @@ async function createIntent(c, { shopId, userId, billId, method, amount, currenc
   }
 
   const intent = (await c.query(
-    `INSERT INTO payment_intents (shop_id, bill_id, method, provider, status, amount_due, currency,
+    `INSERT INTO payment_intents (shop_id, bill_id, method, provider, status, amount_due_satang, currency,
            merchant_reference, provider_ref, idempotency_key, expires_at, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [shopId, billId, method, provider, status, intentAmount, currency || 'THB',
+    [shopId, billId, method, provider, status, intentAmountSatang, currency || 'THB',
      merchantReference, providerRef, idempotencyKey || null, expiresAt, userId]
   )).rows[0];
 
   await auditLog(c, shopId, userId, null, billId, 'PAYMENT_INTENT_CREATED', null,
-    { intent_id: intent.id, method, amount: intentAmount });
+    { intent_id: intent.id, method, amount_satang: intentAmountSatang });
   return { intent, already: false };
 }
 
@@ -194,37 +223,42 @@ async function cashConfirm(c, { shopId, userId, userName, intentId, amountReceiv
   assertTransition('INTENT', intent.status, 'CONFIRMED');
 
   const bill = await lockBill(c, shopId, intent.bill_id);
-  const amountDue = billAmountDue(bill);
-  const allocationAmount = Number(intent.amount_due);
-  const received = Number(amountReceived);
-  if (!(received >= allocationAmount - 0.005)) {
-    err('CASH_RECEIVED_INSUFFICIENT', 400, 'amount received is less than the amount due for this intent',
-      { due: allocationAmount, received });
+  const amountDueSatang = billAmountDue(bill);
+  const allocationAmountSatang = Number(intent.amount_due_satang);
+  let receivedSatang;
+  try {
+    receivedSatang = bahtToSatang(amountReceived);
+  } catch (e) {
+    err('CASH_RECEIVED_INVALID', 400, e.message, { moneyCode: e.code });
   }
-  const changeAmount = Math.max(0, received - allocationAmount);
+  if (!(receivedSatang >= allocationAmountSatang)) {
+    err('CASH_RECEIVED_INSUFFICIENT', 400, 'amount received is less than the amount due for this intent',
+      { dueSatang: allocationAmountSatang, receivedSatang });
+  }
+  const changeAmountSatang = cashChangeSatang(receivedSatang, allocationAmountSatang);
 
   const txn = (await c.query(
-    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount,
-           paid_amount, currency, status, merchant_ref, idempotency_key, confirmed_at, confirmed_by,
-           cashier_id, terminal_id, amount_received, change_amount, provider_verified)
+    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount_satang,
+           paid_amount_satang, currency, status, merchant_ref, idempotency_key, confirmed_at, confirmed_by,
+           cashier_id, terminal_id, amount_received_satang, change_amount_satang, provider_verified)
      VALUES ($1,$2,$3,'CASH','NONE',$4,$4,$5,'CONFIRMED',$6,$7,now(),$8,$9,$10,$11,$12,false)
      RETURNING *`,
-    [shopId, intent.bill_id, intentId, allocationAmount, intent.currency, intent.merchant_reference,
-     idempotencyKey || null, String(userId), userId, terminalId || null, received, changeAmount]
+    [shopId, intent.bill_id, intentId, allocationAmountSatang, intent.currency, intent.merchant_reference,
+     idempotencyKey || null, String(userId), userId, terminalId || null, receivedSatang, changeAmountSatang]
   )).rows[0];
 
   const { paidState } = await writeAllocation(c, {
     shopId, billId: intent.bill_id, transactionId: txn.id, kind: 'PAYMENT',
-    amount: allocationAmount, actorId: userId, amountDue,
+    amountSatang: allocationAmountSatang, actorId: userId, amountDueSatang,
   });
 
   await c.query(`UPDATE payment_intents SET status='CONFIRMED', updated_at=now() WHERE id=$1`, [intentId]);
   await auditLog(c, shopId, userId, userName, intent.bill_id, 'CASH_PAYMENT_CONFIRMED', null,
-    { transaction_id: txn.id, amount: allocationAmount, received, change: changeAmount, paid_state: paidState });
+    { transaction_id: txn.id, amount_satang: allocationAmountSatang, received_satang: receivedSatang, change_satang: changeAmountSatang, paid_state: paidState });
 
   const receipt = await issueReceipt(c, { shopId, userId, userName, billId: intent.bill_id, transactionId: txn.id });
 
-  return { transaction: txn, paid_state: paidState, change_amount: changeAmount, receipt, already: false };
+  return { transaction: txn, paid_state: paidState, change_amount_satang: changeAmountSatang, receipt, already: false };
 }
 
 // ── STATIC QR ──
@@ -264,25 +298,25 @@ async function staticQrConfirm(c, { shopId, userId, userName, intentId, slipRef 
   assertTransition('INTENT', intent.status, 'CONFIRMED');
 
   const bill = await lockBill(c, shopId, intent.bill_id);
-  const amountDue = billAmountDue(bill);
-  const allocationAmount = Number(intent.amount_due);
+  const amountDueSatang = billAmountDue(bill);
+  const allocationAmountSatang = Number(intent.amount_due_satang);
 
   const txn = (await c.query(
-    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount,
-           paid_amount, currency, status, merchant_ref, confirmed_at, confirmed_by, slip_ref, provider_verified)
+    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount_satang,
+           paid_amount_satang, currency, status, merchant_ref, confirmed_at, confirmed_by, slip_ref, provider_verified)
      VALUES ($1,$2,$3,'STATIC_QR','NONE',$4,$4,$5,'CONFIRMED',$6,now(),$7,$8,false)
      RETURNING *`,
-    [shopId, intent.bill_id, intentId, allocationAmount, intent.currency, intent.merchant_reference, String(userId), slipRef || null]
+    [shopId, intent.bill_id, intentId, allocationAmountSatang, intent.currency, intent.merchant_reference, String(userId), slipRef || null]
   )).rows[0];
 
   const { paidState } = await writeAllocation(c, {
     shopId, billId: intent.bill_id, transactionId: txn.id, kind: 'PAYMENT',
-    amount: allocationAmount, actorId: userId, amountDue,
+    amountSatang: allocationAmountSatang, actorId: userId, amountDueSatang,
   });
 
   await c.query(`UPDATE payment_intents SET status='CONFIRMED', updated_at=now() WHERE id=$1`, [intentId]);
   await auditLog(c, shopId, userId, userName, intent.bill_id, 'STATIC_QR_MANUALLY_CONFIRMED', null,
-    { transaction_id: txn.id, amount: allocationAmount, confirmed_by: userId, paid_state: paidState });
+    { transaction_id: txn.id, amount_satang: allocationAmountSatang, confirmed_by: userId, paid_state: paidState });
 
   const receipt = await issueReceipt(c, { shopId, userId, userName, billId: intent.bill_id, transactionId: txn.id });
 
@@ -293,6 +327,9 @@ async function staticQrConfirm(c, { shopId, userId, userName, intentId, slipRef 
 
 // Processes one inbound (mock) provider webhook delivery. Fully idempotent via the
 // (provider, event_id) unique index on payment_provider_events — a replay is a DB-level no-op.
+// `verified.amount` (and everything the mock adapter carries) is an INTEGER SATANG value — the
+// mock provider mirrors how real gateways (Omise/Stripe) natively quote amounts in minor units,
+// so no baht<->satang conversion happens anywhere in this webhook path.
 async function processProviderWebhook(c, { shopId, provider, rawBody, signature }) {
   const adapter = getAdapter(provider);
   const verified = await adapter.verifyWebhook({ rawBody, signature });
@@ -323,7 +360,7 @@ async function processProviderWebhook(c, { shopId, provider, rawBody, signature 
   }
 
   const bill = await lockBill(c, shopId, intent.bill_id);
-  const amountDue = billAmountDue(bill);
+  const amountDueSatang = billAmountDue(bill);
 
   // Lazy expiry: an intent past its expires_at can never be confirmed by any path, including a
   // late-arriving success webhook (the event itself stays recorded + deduped above).
@@ -349,7 +386,8 @@ async function processProviderWebhook(c, { shopId, provider, rawBody, signature 
     return { duplicate: false, matched: true, outcome: 'FAILED' };
   }
 
-  const amountMatches = Math.abs(Number(verified.amount) - Number(intent.amount_due)) <= 0.005;
+  // STRICT integer satang equality — no epsilon, ever.
+  const amountMatches = Number(verified.amount) === Number(intent.amount_due_satang);
   const currencyMatches = (verified.currency || 'THB') === intent.currency;
 
   if (!amountMatches || !currencyMatches) {
@@ -360,24 +398,24 @@ async function processProviderWebhook(c, { shopId, provider, rawBody, signature 
     }
     await auditLog(c, shopId, null, null, intent.bill_id, 'PAYMENT_CONFIRMATION_REJECTED',
       amountMatches ? 'CURRENCY_MISMATCH' : 'AMOUNT_MISMATCH',
-      { intent_id: intent.id, expected_amount: intent.amount_due, got_amount: verified.amount, expected_currency: intent.currency, got_currency: verified.currency });
+      { intent_id: intent.id, expected_amount_satang: intent.amount_due_satang, got_amount_satang: verified.amount, expected_currency: intent.currency, got_currency: verified.currency });
     return { duplicate: false, matched: true, outcome: 'VERIFICATION_PENDING' };
   }
 
   assertTransition('INTENT', intent.status, 'CONFIRMED');
   const txn = (await c.query(
-    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount,
-           paid_amount, currency, status, provider_txn_id, merchant_ref, confirmed_at, confirmed_by,
+    `INSERT INTO payment_transactions (shop_id, bill_id, intent_id, method, provider, expected_amount_satang,
+           paid_amount_satang, currency, status, provider_txn_id, merchant_ref, confirmed_at, confirmed_by,
            raw_event_ref, provider_verified)
      VALUES ($1,$2,$3,'DYNAMIC_QR',$4,$5,$5,$6,'CONFIRMED',$7,$8,now(),$9,$10,true)
      RETURNING *`,
-    [shopId, intent.bill_id, intent.id, provider, intent.amount_due, intent.currency,
+    [shopId, intent.bill_id, intent.id, provider, intent.amount_due_satang, intent.currency,
      verified.providerTxnId, intent.merchant_reference, 'webhook:' + provider, eventRow.id]
   )).rows[0];
 
   const { paidState } = await writeAllocation(c, {
     shopId, billId: intent.bill_id, transactionId: txn.id, kind: 'PAYMENT',
-    amount: Number(intent.amount_due), actorId: null, amountDue,
+    amountSatang: Number(intent.amount_due_satang), actorId: null, amountDueSatang,
   });
 
   await c.query(`UPDATE payment_intents SET status='CONFIRMED', updated_at=now() WHERE id=$1`, [intent.id]);
@@ -405,12 +443,18 @@ async function requestRefund(c, { shopId, userId, userName, transactionId, amoun
   const txn = (await c.query('SELECT * FROM payment_transactions WHERE id=$1 AND shop_id=$2 FOR UPDATE', [transactionId, shopId])).rows[0];
   if (!txn) err('TRANSACTION_NOT_FOUND', 404);
   if (txn.status !== 'CONFIRMED' && txn.status !== 'PARTIALLY_REFUNDED') err('TRANSACTION_NOT_REFUNDABLE', 409);
+  let refundAmountSatang;
+  try {
+    refundAmountSatang = bahtToSatang(amount);
+  } catch (e) {
+    err('REFUND_AMOUNT_INVALID', 400, e.message, { moneyCode: e.code });
+  }
   const refund = (await c.query(
-    `INSERT INTO payment_refunds (shop_id, payment_transaction_id, status, amount, reason, requested_by)
+    `INSERT INTO payment_refunds (shop_id, payment_transaction_id, status, refunded_amount_satang, reason, requested_by)
      VALUES ($1,$2,'REQUESTED',$3,$4,$5) RETURNING *`,
-    [shopId, transactionId, Number(amount), reason || null, userId]
+    [shopId, transactionId, refundAmountSatang, reason || null, userId]
   )).rows[0];
-  await auditLog(c, shopId, userId, userName, txn.bill_id, 'REFUND_REQUESTED', reason || null, { refund_id: refund.id, amount: Number(amount), transaction_id: transactionId });
+  await auditLog(c, shopId, userId, userName, txn.bill_id, 'REFUND_REQUESTED', reason || null, { refund_id: refund.id, amount_satang: refundAmountSatang, transaction_id: transactionId });
   return { refund };
 }
 
@@ -430,21 +474,23 @@ async function decideRefund(c, { shopId, userId, userName, refundId, approve, re
   }
 
   const bill = await lockBill(c, shopId, txn.bill_id);
-  const amountDue = billAmountDue(bill);
+  const amountDueSatang = billAmountDue(bill);
+  const refundAmountSatang = Number(refund.refunded_amount_satang);
   const { paidState, allocation } = await writeAllocation(c, {
     shopId, billId: txn.bill_id, transactionId: txn.id, kind: 'REFUND',
-    amount: Number(refund.amount), actorId: userId, amountDue,
+    amountSatang: refundAmountSatang, actorId: userId, amountDueSatang,
   });
 
-  const newRefundTotal = Number(txn.refund_total) + Number(refund.amount);
-  const newTxnStatus = newRefundTotal >= Number(txn.paid_amount) - 0.005 ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+  const newRefundTotalSatang = Number(txn.refund_total_satang) + refundAmountSatang;
+  // STRICT integer satang equality — no epsilon.
+  const newTxnStatus = newRefundTotalSatang === Number(txn.paid_amount_satang) ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
   assertTransition('TRANSACTION', txn.status, newTxnStatus);
-  await c.query(`UPDATE payment_transactions SET status=$1, refund_total=$2 WHERE id=$3`, [newTxnStatus, newRefundTotal, txn.id]);
+  await c.query(`UPDATE payment_transactions SET status=$1, refund_total_satang=$2 WHERE id=$3`, [newTxnStatus, newRefundTotalSatang, txn.id]);
   await c.query(`UPDATE payment_refunds SET status='APPROVED', decided_at=now(), approved_by=$1, allocation_id=$2 WHERE id=$3`,
     [userId, allocation.id, refundId]);
 
   await auditLog(c, shopId, userId, userName, txn.bill_id, 'REFUND_APPROVED', reason || null,
-    { refund_id: refundId, amount: Number(refund.amount), paid_state: paidState, transaction_status: newTxnStatus });
+    { refund_id: refundId, amount_satang: refundAmountSatang, paid_state: paidState, transaction_status: newTxnStatus });
 
   const out = (await c.query('SELECT * FROM payment_refunds WHERE id=$1', [refundId])).rows[0];
   return { refund: out, paid_state: paidState };
@@ -459,10 +505,10 @@ async function reverseTransaction(c, { shopId, userId, userName, transactionId, 
   assertTransition('TRANSACTION', txn.status, 'REVERSED');
 
   const bill = await lockBill(c, shopId, txn.bill_id);
-  const amountDue = billAmountDue(bill);
+  const amountDueSatang = billAmountDue(bill);
   const { paidState } = await writeAllocation(c, {
     shopId, billId: txn.bill_id, transactionId: txn.id, kind: 'REFUND',
-    amount: Number(txn.paid_amount) - Number(txn.refund_total), actorId: userId, amountDue,
+    amountSatang: Number(txn.paid_amount_satang) - Number(txn.refund_total_satang), actorId: userId, amountDueSatang,
   });
   await c.query(`UPDATE payment_transactions SET status='REVERSED' WHERE id=$1`, [transactionId]);
   await auditLog(c, shopId, userId, userName, txn.bill_id, 'PAYMENT_CANCELLED', reason || 'reversal', { transaction_id: transactionId, paid_state: paidState });
@@ -471,13 +517,23 @@ async function reverseTransaction(c, { shopId, userId, userName, transactionId, 
 
 // ── RECONCILIATION (data-model only — manual flag/resolve) ──
 
-async function flagReconciliation(c, { shopId, userId, userName, transactionId, status, notes }) {
+async function flagReconciliation(c, { shopId, userId, userName, transactionId, status, notes, expectedAmount, providerAmount, settlementAmount }) {
   const txn = (await c.query('SELECT * FROM payment_transactions WHERE id=$1 AND shop_id=$2', [transactionId, shopId])).rows[0];
   if (!txn) err('TRANSACTION_NOT_FOUND', 404);
+  const toSatangOrNull = (v) => (v == null ? null : bahtToSatang(v));
+  let expectedSatang, providerSatang, settlementSatang;
+  try {
+    expectedSatang = expectedAmount != null ? toSatangOrNull(expectedAmount) : Number(txn.expected_amount_satang);
+    providerSatang = toSatangOrNull(providerAmount);
+    settlementSatang = toSatangOrNull(settlementAmount);
+  } catch (e) {
+    err('RECONCILIATION_AMOUNT_INVALID', 400, e.message, { moneyCode: e.code });
+  }
   const rec = (await c.query(
-    `INSERT INTO payment_reconciliation_records (shop_id, payment_transaction_id, status, notes)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [shopId, transactionId, status, notes || null]
+    `INSERT INTO payment_reconciliation_records
+       (shop_id, payment_transaction_id, status, notes, expected_amount_satang, provider_amount_satang, settlement_amount_satang)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [shopId, transactionId, status, notes || null, expectedSatang, providerSatang, settlementSatang]
   )).rows[0];
   await c.query(`UPDATE payment_transactions SET reconciliation_status=$1 WHERE id=$2`, [status, transactionId]);
   await auditLog(c, shopId, userId, userName, txn.bill_id, 'RECONCILIATION_FLAGGED', notes || null, { record_id: rec.id, status });
@@ -513,7 +569,7 @@ async function runOnlineOrderMockFlow(c, { shopId, userId, userName, amountDue, 
   const outcome = simulate === 'fail' ? 'FAILED' : 'SUCCESS';
   const delivery = adapter.buildWebhookDelivery({
     eventId: 'evt_' + bill.id, providerTxnId: intent.provider_ref,
-    status: outcome, amount: Number(intent.amount_due), currency: intent.currency,
+    status: outcome, amount: Number(intent.amount_due_satang), currency: intent.currency,
   });
   const result = await processProviderWebhook(c, { shopId, provider: 'MOCK', rawBody: delivery.rawBody, signature: delivery.signature });
 

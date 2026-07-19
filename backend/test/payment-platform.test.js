@@ -136,7 +136,7 @@ test('T3 cash confirm: txn CONFIRMED + allocation ACTIVE + bill PAID + receipt',
   assert.strictEqual(alloc.length, 1);
   assert.strictEqual(alloc[0].kind, 'PAYMENT');
   assert.strictEqual(alloc[0].status, 'ACTIVE');
-  assert.strictEqual(Number(alloc[0].amount), 120);
+  assert.strictEqual(Number(alloc[0].allocated_amount_satang), 12000);
   assert.ok(c.body.receipt && c.body.receipt.status === 'ISSUED', 'receipt issued referencing the txn');
   assert.strictEqual(c.body.receipt.payment_transaction_id, c.body.transaction.id);
   const b = await billRow(billId);
@@ -177,12 +177,12 @@ test('T6 change computed server-side: received - due', async () => {
   const c = await req('POST', '/api/payments/intents/' + intent.id + '/cash-confirm',
     { amount_received: 100 }, ownerA.token, ownerA.shopId);
   assert.strictEqual(c.status, 201, JSON.stringify(c.body));
-  assert.strictEqual(Number(c.body.change_amount), 15);
-  assert.strictEqual(Number(c.body.transaction.amount_received), 100);
-  assert.strictEqual(Number(c.body.transaction.change_amount), 15);
+  assert.strictEqual(Number(c.body.change_amount_satang), 1500);
+  assert.strictEqual(Number(c.body.transaction.amount_received_satang), 10000);
+  assert.strictEqual(Number(c.body.transaction.change_amount_satang), 1500);
   // Allocation carries the DUE amount, not the received amount.
-  const alloc = (await query('SELECT amount FROM payment_allocations WHERE bill_id=$1', [billId])).rows[0];
-  assert.strictEqual(Number(alloc.amount), 85);
+  const alloc = (await query('SELECT allocated_amount_satang FROM payment_allocations WHERE bill_id=$1', [billId])).rows[0];
+  assert.strictEqual(Number(alloc.allocated_amount_satang), 8500);
 });
 
 // ─── 7-9: static QR ──────────────────────────────────────────────────────────
@@ -239,10 +239,13 @@ test('T9 static QR confirm permission-gated: staff without payment_static_qr_con
 
 // ─── 10-13: mock dynamic QR + provider events ────────────────────────────────
 
+// NOTE: `amount` here (and everywhere this helper is called with an explicit amount) is SATANG,
+// not baht — the mock provider/webhook layer is satang-native (mirrors real gateways like
+// Omise/Stripe, which quote amounts in minor units). Defaults to the intent's own satang due.
 async function webhook(owner, intent, { eventId, status, amount, currency }) {
   const delivery = adapter.buildWebhookDelivery({
     eventId, providerTxnId: intent.provider_ref, status,
-    amount: amount != null ? amount : Number(intent.amount_due),
+    amount: amount != null ? amount : Number(intent.amount_due_satang),
     currency: currency || intent.currency,
   });
   return req('POST', '/api/payments/webhooks/mock',
@@ -267,7 +270,7 @@ test('T10 mock dynamic QR success: verified webhook confirms, provider_verified=
 test('T10b invalid webhook signature rejected, nothing recorded', async () => {
   const { billId } = await confirmedBill(ownerA, 40);
   const intent = await makeIntent(ownerA, billId, 'DYNAMIC_QR');
-  const delivery = adapter.buildWebhookDelivery({ eventId: 'evt-forged-' + billId, providerTxnId: intent.provider_ref, status: 'SUCCESS', amount: 40 });
+  const delivery = adapter.buildWebhookDelivery({ eventId: 'evt-forged-' + billId, providerTxnId: intent.provider_ref, status: 'SUCCESS', amount: 4000 });
   const w = await req('POST', '/api/payments/webhooks/mock',
     { raw_body: delivery.rawBody, signature: 'deadbeef'.repeat(8) }, ownerA.token, ownerA.shopId);
   assert.strictEqual(w.status, 401, JSON.stringify(w.body));
@@ -344,7 +347,7 @@ test('T14 intent creation idempotent per (shop, provider, idempotency_key)', asy
 test('T16 amount mismatch -> VERIFICATION_PENDING + PAYMENT_CONFIRMATION_REJECTED audit, never CONFIRMED', async () => {
   const { billId } = await confirmedBill(ownerA, 100);
   const intent = await makeIntent(ownerA, billId, 'DYNAMIC_QR');
-  const w = await webhook(ownerA, intent, { eventId: 'evt-amt-' + billId, status: 'SUCCESS', amount: 99 });
+  const w = await webhook(ownerA, intent, { eventId: 'evt-amt-' + billId, status: 'SUCCESS', amount: 9900 });
   assert.strictEqual(w.status, 200, JSON.stringify(w.body));
   assert.strictEqual(w.body.outcome, 'VERIFICATION_PENDING');
   const i = (await query('SELECT status FROM payment_intents WHERE id=$1', [intent.id])).rows[0];
@@ -533,7 +536,7 @@ test('C2 mixed methods cash + QR on one bill -> PAID', async () => {
   const cc = await req('POST', '/api/payments/intents/' + cash.id + '/cash-confirm', { amount_received: 120 }, ownerA.token, ownerA.shopId);
   assert.strictEqual(cc.body.paid_state, 'PARTIALLY_PAID');
   const qr = await makeIntent(ownerA, billId, 'DYNAMIC_QR', { amount: 80 });
-  const w = await webhook(ownerA, qr, { eventId: 'evt-mix-' + billId, status: 'SUCCESS', amount: 80 });
+  const w = await webhook(ownerA, qr, { eventId: 'evt-mix-' + billId, status: 'SUCCESS', amount: 8000 });
   assert.strictEqual(w.body.outcome, 'CONFIRMED', JSON.stringify(w.body));
   const b = await billRow(billId);
   assert.strictEqual(b.paid_state, 'PAID');
@@ -563,17 +566,46 @@ test('C3 over-allocation rejected: second confirm that would exceed due fails at
   assert.strictEqual(na, 1);
 });
 
+test('C3b TRUE CONCURRENT over-allocation: two simultaneous cash-confirms that together exceed due — exactly one succeeds', async () => {
+  const { billId } = await confirmedBill(ownerA, 100);
+  // Two full-amount (100) CASH intents on the same 100-due bill, fired in GENUINE parallel
+  // (Promise.all, not sequential awaits) — each request opens its own DB transaction and locks
+  // the SAME bill row FOR UPDATE (service.js#lockBill inside allocations.js#writeAllocation's
+  // caller), so Postgres serializes the two transactions on that row lock: whichever commits
+  // first sees net=0 and succeeds; the other re-reads net=100 (already fully paid) once the
+  // lock is released and is rejected by the OVER_ALLOCATION check — never both succeeding.
+  const i1 = await makeIntent(ownerA, billId, 'CASH', { amount: 100, idempotency_key: 'conc1-' + billId });
+  const i2 = await makeIntent(ownerA, billId, 'CASH', { amount: 100, idempotency_key: 'conc2-' + billId });
+  const [r1, r2] = await Promise.all([
+    req('POST', '/api/payments/intents/' + i1.id + '/cash-confirm', { amount_received: 100 }, ownerA.token, ownerA.shopId),
+    req('POST', '/api/payments/intents/' + i2.id + '/cash-confirm', { amount_received: 100 }, ownerA.token, ownerA.shopId),
+  ]);
+  const statuses = [r1.status, r2.status].sort();
+  assert.deepStrictEqual(statuses, [201, 409], 'exactly one confirm succeeds (201), the other is rejected (409): ' + JSON.stringify([r1.status, r2.status]));
+  const rejected = r1.status === 409 ? r1 : r2;
+  assert.strictEqual(rejected.body.code, 'OVER_ALLOCATION', JSON.stringify(rejected.body));
+  const b = await billRow(billId);
+  assert.strictEqual(b.paid_state, 'PAID', 'bill settled exactly once, at exactly amount_due_satang');
+  const confirmedCount = (await query(
+    `SELECT count(*)::int c FROM payment_transactions WHERE bill_id=$1 AND status='CONFIRMED'`, [billId])).rows[0].c;
+  assert.strictEqual(confirmedCount, 1, 'exactly one CONFIRMED transaction survives the race');
+  const net = (await query(
+    `SELECT COALESCE(SUM(allocated_amount_satang) FILTER (WHERE kind='PAYMENT' AND status='ACTIVE'),0) AS net
+       FROM payment_allocations WHERE bill_id=$1`, [billId])).rows[0].net;
+  assert.strictEqual(Number(net), 10000, 'net paid === amount_due_satang exactly, never more');
+});
+
 test('C4 duplicate provider transaction rejected: unique (provider, provider_txn_id)', async () => {
   const { billId } = await confirmedBill(ownerA, 30);
   const txnRef = 'mock_txn_dup_' + billId.slice(0, 8);
   await query(
-    `INSERT INTO payment_transactions (shop_id, bill_id, method, provider, expected_amount, paid_amount, currency, status, provider_txn_id, confirmed_at, confirmed_by)
-     VALUES ($1,$2,'DYNAMIC_QR','MOCK',30,30,'THB','CONFIRMED',$3,now(),'webhook:MOCK')`,
+    `INSERT INTO payment_transactions (shop_id, bill_id, method, provider, expected_amount_satang, paid_amount_satang, currency, status, provider_txn_id, confirmed_at, confirmed_by)
+     VALUES ($1,$2,'DYNAMIC_QR','MOCK',3000,3000,'THB','CONFIRMED',$3,now(),'webhook:MOCK')`,
     [ownerA.shopId, billId, txnRef]);
   await assert.rejects(
     query(
-      `INSERT INTO payment_transactions (shop_id, bill_id, method, provider, expected_amount, paid_amount, currency, status, provider_txn_id, confirmed_at, confirmed_by)
-       VALUES ($1,$2,'DYNAMIC_QR','MOCK',30,30,'THB','CONFIRMED',$3,now(),'webhook:MOCK')`,
+      `INSERT INTO payment_transactions (shop_id, bill_id, method, provider, expected_amount_satang, paid_amount_satang, currency, status, provider_txn_id, confirmed_at, confirmed_by)
+       VALUES ($1,$2,'DYNAMIC_QR','MOCK',3000,3000,'THB','CONFIRMED',$3,now(),'webhook:MOCK')`,
       [ownerA.shopId, billId, txnRef]),
     (e) => e.code === '23505' && /payment_transactions_provider_txn_idx/.test(e.message || e.constraint || ''),
     'same provider txn id must violate the unique index');
@@ -610,13 +642,69 @@ test('C6 approved refund reduces net paid: PAID -> PARTIALLY_PAID', async () => 
   assert.strictEqual(ap.body.paid_state, 'PARTIALLY_PAID');
   const b = await billRow(billId);
   assert.strictEqual(b.paid_state, 'PARTIALLY_PAID');
-  const t = (await query('SELECT status, refund_total FROM payment_transactions WHERE id=$1', [c.body.transaction.id])).rows[0];
+  const t = (await query('SELECT status, refund_total_satang FROM payment_transactions WHERE id=$1', [c.body.transaction.id])).rows[0];
   assert.strictEqual(t.status, 'PARTIALLY_REFUNDED');
-  assert.strictEqual(Number(t.refund_total), 30);
-  // Net = 100 - 30 = 70 from allocations directly.
+  assert.strictEqual(Number(t.refund_total_satang), 3000);
+  // Net = 10000 - 3000 = 7000 satang, from allocations directly.
   const net = (await query(
-    `SELECT COALESCE(SUM(amount) FILTER (WHERE kind='PAYMENT' AND status='ACTIVE'),0)
-          - COALESCE(SUM(amount) FILTER (WHERE kind='REFUND' AND status='ACTIVE'),0) AS net
+    `SELECT COALESCE(SUM(allocated_amount_satang) FILTER (WHERE kind='PAYMENT' AND status='ACTIVE'),0)
+          - COALESCE(SUM(allocated_amount_satang) FILTER (WHERE kind='REFUND' AND status='ACTIVE'),0) AS net
        FROM payment_allocations WHERE bill_id=$1`, [billId])).rows[0].net;
-  assert.strictEqual(Number(net), 70);
+  assert.strictEqual(Number(net), 7000);
+});
+
+test('C7 ONE-SATANG underpayment: net = due - 1 satang -> PARTIALLY_PAID, never PAID', async () => {
+  const { billId } = await confirmedBill(ownerA, 10);  // due = 1000 satang
+  // Deliberately allocate exactly one satang LESS than due (9.99 baht = 999 satang).
+  const intent = await makeIntent(ownerA, billId, 'CASH', { amount: '9.99' });
+  assert.strictEqual(Number(intent.amount_due_satang), 999);
+  const c = await req('POST', '/api/payments/intents/' + intent.id + '/cash-confirm', { amount_received: '9.99' }, ownerA.token, ownerA.shopId);
+  assert.strictEqual(c.status, 201, JSON.stringify(c.body));
+  assert.strictEqual(c.body.paid_state, 'PARTIALLY_PAID', 'exactly 1 satang short of due must NOT read as PAID');
+  const b = await billRow(billId);
+  assert.strictEqual(b.paid_state, 'PARTIALLY_PAID');
+  assert.strictEqual(b.kitchen_release_eligible, false);
+  const net = (await query(
+    `SELECT COALESCE(SUM(allocated_amount_satang) FILTER (WHERE kind='PAYMENT' AND status='ACTIVE'),0) AS net
+       FROM payment_allocations WHERE bill_id=$1`, [billId])).rows[0].net;
+  assert.strictEqual(Number(net), 999);
+  assert.strictEqual(Number(b.amount_due_satang), 1000);
+});
+
+test('C8 ONE-SATANG over-allocation rejected: due + 1 satang fails atomically', async () => {
+  const { billId } = await confirmedBill(ownerA, 10);  // due = 1000 satang
+  // Two intents created while remaining=1000 (both pass the intent-level cap); together they
+  // sum to 1001 satang — one satang over. i1 confirms cleanly (999); i2 (2 satang) must be
+  // rejected by the allocation invariant, not merely by intent-creation-time validation.
+  const i1 = await makeIntent(ownerA, billId, 'CASH', { amount: '9.99', idempotency_key: 'sat1-' + billId });
+  const i2 = await makeIntent(ownerA, billId, 'CASH', { amount: '0.02', idempotency_key: 'sat2-' + billId });
+  const c1 = await req('POST', '/api/payments/intents/' + i1.id + '/cash-confirm', { amount_received: '9.99' }, ownerA.token, ownerA.shopId);
+  assert.strictEqual(c1.status, 201, JSON.stringify(c1.body));
+  assert.strictEqual(c1.body.paid_state, 'PARTIALLY_PAID');
+  const c2 = await req('POST', '/api/payments/intents/' + i2.id + '/cash-confirm', { amount_received: '0.02' }, ownerA.token, ownerA.shopId);
+  assert.strictEqual(c2.status, 409, JSON.stringify(c2.body));
+  assert.strictEqual(c2.body.code, 'OVER_ALLOCATION');
+  assert.strictEqual(c2.body.attemptedSatang, 2);
+  assert.strictEqual(c2.body.amountDueSatang, 1000);
+  assert.strictEqual(c2.body.alreadyPaidSatang, 999);
+  const b = await billRow(billId);
+  assert.strictEqual(b.paid_state, 'PARTIALLY_PAID', 'the rejected 1-satang-over confirm never landed');
+});
+
+test('C9 full refund of the whole paid amount: transaction -> REFUNDED, bill -> UNPAID', async () => {
+  const { billId } = await confirmedBill(ownerA, 50);   // due = 5000 satang
+  const intent = await makeIntent(ownerA, billId, 'CASH');
+  const c = await req('POST', '/api/payments/intents/' + intent.id + '/cash-confirm', { amount_received: 50 }, ownerA.token, ownerA.shopId);
+  assert.strictEqual(c.body.paid_state, 'PAID');
+  const rq = await req('POST', '/api/payments/refunds', { transaction_id: c.body.transaction.id, amount: 50, reason: 'full refund' }, ownerA.token, ownerA.shopId);
+  assert.strictEqual(rq.status, 201, JSON.stringify(rq.body));
+  const ap = await req('POST', '/api/payments/refunds/' + rq.body.refund.id + '/approve', {}, ownerA.token, ownerA.shopId);
+  assert.strictEqual(ap.status, 200, JSON.stringify(ap.body));
+  assert.strictEqual(ap.body.paid_state, 'UNPAID', 'a full refund brings net paid back to exactly 0');
+  const t = (await query('SELECT status, refund_total_satang, paid_amount_satang FROM payment_transactions WHERE id=$1', [c.body.transaction.id])).rows[0];
+  assert.strictEqual(t.status, 'REFUNDED');
+  assert.strictEqual(Number(t.refund_total_satang), Number(t.paid_amount_satang), 'refund_total_satang === paid_amount_satang exactly on a full refund');
+  const b = await billRow(billId);
+  assert.strictEqual(b.paid_state, 'UNPAID');
+  assert.strictEqual(b.kitchen_release_eligible, false);
 });
