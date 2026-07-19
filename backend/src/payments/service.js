@@ -307,7 +307,7 @@ async function processProviderWebhook(c, { shopId, provider, rawBody, signature 
   }
   const eventRow = eventInsert.rows[0];
 
-  const intent = (await c.query(
+  let intent = (await c.query(
     `SELECT * FROM payment_intents WHERE shop_id=$1 AND provider=$2 AND provider_ref=$3 FOR UPDATE`,
     [shopId, provider, verified.providerTxnId]
   )).rows[0];
@@ -318,6 +318,22 @@ async function processProviderWebhook(c, { shopId, provider, rawBody, signature 
 
   const bill = await lockBill(c, shopId, intent.bill_id);
   const amountDue = billAmountDue(bill);
+
+  // Lazy expiry: an intent past its expires_at can never be confirmed by any path, including a
+  // late-arriving success webhook (the event itself stays recorded + deduped above).
+  intent = await lazyExpireIfDue(c, shopId, null, intent);
+  if (intent.status === 'EXPIRED') {
+    return { duplicate: false, matched: true, outcome: 'EXPIRED' };
+  }
+
+  if (verified.status === 'EXPIRED') {
+    if (!['FAILED', 'EXPIRED', 'CANCELLED', 'CONFIRMED'].includes(intent.status)) {
+      assertTransition('INTENT', intent.status, 'EXPIRED');
+      await c.query(`UPDATE payment_intents SET status='EXPIRED', updated_at=now() WHERE id=$1`, [intent.id]);
+      await auditLog(c, shopId, null, null, intent.bill_id, 'PAYMENT_EXPIRED', null, { intent_id: intent.id, source: 'provider' });
+    }
+    return { duplicate: false, matched: true, outcome: 'EXPIRED' };
+  }
 
   if (verified.status !== 'SUCCESS') {
     if (intent.status !== 'FAILED' && intent.status !== 'EXPIRED' && intent.status !== 'CANCELLED') {
