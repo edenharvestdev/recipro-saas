@@ -91,6 +91,20 @@ const GROUPS = [
     { key: 'system_admin_view', label: 'ดูระบบผู้ดูแล', sensitive: true },
     { key: 'system_admin_manage', label: 'จัดการระบบผู้ดูแล', sensitive: true },
   ] },
+  // Payment Platform (feat/billing-payment-state-machine, Phase 7). Additive group — mock-only,
+  // behind PAYMENT_PLATFORM_ENABLED. bill_create_draft/bill_confirm/void_bill (already in the
+  // `bills` group above) are reused as-is for the payment-platform Bill aggregate; these keys
+  // cover the payment-specific actions that have no existing equivalent.
+  { key: 'payments', label: 'การชำระเงิน', perms: [
+    { key: 'billing_view', label: 'ดูข้อมูลการชำระเงิน' },
+    { key: 'payment_cash_confirm', label: 'ยืนยันรับเงินสด' },
+    { key: 'payment_static_qr_confirm', label: 'ยืนยัน QR แบบ Static ด้วยตนเอง' },
+    { key: 'payment_review', label: 'ตรวจสอบรายการชำระเงิน' },
+    { key: 'payment_refund_request', label: 'ขอคืนเงิน' },
+    { key: 'payment_refund_approve', label: 'อนุมัติคืนเงิน', sensitive: true },
+    { key: 'reconciliation_view', label: 'ดูการกระทบยอดชำระเงิน' },
+    { key: 'reconciliation_resolve', label: 'ปิดรายการกระทบยอด', sensitive: true },
+  ] },
 ];
 
 const ALL_KEYS = GROUPS.flatMap((g) => g.perms.map((p) => p.key));
@@ -156,6 +170,9 @@ const PRESETS = {
     recipe_view: true, recipe_view_instructions: true,
     production_view: true, production_view_instructions: true,
     stock_view: true, printer_view: true, printer_test: true, report_view: true,
+    // Payment Platform — cashier scope: cash + static-QR confirm on their own branch (shop_id
+    // scoping already isolates branches), no refund approve, no reconciliation resolve.
+    billing_view: true, payment_cash_confirm: true, payment_static_qr_confirm: true,
   },
   production_staff: {
     production_view: true, production_view_instructions: true, production_execute: true, production_record_actual: true,
@@ -169,8 +186,12 @@ const PRESETS = {
   custom: {},
 };
 // Manager preset: broad operational access, but NO owner creation / role changes / permission
-// delegation / system administration (no privilege-escalation surface).
-const MANAGER_EXCLUDE = new Set(['team_edit_role', 'team_edit_permissions', 'team_invite', 'team_remove', 'system_admin_view', 'system_admin_manage']);
+// delegation / system administration (no privilege-escalation surface). Payment Platform:
+// Manager gets review/refund-request/manual-verify scope but NOT refund_approve or
+// reconciliation_resolve — those stay Owner/superadmin-only (matches void_bill/correct_bill's
+// existing owner-only-by-convention sensitivity tier, enforced here explicitly).
+const MANAGER_EXCLUDE = new Set(['team_edit_role', 'team_edit_permissions', 'team_invite', 'team_remove', 'system_admin_view', 'system_admin_manage',
+  'payment_refund_approve', 'reconciliation_resolve']);
 PRESETS.manager = ALL_KEYS.reduce((m, k) => { if (!MANAGER_EXCLUDE.has(k)) m[k] = true; return m; }, {});
 
 const PRESET_LABELS = { manager: 'ผู้จัดการ', front_store: 'พนักงานหน้าร้าน', production_staff: 'ฝ่ายผลิต', read_only: 'ดูอย่างเดียว', custom: 'กำหนดเอง' };
