@@ -162,6 +162,9 @@ async function cancelIntent(c, { shopId, userId, userName, intentId, reason }) {
   let intent = await lockIntent(c, shopId, intentId);
   intent = await lazyExpireIfDue(c, shopId, userId, intent);
   if (intent.status === 'CANCELLED') return { intent, already: true };
+  // Returning (not throwing) on lazy expiry lets the transaction COMMIT the EXPIRED update +
+  // its audit row — a thrown error would roll the expiry back and the intent would zombie on.
+  if (intent.status === 'EXPIRED') return { intent, expired: true };
   assertTransition('INTENT', intent.status, 'CANCELLED');
   await c.query(`UPDATE payment_intents SET status='CANCELLED', cancelled_at=now(), cancel_reason=$1, updated_at=now() WHERE id=$2`,
     [reason || null, intentId]);
@@ -186,8 +189,9 @@ async function cashConfirm(c, { shopId, userId, userName, intentId, amountReceiv
     if (existingTxn) return { transaction: existingTxn, already: true };
   }
 
-  if (intent.status === 'AWAITING_PAYMENT') assertTransition('INTENT', 'AWAITING_PAYMENT', 'CONFIRMED');
-  else assertTransition('INTENT', intent.status, 'CONFIRMED');
+  // Lazy expiry must COMMIT even though the confirm is refused — return, don't throw.
+  if (intent.status === 'EXPIRED') return { expired: true, intent };
+  assertTransition('INTENT', intent.status, 'CONFIRMED');
 
   const bill = await lockBill(c, shopId, intent.bill_id);
   const amountDue = billAmountDue(bill);
@@ -244,6 +248,8 @@ async function staticQrConfirm(c, { shopId, userId, userName, intentId, slipRef 
   let intent = await lockIntent(c, shopId, intentId);
   intent = await lazyExpireIfDue(c, shopId, userId, intent);
   if (intent.method !== 'STATIC_QR') err('INTENT_METHOD_MISMATCH', 400);
+  // Lazy expiry must COMMIT even though the confirm is refused — return, don't throw.
+  if (intent.status === 'EXPIRED') return { expired: true, intent };
 
   // Move display -> awaiting-manual-confirmation -> confirmed if needed (auto-advance the
   // intermediate step for a cashier who confirms directly from AWAITING_PAYMENT/QR_DISPLAYED).

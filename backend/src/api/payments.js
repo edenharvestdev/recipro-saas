@@ -23,7 +23,7 @@ function handleError(e, res) {
 
 // ── BILL (payment-platform Bill aggregate) ──
 
-router.post('/payments/bills', requirePerm('bill_create_draft'), async (req, res) => {
+router.post('/bills', requirePerm('bill_create_draft'), async (req, res) => {
   try {
     const b = req.body || {};
     const out = await tx((c) => svc.createBill(c, {
@@ -34,7 +34,7 @@ router.post('/payments/bills', requirePerm('bill_create_draft'), async (req, res
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/bills/:id/confirm', requirePerm('bill_confirm'), async (req, res) => {
+router.post('/bills/:id/confirm', requirePerm('bill_confirm'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.confirmBill(c, { shopId: req.shopId, userId: req.userId, userName: req.userName, billId: req.params.id }));
@@ -42,7 +42,7 @@ router.post('/payments/bills/:id/confirm', requirePerm('bill_confirm'), async (r
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/bills/:id/void', requirePerm('void_bill'), async (req, res) => {
+router.post('/bills/:id/void', requirePerm('void_bill'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const b = req.body || {};
@@ -54,7 +54,7 @@ router.post('/payments/bills/:id/void', requirePerm('void_bill'), async (req, re
   } catch (e) { handleError(e, res); }
 });
 
-router.get('/payments/bills/:id', requirePerm('billing_view'), async (req, res) => {
+router.get('/bills/:id', requirePerm('billing_view'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const bill = (await query('SELECT * FROM bills WHERE id=$1 AND shop_id=$2', [req.params.id, req.shopId])).rows[0];
@@ -69,7 +69,7 @@ router.get('/payments/bills/:id', requirePerm('billing_view'), async (req, res) 
 
 // ── PAYMENT INTENTS ──
 
-router.post('/payments/intents', requirePerm('bill_confirm'), async (req, res) => {
+router.post('/intents', requirePerm('bill_confirm'), async (req, res) => {
   const b = req.body || {};
   if (!isUUID(b.bill_id)) return res.status(400).json({ error: 'bill_id required' });
   if (!['CASH', 'STATIC_QR', 'DYNAMIC_QR'].includes(b.method)) return res.status(400).json({ error: 'invalid method' });
@@ -82,19 +82,20 @@ router.post('/payments/intents', requirePerm('bill_confirm'), async (req, res) =
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/intents/:id/cancel', requirePerm('bill_confirm'), async (req, res) => {
+router.post('/intents/:id/cancel', requirePerm('bill_confirm'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.cancelIntent(c, {
       shopId: req.shopId, userId: req.userId, userName: req.userName, intentId: req.params.id, reason: (req.body || {}).reason,
     }));
+    if (out.expired) return res.status(409).json({ error: 'INTENT_EXPIRED', code: 'INTENT_EXPIRED', intent: out.intent });
     res.json(out);
   } catch (e) { handleError(e, res); }
 });
 
 // ── CASH ──
 
-router.post('/payments/intents/:id/cash-confirm', requirePerm('payment_cash_confirm'), async (req, res) => {
+router.post('/intents/:id/cash-confirm', requirePerm('payment_cash_confirm'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   const b = req.body || {};
   try {
@@ -102,13 +103,14 @@ router.post('/payments/intents/:id/cash-confirm', requirePerm('payment_cash_conf
       shopId: req.shopId, userId: req.userId, userName: req.userName, intentId: req.params.id,
       amountReceived: b.amount_received, terminalId: b.terminal_id, idempotencyKey: b.idempotency_key,
     }));
+    if (out.expired) return res.status(409).json({ error: 'INTENT_EXPIRED', code: 'INTENT_EXPIRED', intent: out.intent });
     res.status(out.already ? 200 : 201).json(out);
   } catch (e) { handleError(e, res); }
 });
 
 // ── STATIC QR ──
 
-router.post('/payments/intents/:id/static-qr/display', requirePerm('bill_confirm'), async (req, res) => {
+router.post('/intents/:id/static-qr/display', requirePerm('bill_confirm'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.staticQrDisplay(c, { shopId: req.shopId, userId: req.userId, intentId: req.params.id }));
@@ -116,13 +118,14 @@ router.post('/payments/intents/:id/static-qr/display', requirePerm('bill_confirm
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/intents/:id/static-qr/confirm', requirePerm('payment_static_qr_confirm'), async (req, res) => {
+router.post('/intents/:id/static-qr/confirm', requirePerm('payment_static_qr_confirm'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   const b = req.body || {};
   try {
     const out = await tx((c) => svc.staticQrConfirm(c, {
       shopId: req.shopId, userId: req.userId, userName: req.userName, intentId: req.params.id, slipRef: b.slip_ref,
     }));
+    if (out.expired) return res.status(409).json({ error: 'INTENT_EXPIRED', code: 'INTENT_EXPIRED', intent: out.intent });
     res.status(out.already ? 200 : 201).json(out);
   } catch (e) { handleError(e, res); }
 });
@@ -131,7 +134,7 @@ router.post('/payments/intents/:id/static-qr/confirm', requirePerm('payment_stat
 // customer-facing screen has somewhere to send the signal; the response makes explicit that
 // nothing was confirmed. This is the concrete anti-`confirmQrReceived()` contract (no permission
 // required to hit it, and no permission check would matter — it is structurally a no-op).
-router.post('/payments/intents/:id/customer-paid-signal', async (req, res) => {
+router.post('/intents/:id/customer-paid-signal', async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   res.json({ acknowledged: true, note: 'customer signal recorded but does NOT confirm payment — a cashier/manager must manually confirm', state_changed: false });
 });
@@ -145,7 +148,7 @@ router.post('/payments/intents/:id/customer-paid-signal', async (req, res) => {
 // stream is already consumed, so re-parsing "raw bytes" here would not byte-match what the mock
 // adapter signed. Wrapping the exact signed string as a JSON field sidesteps that entirely
 // (the mock adapter's `buildWebhookDelivery` and this handler agree on the same string).
-router.post('/payments/webhooks/mock', async (req, res) => {
+router.post('/webhooks/mock', async (req, res) => {
   const b = req.body || {};
   // Tenant safety: ignore any client-supplied shop_id — always scope to the authenticated
   // caller's own shop (same doctrine as coupons.js/printers.js), even for this mock callback.
@@ -159,7 +162,7 @@ router.post('/payments/webhooks/mock', async (req, res) => {
 
 // ── REFUNDS (model only) ──
 
-router.post('/payments/refunds', requirePerm('payment_refund_request'), async (req, res) => {
+router.post('/refunds', requirePerm('payment_refund_request'), async (req, res) => {
   const b = req.body || {};
   if (!isUUID(b.transaction_id)) return res.status(400).json({ error: 'transaction_id required' });
   try {
@@ -170,7 +173,7 @@ router.post('/payments/refunds', requirePerm('payment_refund_request'), async (r
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/refunds/:id/approve', requirePerm('payment_refund_approve'), async (req, res) => {
+router.post('/refunds/:id/approve', requirePerm('payment_refund_approve'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.decideRefund(c, {
@@ -180,7 +183,7 @@ router.post('/payments/refunds/:id/approve', requirePerm('payment_refund_approve
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/refunds/:id/reject', requirePerm('payment_refund_approve'), async (req, res) => {
+router.post('/refunds/:id/reject', requirePerm('payment_refund_approve'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.decideRefund(c, {
@@ -190,7 +193,7 @@ router.post('/payments/refunds/:id/reject', requirePerm('payment_refund_approve'
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/transactions/:id/reverse', requirePerm('payment_refund_approve'), async (req, res) => {
+router.post('/transactions/:id/reverse', requirePerm('payment_refund_approve'), async (req, res) => {
   if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.reverseTransaction(c, {
@@ -202,7 +205,7 @@ router.post('/payments/transactions/:id/reverse', requirePerm('payment_refund_ap
 
 // ── RECONCILIATION (data-contract-only per F.13; manual flag/resolve) ──
 
-router.post('/payments/reconciliation/:transactionId/flag', requirePerm('reconciliation_view'), async (req, res) => {
+router.post('/reconciliation/:transactionId/flag', requirePerm('reconciliation_view'), async (req, res) => {
   if (!isUUID(req.params.transactionId)) return res.status(400).json({ error: 'invalid id' });
   const b = req.body || {};
   try {
@@ -214,7 +217,7 @@ router.post('/payments/reconciliation/:transactionId/flag', requirePerm('reconci
   } catch (e) { handleError(e, res); }
 });
 
-router.post('/payments/reconciliation/:recordId/resolve', requirePerm('reconciliation_resolve'), async (req, res) => {
+router.post('/reconciliation/:recordId/resolve', requirePerm('reconciliation_resolve'), async (req, res) => {
   if (!isUUID(req.params.recordId)) return res.status(400).json({ error: 'invalid id' });
   try {
     const out = await tx((c) => svc.resolveReconciliation(c, {
@@ -226,7 +229,7 @@ router.post('/payments/reconciliation/:recordId/resolve', requirePerm('reconcili
 
 // ── ONLINE ORDER MOCK FLOW (test/demo harness — touches nothing real) ──
 
-router.post('/payments/online-orders/mock-submit', requirePerm('bill_create_draft'), async (req, res) => {
+router.post('/online-orders/mock-submit', requirePerm('bill_create_draft'), async (req, res) => {
   const b = req.body || {};
   try {
     const out = await tx((c) => svc.runOnlineOrderMockFlow(c, {
@@ -239,7 +242,7 @@ router.post('/payments/online-orders/mock-submit', requirePerm('bill_create_draf
 
 // ── DASHBOARD READ API (permission-gated; NOT the dashboard UI — that is a separate branch) ──
 
-router.get('/payments/dashboard', requirePerm('billing_view'), async (req, res) => {
+router.get('/dashboard', requirePerm('billing_view'), async (req, res) => {
   try {
     const f = req.query || {};
     const clauses = ['b.shop_id = $1'];
