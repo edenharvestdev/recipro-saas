@@ -8,7 +8,7 @@
 // confirmed only via the mock provider's signed webhook (backend/src/payments/service.js).
 const express = require('express');
 const { tx, query } = require('../db');
-const { requirePerm } = require('../tenant');
+const { requirePerm, requireAnyPerm } = require('../tenant');
 const svc = require('../payments/service');
 const router = express.Router();
 
@@ -240,9 +240,14 @@ router.post('/online-orders/mock-submit', requirePerm('bill_create_draft'), asyn
   } catch (e) { handleError(e, res); }
 });
 
-// ── DASHBOARD READ API (permission-gated; NOT the dashboard UI — that is a separate branch) ──
+// ── DASHBOARD READ API (permission-gated; NOT the dashboard UI — that lives in frontend/index.html,
+//    feat/payment-dashboard-foundation). Reachable by billing_view OR payment_review (the founder's
+//    dashboard column/access spec names both roles) — requireAnyPerm, not the single-key requirePerm
+//    used everywhere else in this file. ──
 
-router.get('/dashboard', requirePerm('billing_view'), async (req, res) => {
+const DASHBOARD_PERMS = ['billing_view', 'payment_review'];
+
+router.get('/dashboard', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
   try {
     const f = req.query || {};
     const clauses = ['b.shop_id = $1'];
@@ -251,13 +256,23 @@ router.get('/dashboard', requirePerm('billing_view'), async (req, res) => {
     if (f.status) { n++; clauses.push(`t.status = $${n}`); params.push(f.status); }
     if (f.method) { n++; clauses.push(`t.method = $${n}`); params.push(f.method); }
     if (f.bill_id && isUUID(f.bill_id)) { n++; clauses.push(`b.id = $${n}`); params.push(f.bill_id); }
-    if (f.order_id && isUUID(f.order_id)) { n++; clauses.push(`b.order_id = $${n}`); params.push(f.order_id); }
+    // bill_no / order_no: human-typed search text (the UI has no reason to know a bill's UUID),
+    // partial case-insensitive match. order_no resolves through the orders table (see the join
+    // below) via whichever of intent/transaction actually recorded an order_id.
+    if (f.bill_no) { n++; clauses.push(`b.number ILIKE $${n}`); params.push('%' + f.bill_no + '%'); }
+    if (f.order_no) { n++; clauses.push(`o.order_no ILIKE $${n}`); params.push('%' + f.order_no + '%'); }
+    // order_id: kept as an exact-UUID filter for API/internal callers. NOTE (fix): the original
+    // draft of this filter referenced a non-existent `bills.order_id` column — bills never gained
+    // one (see schema-payment-platform.sql header); the actual order linkage lives on
+    // payment_intents.order_id / payment_transactions.order_id. Filtering on `b.order_id` would
+    // have thrown a SQL error the moment anyone used it; it was simply never exercised by a test.
+    if (f.order_id && isUUID(f.order_id)) { n++; clauses.push(`COALESCE(t.order_id, i.order_id) = $${n}`); params.push(f.order_id); }
     if (f.date_from) { n++; clauses.push(`t.created_at >= $${n}`); params.push(f.date_from); }
     if (f.date_to) { n++; clauses.push(`t.created_at <= $${n}`); params.push(f.date_to); }
     if (f.manual_review === '1') { clauses.push(`t.reconciliation_status IS NOT NULL AND t.reconciliation_status <> 'MATCHED'`); }
 
     const rows = (await query(
-      `SELECT b.id AS bill_id, b.number AS bill_no, b.net_sales AS amount, b.paid_state, b.payment_state,
+      `SELECT b.id AS bill_id, b.number AS bill_no, o.order_no, b.net_sales AS amount, b.paid_state, b.payment_state,
               t.id AS transaction_id, t.method, t.provider, t.status AS transaction_status,
               i.status AS intent_status, t.reconciliation_status,
               b.created_at AS bill_created_at, t.confirmed_at, i.expires_at,
@@ -268,11 +283,32 @@ router.get('/dashboard', requirePerm('billing_view'), async (req, res) => {
          FROM bills b
          LEFT JOIN payment_transactions t ON t.bill_id = b.id
          LEFT JOIN payment_intents i ON i.id = t.intent_id
+         LEFT JOIN orders o ON o.id = COALESCE(t.order_id, i.order_id)
         WHERE ${clauses.join(' AND ')}
         ORDER BY b.created_at DESC LIMIT 200`,
       params
     )).rows;
     res.json({ rows });
+  } catch (e) { handleError(e, res); }
+});
+
+// ── AUDIT HISTORY (dashboard row-expand) — same permission gate as /dashboard. Reuses the
+//    EXISTING bill_audit_log table (backend/src/payments/audit.js writes every payment-platform
+//    lifecycle event there, bill-scoped); this is just a permission-gated, tenant-scoped read of
+//    it, distinct from the legacy ungated GET /api/bills/:id (bills.js), which is not appropriate
+//    to reuse here because it carries no billing_view/payment_review gate at all. ──
+router.get('/bills/:id/audit', requireAnyPerm(DASHBOARD_PERMS), async (req, res) => {
+  if (!isUUID(req.params.id)) return res.status(400).json({ error: 'invalid id' });
+  try {
+    const rows = (await query(
+      `SELECT bal.action, COALESCE(bal.actor_name, u.email) AS actor_name, bal.reason, bal.created_at
+         FROM bill_audit_log bal
+         LEFT JOIN users u ON u.id = bal.actor_id
+        WHERE bal.bill_id = $1 AND bal.shop_id = $2
+        ORDER BY bal.created_at`,
+      [req.params.id, req.shopId]
+    )).rows;
+    res.json({ audit: rows });
   } catch (e) { handleError(e, res); }
 });
 

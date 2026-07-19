@@ -68,4 +68,16 @@ function requirePerm(key) {
   };
 }
 
-module.exports = { tenant, requirePerm, STAFF_PERM_DEFAULTS };
+// Payment Dashboard (feat/payment-dashboard-foundation) — a handful of read surfaces are meant to
+// be reachable by EITHER of two independent permission keys (e.g. billing_view OR payment_review),
+// which the single-key requirePerm() above cannot express. Fail-closed OR: any granted key passes,
+// otherwise the same 403 shape as requirePerm().
+function requireAnyPerm(keys) {
+  return (req, res, next) => {
+    if (keys.some((k) => catalog.hasPerm(req.staffPerms, req.role, req.isSuperadmin, k))) return next();
+    if (req.role === 'staff') return res.status(403).json({ error: 'พนักงานไม่มีสิทธิ์ทำรายการนี้ (ให้เจ้าของเปิดสิทธิ์ก่อน)', code: 'PERMISSION_DENIED' });
+    return res.status(403).json({ error: 'ไม่มีสิทธิ์', code: 'PERMISSION_DENIED' });
+  };
+}
+
+module.exports = { tenant, requirePerm, requireAnyPerm, STAFF_PERM_DEFAULTS };
