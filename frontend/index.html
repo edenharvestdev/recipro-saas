@@ -16282,6 +16282,19 @@ function paydashBadge(map, state, family) {
 }
 function paydashAllowed() { return USER_ROLE !== 'staff' || can('billing_view') || can('payment_review'); }
 function paydashTime(x) { return x ? new Date(x).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '—'; }
+// Display-only formatting of an INTEGER satang amount (1 baht = 100 satang) into a Thai-baht
+// string, e.g. 38550 -> "฿385.50". Mirrors backend/src/payments/money.js#satangToDisplay exactly
+// (exact integer division/remainder, never float baht math) — duplicated here rather than
+// imported because this is a plain inline <script>, not a module; this function does ONLY
+// display formatting, never money math (the dashboard is read-only, satang values come straight
+// from the server-authoritative *_satang columns).
+function paydashMoney(satang) {
+  const n = Number(satang);
+  if (!Number.isFinite(n)) return '—';
+  const neg = n < 0; const abs = Math.abs(Math.trunc(n));
+  const baht = Math.floor(abs / 100), rem = abs % 100;
+  return (neg ? '-' : '') + '฿' + baht.toLocaleString('th-TH') + '.' + String(rem).padStart(2, '0');
+}
 
 let PAYDASH_ENABLED = false;
 
@@ -16344,7 +16357,7 @@ function renderPayDashRows(rows) {
     return '<tr style="cursor:pointer;" onclick="togglePayDashAudit(this, \'' + esc(r.bill_id) + '\')">'
       + '<td>' + esc(r.order_no || '—') + '</td>'
       + '<td style="font-weight:700;">' + esc(r.bill_no || '(ยังไม่มีเลข)') + '</td>'
-      + '<td class="r">' + money(r.amount) + ' ' + paydashBadge(PAYDASH_PAID_BADGES, r.paid_state, 'pd-fam-paid') + '</td>'
+      + '<td class="r">' + paydashMoney(r.amount_satang) + ' ' + paydashBadge(PAYDASH_PAID_BADGES, r.paid_state, 'pd-fam-paid') + '</td>'
       + '<td>' + esc(PAYDASH_METHOD_LABELS[r.method] || r.method || '—') + '</td>'
       + '<td>' + paydashBadge(PAYDASH_INTENT_BADGES, r.intent_status, 'pd-fam-intent') + '</td>'
       + '<td>' + paydashBadge(PAYDASH_TXN_BADGES, r.transaction_status, 'pd-fam-txn') + '</td>'

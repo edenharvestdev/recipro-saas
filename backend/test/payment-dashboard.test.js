@@ -89,10 +89,12 @@ async function cashConfirm(owner, intentId, amount) {
   return r.body;
 }
 
+// `amount` is SATANG (the mock provider/webhook layer is satang-native — see
+// backend/src/payments/service.js#processProviderWebhook). Defaults to the intent's own due.
 async function webhook(owner, intent, { eventId, status, amount }) {
   const d = adapter.buildWebhookDelivery({
     eventId, providerTxnId: intent.provider_ref, status,
-    amount: amount != null ? amount : Number(intent.amount_due), currency: 'THB',
+    amount: amount != null ? amount : Number(intent.amount_due_satang), currency: 'THB',
   });
   return req('POST', '/api/payments/webhooks/mock',
     { raw_body: d.rawBody, signature: d.signature }, owner.token, owner.shopId);
@@ -249,6 +251,18 @@ test('D2f manual_review=1 returns only reconciliation-flagged rows, with the fla
   assert.ok(!ids.includes(fx.billDyn.billId), 'clean bill excluded');
 });
 
+test('D2g dashboard amount is authoritative INTEGER satang (bills.amount_due_satang), not a legacy float baht column', async () => {
+  const r = await dash(ownerA, 'bill_id=' + fx.billCash.billId);
+  assert.strictEqual(r.status, 200);
+  const row = r.body.rows.find((x) => x.bill_id === fx.billCash.billId);
+  assert.ok(row, 'fixture bill row present');
+  // node-pg returns BIGINT columns as strings by default (to avoid silent precision loss above
+  // 2^53) — the API passes that straight through as JSON, so the wire value may be a numeric
+  // string; assert on its numeric VALUE, not the JS typeof.
+  assert.ok(Number.isInteger(Number(row.amount_satang)), 'amount_satang must be an integer value, got ' + row.amount_satang);
+  assert.strictEqual(Number(row.amount_satang), 10000, 'billCash was created for 100 baht = 10000 satang');
+});
+
 // ─── D3: tenant isolation ────────────────────────────────────────────────────
 
 test('D3 tenant isolation: shop B never sees shop A rows (and vice versa), incl. audit', async () => {
@@ -370,4 +384,22 @@ test('F6 filters and audit-expand are wired in the page', () => {
   for (const id of ids) assert.ok(INDEX_SRC.includes('id="' + id + '"'), 'missing filter control: ' + id);
   assert.ok(INDEX_SRC.includes('togglePayDashAudit'), 'row expand → audit handler exists');
   assert.ok(INDEX_SRC.includes("'/api/payments/bills/' + billId + '/audit'"), 'audit fetch targets the gated endpoint');
+});
+
+test('F7 amount column renders from the satang field via paydashMoney (not the legacy money() baht formatter)', () => {
+  const jsStart = INDEX_SRC.indexOf('STORE PAYMENT DASHBOARD (feat/payment-dashboard-foundation)');
+  const dashboardJs = INDEX_SRC.slice(jsStart, INDEX_SRC.indexOf('</script>', jsStart));
+  assert.ok(jsStart > 0, 'dashboard JS block found');
+  assert.ok(dashboardJs.includes('paydashMoney(r.amount_satang)'), 'row renderer must format r.amount_satang, not r.amount');
+  assert.ok(!/\bmoney\(r\.amount\)/.test(dashboardJs), 'must not call the legacy baht money() formatter on a satang field, within the dashboard JS block');
+  const fnStart = INDEX_SRC.indexOf('function paydashMoney(');
+  assert.ok(fnStart > 0, 'paydashMoney function exists');
+  const fnSrc = INDEX_SRC.slice(fnStart, INDEX_SRC.indexOf('\n}', fnStart) + 2);
+  // Execute the extracted function in isolation (pure, no DOM/globals needed) to prove it
+  // actually formats satang -> baht correctly, mirroring money.js#satangToDisplay.
+  // eslint-disable-next-line no-new-func
+  const paydashMoney = new Function('satang', fnSrc.slice(fnSrc.indexOf('{') + 1, fnSrc.lastIndexOf('}')));
+  assert.strictEqual(paydashMoney(38550), '฿385.50');
+  assert.strictEqual(paydashMoney(10000), '฿100.00');
+  assert.strictEqual(paydashMoney(1), '฿0.01');
 });

@@ -92,6 +92,8 @@ async function main() {
   };
   const intent = async (billId, method, extra) => must(
     await req('POST', '/api/payments/intents', Object.assign({ bill_id: billId, method }, extra || {}), tok, shopId), 'create intent').intent;
+  // NOTE: `amount` here is SATANG (the mock provider/webhook layer is satang-native — see
+  // backend/src/payments/service.js#processProviderWebhook), not baht.
   const webhook = async (i, { eventId, status, amount }) => {
     const d = adapter.buildWebhookDelivery({ eventId, providerTxnId: i.provider_ref, status, amount, currency: 'THB' });
     return must(await req('POST', '/api/payments/webhooks/mock', { raw_body: d.rawBody, signature: d.signature }, tok, shopId), 'webhook');
@@ -117,12 +119,12 @@ async function main() {
   // 4. DYNAMIC_QR confirmed via signed webhook (provider-verified)
   const b4 = await bill(350);
   const i4 = await intent(b4, 'DYNAMIC_QR');
-  await webhook(i4, { eventId: 'demo-evt-ok-' + b4, status: 'SUCCESS', amount: 350 });
+  await webhook(i4, { eventId: 'demo-evt-ok-' + b4, status: 'SUCCESS', amount: 35000 });
 
   // 5. DYNAMIC_QR failed webhook
   const b5 = await bill(60);
   const i5 = await intent(b5, 'DYNAMIC_QR');
-  await webhook(i5, { eventId: 'demo-evt-fail-' + b5, status: 'FAILED', amount: 60 });
+  await webhook(i5, { eventId: 'demo-evt-fail-' + b5, status: 'FAILED', amount: 6000 });
 
   // 6. expired intent — created with a 1s TTL, lazily expired by the cancel touch
   const b6 = await bill(45);
