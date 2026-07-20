@@ -445,3 +445,23 @@ These three branches sit **after** `main`'s current tip, which already includes 
 - **Per-branch revert boundaries.** Each of the three branches is a clean, self-contained unit: `feat/payment-data-foundation` (schema + money.js only, no service/routes), `feat/billing-payment-state-machine` (adds service.js/state-machine.js/allocations.js/mock-adapter.js/api/payments.js + app.js mount), `feat/payment-dashboard-foundation` (adds only the dashboard read endpoints + frontend page). A revert of C alone removes the dashboard while leaving the core payment engine intact; reverting B+C leaves only the inert schema from A; reverting all three removes the feature entirely. Because every schema change is additive (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`), no revert requires a destructive migration — the new tables/columns can simply be left in place, unused, if a code-only rollback is preferred.
 - **Flag-off is the instant behavioral rollback.** Setting `PAYMENT_PLATFORM_ENABLED` back to unset (or any value other than `'1'`) in the Railway environment takes effect on the next restart and immediately 503s every route again and re-hides the nav item — no code deploy needed at all. This is the fastest rollback path and should be the first lever pulled if anything goes wrong post-enable.
 - **Schema is additive-from-main, so old code is unaffected either way.** Every table this platform introduces is brand new (never existed on any live/production database — schema-payment-platform.sql:72-79); the only touch to a pre-existing live-shaped table (`bills`) is nullable/defaulted additive columns plus two widened (never narrowed) `CHECK` constraints. Legacy code paths (POS sale flow, existing `bills.js` lifecycle, menu display, reporting) never read the new columns and are provably byte-identical whether the platform code exists or not (§14, guard tests `G2`/`G3`). This means even a full revert of all three branches leaves the database in a safe, backward-compatible state, and conversely, *not* reverting (leaving the schema merged but the flag off) carries no behavioral risk to existing features.
+
+---
+
+## Addendum — Founder UX Decision (2026-07-20)
+
+ผลตัดสินจากการรีวิว UX บน environment แยก (walkthrough 13 ข้อ ผ่านทั้งหมด):
+
+| ข้อ | ผลตัดสิน | Follow-up ที่ผูกไว้ |
+|---|---|---|
+| A. Cash flow | ✅ APPROVED | — |
+| B. Partial payment | ✅ APPROVED **WITH FOLLOW-UP** | **[BACKLOG-PAY-1]** ปรับข้อความไทยให้แสดง "ชำระแล้ว X / คงเหลือ Y" ชัดเจน |
+| C. Mixed payment | ✅ APPROVED **WITH FOLLOW-UP** | **[BACKLOG-PAY-2]** แดชบอร์ด group ธุรกรรมตามบิล (บิลเดียวไม่แสดงเป็นหลายแถวอิสระ) |
+| D. Static QR manual confirm | ✅ APPROVED | — |
+| E. Dashboard foundation | ✅ APPROVED **WITH FOLLOW-UP** | BACKLOG-PAY-2 เดียวกัน — **ไม่ block การ merge** แต่ต้องคงอยู่ใน backlog |
+| F. Permission denial | ✅ APPROVED | — |
+| G. ROUND-HALF-UP | ⚠️ **TEMPORARILY APPROVED** | ต้องคง marker "TEMPORARY … FOUNDER REVIEW REQUIRED" ใน `money.js` ไว้ · **ห้ามเปิด live provider ใด ๆ จนกว่านโยบายปัดเศษเชิงพาณิชย์จะได้ Founder Decision แยกต่างหาก** |
+
+การตัดสินนี้**ไม่**อนุญาต: merge PR #45–47 · deploy · เปิด `PAYMENT_PLATFORM_ENABLED` ใน Production · ต่อ provider จริง · ใช้ credentials จริง
+
+**Demo-data hygiene (ตามเงื่อนไข Founder):** seeder สุ่มรหัสผ่านใหม่ทุกครั้งที่รัน (ไม่มี password literal ในไฟล์) · บัญชี demo เป็น `@local.test` บน Postgres local เท่านั้น (seeder/cleanup ปฏิเสธ DB ที่ไม่ใช่ localhost) · ล้างข้อมูล demo: `node backend/test/cleanup-payment-demo.js --all-demo` (หรือ `--shop-id <uuid>` รายร้าน)

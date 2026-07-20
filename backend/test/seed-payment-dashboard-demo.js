@@ -81,7 +81,8 @@ async function main() {
   base = 'http://127.0.0.1:' + server.address().port;
 
   const email = 'paydash_demo_' + Date.now() + '@local.test';
-  const password = 'PayDash#Demo2026';
+  // Random per-run (never a fixed literal in the repo — Founder hygiene rule); printed below.
+  const password = 'Demo#' + require('node:crypto').randomBytes(9).toString('base64url');
   const reg = must(await req('POST', '/auth/register', { email, password, shopName: 'PAYDASH DEMO SHOP' }), 'register');
   const tok = reg.accessToken, shopId = reg.memberships[0].shop_id, userId = reg.user.id;
 
