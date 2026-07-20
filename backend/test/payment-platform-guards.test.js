@@ -163,3 +163,18 @@ test('G5 runtime guard: full mock payment flow succeeds with fetch/http/https di
     delete process.env.PAYMENT_PLATFORM_ENABLED;
   }
 });
+
+// G6 (UX-review regression, 2026-07-20): payment-platform bills have items_json = NULL — the
+// legacy SPA hydrate used to spread that straight in, leaving b.items undefined and crashing
+// calcBill()/the bill-documents page for the WHOLE boot ("ไม่สามารถเข้าสู่ระบบ: reading 'reduce'").
+// Pin the frontend fix: hydrate must default items:[] BEFORE spreading items_json.
+test('G6 source scan: legacy bill hydrate defaults items:[] before spreading items_json', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'index.html'), 'utf8');
+  assert.match(
+    html,
+    /items:\s*\[\]\s*,\s*\.\.\.b\.items_json/,
+    'frontend bill hydrate must keep the items:[] default ahead of ...b.items_json (platform bills have NULL items_json)'
+  );
+});

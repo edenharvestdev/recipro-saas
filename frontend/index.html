@@ -3847,7 +3847,9 @@ function applyBootstrapData(data) {
       }))
     }));
     bills = (data.bills || []).map(b => ({
-      id: b.id, billNo: b.number, status: b.status, ...b.items_json
+      // items:[] ก่อน spread — บิลของ Payment Platform (สร้างผ่าน /api/payments) มี items_json เป็น NULL
+      // ซึ่งเดิมทำให้ b.items เป็น undefined แล้ว calcBill()/หน้าเอกสารบิล crash ทั้ง boot
+      id: b.id, billNo: b.number, status: b.status, items: [], ...b.items_json
     }));
     counter = bills.reduce((max, b) => {
       const num = parseInt((b.billNo || '').replace('HB-', ''), 10);
