@@ -164,7 +164,7 @@ async function main() {
 
   console.log('');
   console.log('══════════════════════════════════════════════════════');
-  console.log(' PAYDASH DEMO SEEDED — 10 bills in shop "PAYDASH DEMO SHOP"');
+  console.log(' PAYDASH DEMO SEEDED — 9 bills (10 demo steps) in shop "PAYDASH DEMO SHOP"');
   console.log('   login email    : ' + email);
   console.log('   login password : ' + password);
   console.log('   shop id        : ' + shopId);
