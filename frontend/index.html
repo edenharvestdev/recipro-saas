@@ -197,6 +197,10 @@
         <a class="nav-item" id="menuOptions" onclick="switchTab('options')" title="ตัวเลือกสินค้า & BOM"><span class="ico" data-icon="sliders-horizontal"></span><span>ตัวเลือก</span></a>
         <a class="nav-item" id="menuPos" onclick="switchTab('pos')" title="ขาย & ออกบิล"><span class="ico" data-icon="receipt"></span><span data-lang-key="nav_pos">ขาย &amp; ออกบิล</span></a>
         <a class="nav-item" id="menuMembers" onclick="switchTab('members')" title="สมาชิก & แต้มสะสม"><span class="ico" data-icon="users"></span><span>สมาชิก</span></a>
+        <!-- Store Payment Dashboard (feat/payment-dashboard-foundation) — ships hidden; JS un-hides it
+             ONLY after GET /api/payments/status returns 200 (server flag ON + billing_view/payment_review).
+             Flag OFF ⇒ this item stays hidden ⇒ zero UI difference. -->
+        <a class="nav-item hidden" id="menuPaydash" onclick="switchTab('paydash')" title="แดชบอร์ดการชำระเงิน"><span class="ico" data-icon="credit-card"></span><span>ชำระเงิน</span></a>
         <a class="nav-item" id="menuManual" onclick="switchTab('manual')" title="คู่มือการใช้งาน"><span class="ico" data-icon="book-open"></span><span>คู่มือ</span></a>
         <a class="nav-item hidden" id="menuAdmin" onclick="switchTab('admin')" title="ควบคุมระบบ"><span class="ico" data-icon="crown"></span><span data-lang-key="nav_admin">ควบคุมระบบ</span></a>
       </nav>
@@ -1805,6 +1809,65 @@
       </div>
     </section>
 
+    <!-- ═══ Store Payment Dashboard (internal, mock/test data only) ═══
+         Flag-gated: reachable only when PAYMENT_PLATFORM_ENABLED=1 server-side (nav item + tab both
+         stay hidden otherwise) AND the user has billing_view or payment_review. Read-only view over
+         GET /api/payments/dashboard — displays provider reference id only, never secrets/raw payloads. -->
+    <section id="paydashPage" class="page-section hidden">
+      <div class="glass-card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <h2 style="margin:0;"><span class="ico" data-icon="credit-card"></span> แดชบอร์ดการชำระเงิน <span style="font-size:12px;font-weight:600;color:var(--warn-fg);background:var(--warn-bg);padding:3px 8px;border-radius:var(--r-pill);">ภายใน · ข้อมูลทดสอบ</span></h2>
+          <button class="btn btn-ghost btn-sm" onclick="loadPayDash()"><span class="ico" data-icon="refresh-cw"></span> รีเฟรช</button>
+        </div>
+        <p style="font-size:12px;color:var(--color-text-muted);margin:6px 0 0;">
+          แสดงข้อมูลเฉพาะ<b>สาขาที่เลือกอยู่</b> — เจ้าของหลายสาขาสลับได้จากตัวเลือกสาขาในแถบด้านซ้าย ·
+          แสดงเฉพาะรหัสอ้างอิงผู้ให้บริการ ไม่มีข้อมูลลับ/เพย์โหลดดิบ · คลิกแถวเพื่อดูประวัติการทำรายการ (audit)
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;">
+          <div style="min-width:150px;"><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">สถานะการชำระเงิน</label>
+            <select id="pdFilterStatus" onchange="loadPayDash()" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+              <option value="">ทุกสถานะ</option>
+              <option value="CONFIRMED">สำเร็จ (CONFIRMED)</option>
+              <option value="RECEIVED">รับรายการ (RECEIVED)</option>
+              <option value="VERIFYING">กำลังตรวจสอบ (VERIFYING)</option>
+              <option value="FAILED">ล้มเหลว (FAILED)</option>
+              <option value="REVERSED">ย้อนรายการ (REVERSED)</option>
+              <option value="PARTIALLY_REFUNDED">คืนเงินบางส่วน</option>
+              <option value="REFUNDED">คืนเงินแล้ว</option>
+            </select></div>
+          <div style="min-width:130px;"><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">วิธีชำระ</label>
+            <select id="pdFilterMethod" onchange="loadPayDash()" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;">
+              <option value="">ทุกวิธี</option>
+              <option value="CASH">เงินสด</option>
+              <option value="STATIC_QR">QR คงที่ (โอน)</option>
+              <option value="DYNAMIC_QR">QR ไดนามิก</option>
+            </select></div>
+          <div><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">ตั้งแต่วันที่</label>
+            <input type="date" id="pdFilterFrom" onchange="loadPayDash()" style="padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"></div>
+          <div><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">ถึงวันที่</label>
+            <input type="date" id="pdFilterTo" onchange="loadPayDash()" style="padding:6px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"></div>
+          <div style="min-width:120px;"><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">เลขออเดอร์</label>
+            <input id="pdFilterOrderNo" onchange="loadPayDash()" placeholder="ค้นหา…" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"></div>
+          <div style="min-width:120px;"><label style="font-size:11px;color:var(--color-text-muted);display:block;margin-bottom:3px;">เลขที่บิล</label>
+            <input id="pdFilterBillNo" onchange="loadPayDash()" placeholder="ค้นหา…" style="width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:7px 0;cursor:pointer;">
+            <input type="checkbox" id="pdFilterManualReview" onchange="loadPayDash()"> เฉพาะรายการรอตรวจสอบด้วยตนเอง</label>
+        </div>
+      </div>
+      <div class="glass-card">
+        <div class="table-scroll"><table class="lst" style="min-width:1280px;">
+          <thead><tr>
+            <th>เลขออเดอร์</th><th>เลขที่บิล</th><th class="r">ยอดเงิน</th><th>วิธีชำระ</th>
+            <th>สถานะ Intent</th><th>สถานะธุรกรรม</th><th>การตรวจสอบ</th>
+            <th>เวลาสร้าง</th><th>เวลาชำระ</th><th>หมดอายุ</th>
+            <th>ผู้ยืนยัน</th><th>อ้างอิงผู้ให้บริการ</th><th class="c">ยอดตรงกัน</th><th class="c">ตรวจสอบด้วยตนเอง</th>
+          </tr></thead>
+          <tbody id="pdRows"></tbody>
+        </table></div>
+        <p id="pdEmpty" class="hidden" style="text-align:center;font-size:13px;color:var(--color-text-muted);padding:18px 0 6px;">ยังไม่มีรายการตามเงื่อนไขที่เลือก</p>
+      </div>
+    </section>
+
     <section id="membersPage" class="page-section hidden">
       <div class="glass-card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
@@ -2504,6 +2567,9 @@ function staffTabAllowed(t) {
   if (t === 'materials' || t === 'recipes' || t === 'consumables' || t === 'options') return can('edit_recipes');
   if (t === 'report') return can('view_cost');
   if (t === 'expense') return can('view_cost') || can('petty_cash');
+  // Payment Dashboard: billing_view OR payment_review (mirrors the server's requireAnyPerm gate —
+  // the server remains the authority; this only prevents a pointless 403 round-trip)
+  if (t === 'paydash') return can('billing_view') || can('payment_review');
   return false;
 }
 
@@ -3781,7 +3847,9 @@ function applyBootstrapData(data) {
       }))
     }));
     bills = (data.bills || []).map(b => ({
-      id: b.id, billNo: b.number, status: b.status, ...b.items_json
+      // items:[] ก่อน spread — บิลของ Payment Platform (สร้างผ่าน /api/payments) มี items_json เป็น NULL
+      // ซึ่งเดิมทำให้ b.items เป็น undefined แล้ว calcBill()/หน้าเอกสารบิล crash ทั้ง boot
+      id: b.id, billNo: b.number, status: b.status, items: [], ...b.items_json
     }));
     counter = bills.reduce((max, b) => {
       const num = parseInt((b.billNo || '').replace('HB-', ''), 10);
@@ -4046,6 +4114,9 @@ async function boot() {
     }
     // เฟส 3: ตัวสลับสาขา (ถ้าผู้ใช้เป็นสมาชิกหลายสาขา)
     try { const ms = await API.get('/api/my-shops'); renderBranchSwitcher(ms.shops || [], ms.current); } catch (_) {}
+    // Payment Dashboard nav probe (fire-and-forget) — un-hides #menuPaydash only when the server
+    // flag is ON and the user has billing_view/payment_review (see initPayDashNav)
+    initPayDashNav();
   }
 
   fillSettings();
@@ -4511,7 +4582,7 @@ function switchTab(t) {
   }
   currentTab = t;
   if (!SUB_TABS.includes(t)) lastMainTab = t;
-  const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account', 'manual', 'members'];
+  const tabs = ['dash', 'materials', 'recipes', 'stock', 'consumables', 'report', 'expense', 'options', 'pos', 'set', 'admin', 'billing', 'account', 'manual', 'members', 'paydash'];
   tabs.forEach(k => {
     const el = $(k + 'Page');
     if (el) {
@@ -4548,7 +4619,8 @@ function switchTab(t) {
     billing: 'จัดการสมาชิก & ชำระเงินรายปี',
     account: 'บัญชีของฉัน',
     manual: 'คู่มือการใช้งาน',
-    members: 'สมาชิก & แต้มสะสม'
+    members: 'สมาชิก & แต้มสะสม',
+    paydash: 'แดชบอร์ดการชำระเงิน (ภายใน · ข้อมูลทดสอบ)'
   };
   $('currentPageTitle').textContent = titles[t] || '';
   if (t === 'members') renderMembersPage();
@@ -4570,6 +4642,8 @@ function switchTab(t) {
   if (t === 'dash' && typeof renderOnboarding === 'function') renderOnboarding();
   // เปิดแท็บรายงาน → คำนวณและแสดงข้อมูล
   if (t === 'report') loadReport();
+  // เปิดแท็บแดชบอร์ดชำระเงิน → โหลดข้อมูลจาก read API (flag-gated ฝั่งเซิร์ฟเวอร์)
+  if (t === 'paydash') loadPayDash();
   // เปิดแท็บขาย → แสดง quick-sell โดย default และโหลด grid
   if (t === 'pos') { switchPosTab('quick'); dlvUpdatePosTabVisibility(); }
 
@@ -16145,6 +16219,186 @@ function renderPrintModeCard() {
     ${isSunmi ? '<p style="font-size:12px;color:#16a34a;margin:0 0 6px;">✓ ตรวจพบ SUNMI</p>' : '<p style="font-size:12px;color:var(--color-text-muted);margin:0 0 6px;">ไม่พบ SUNMI บนเครื่องนี้</p>'}
     ${mode === 'bridge' ? `<div style="display:flex;gap:6px;"><input id="bridgeUrlInput" placeholder="http://localhost:9100/print" value="${esc(getBridgeUrl())}" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border-soft);background:var(--surface-1);color:var(--color-text-main);font-size:13px;"><button class="btn btn-ghost btn-sm" onclick="setBridgeUrl($('bridgeUrlInput').value)">บันทึก</button></div>` : ''}`;
   renderIcons(el);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   STORE PAYMENT DASHBOARD (feat/payment-dashboard-foundation) — internal, mock/test data only.
+   Read-only view over GET /api/payments/dashboard + GET /api/payments/bills/:id/audit.
+   Gating (server is ALWAYS the authority; the client only hides unusable UI):
+     1. server flag PAYMENT_PLATFORM_ENABLED must be ON  → probed via GET /api/payments/status
+        (503 while OFF — the nav item ships hidden and stays hidden, so flag OFF ⇒ zero UI diff)
+     2. user must have billing_view OR payment_review    → same keys the server route requires
+   Branch scope: rows are always the CURRENT shop's only (X-Shop-Id via the existing branch
+   switcher). A multi-branch owner switches branches with the existing sidebar switcher —
+   no separate branch filter is duplicated here.
+   Displays provider reference id (provider_txn_id) only — never secrets or raw provider payloads.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+// Badge maps — EVERY intent/transaction/paid state has an entry (asserted by
+// backend/test/payment-dashboard.test.js). Each state family is visually distinct:
+// intent = outlined squared badge (pd-fam-intent), transaction = filled pill (pd-fam-txn),
+// paid = filled pill with dot (pd-fam-paid). Colors come from the shared status tokens
+// (--ok-bg/--warn-bg/--bad-bg/--info-bg) so light/dark themes both work.
+const PAYDASH_INTENT_BADGES = {
+  CREATED:                      ['pd-neutral', 'สร้างแล้ว'],
+  AWAITING_PAYMENT:             ['pd-warn',    'รอชำระ'],
+  QR_DISPLAYED:                 ['pd-info',    'แสดง QR แล้ว'],
+  AWAITING_MANUAL_CONFIRMATION: ['pd-warn',    'รอยืนยันด้วยมือ'],
+  INITIATED:                    ['pd-info',    'เริ่มรายการ'],
+  VERIFICATION_PENDING:         ['pd-warn',    'รอตรวจสอบยอด'],
+  CONFIRMED:                    ['pd-ok',      'ยืนยันแล้ว'],
+  FAILED:                       ['pd-bad',     'ล้มเหลว'],
+  EXPIRED:                      ['pd-bad',     'หมดอายุ'],
+  CANCELLED:                    ['pd-neutral', 'ยกเลิก'],
+};
+const PAYDASH_TXN_BADGES = {
+  RECEIVED:           ['pd-info',    'รับรายการ'],
+  VERIFYING:          ['pd-warn',    'กำลังตรวจสอบ'],
+  CONFIRMED:          ['pd-ok',      'สำเร็จ'],
+  FAILED:             ['pd-bad',     'ล้มเหลว'],
+  REVERSED:           ['pd-bad',     'ย้อนรายการ'],
+  PARTIALLY_REFUNDED: ['pd-warn',    'คืนเงินบางส่วน'],
+  REFUNDED:           ['pd-neutral', 'คืนเงินแล้ว'],
+};
+const PAYDASH_PAID_BADGES = {
+  UNPAID:         ['pd-bad',  'ยังไม่ชำระ'],
+  PARTIALLY_PAID: ['pd-warn', 'ชำระบางส่วน'],
+  PAID:           ['pd-ok',   'ชำระครบ'],
+};
+const PAYDASH_METHOD_LABELS = { CASH: 'เงินสด', STATIC_QR: 'QR คงที่ (โอน)', DYNAMIC_QR: 'QR ไดนามิก' };
+// audit action → Thai label (the 15 payment audit kinds + bill lifecycle kinds it shares)
+const PAYDASH_AUDIT_LABELS = {
+  BILL_CREATED: 'สร้างบิล', BILL_CONFIRMED: 'ยืนยันบิล', BILL_VOIDED: 'Void บิล', BILL_CANCELLED: 'ยกเลิกบิล',
+  PAYMENT_INTENT_CREATED: 'สร้างคำขอชำระเงิน', CASH_PAYMENT_CONFIRMED: 'ยืนยันรับเงินสด',
+  STATIC_QR_DISPLAYED: 'แสดง QR คงที่', STATIC_QR_MANUALLY_CONFIRMED: 'ยืนยัน QR คงที่ด้วยมือ',
+  PAYMENT_CONFIRMATION_REJECTED: 'ปฏิเสธการยืนยันชำระเงิน', PAYMENT_EXPIRED: 'คำขอชำระเงินหมดอายุ',
+  PAYMENT_CANCELLED: 'ยกเลิกคำขอชำระเงิน', RECEIPT_ISSUED: 'ออกใบเสร็จ',
+  REFUND_REQUESTED: 'ขอคืนเงิน', REFUND_APPROVED: 'อนุมัติคืนเงิน', REFUND_REJECTED: 'ปฏิเสธคืนเงิน',
+  RECONCILIATION_FLAGGED: 'ติดธงกระทบยอด', RECONCILIATION_RESOLVED: 'ปิดรายการกระทบยอด',
+};
+
+function paydashBadge(map, state, family) {
+  if (!state) return '<span style="color:var(--color-text-muted);">—</span>';
+  const [cls, label] = map[state] || ['pd-neutral', state];
+  return '<span class="pd-badge ' + cls + ' ' + family + '" title="' + esc(state) + '">' + esc(label) + '</span>';
+}
+function paydashAllowed() { return USER_ROLE !== 'staff' || can('billing_view') || can('payment_review'); }
+function paydashTime(x) { return x ? new Date(x).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '—'; }
+// Display-only formatting of an INTEGER satang amount (1 baht = 100 satang) into a Thai-baht
+// string, e.g. 38550 -> "฿385.50". Mirrors backend/src/payments/money.js#satangToDisplay exactly
+// (exact integer division/remainder, never float baht math) — duplicated here rather than
+// imported because this is a plain inline <script>, not a module; this function does ONLY
+// display formatting, never money math (the dashboard is read-only, satang values come straight
+// from the server-authoritative *_satang columns).
+function paydashMoney(satang) {
+  const n = Number(satang);
+  if (!Number.isFinite(n)) return '—';
+  const neg = n < 0; const abs = Math.abs(Math.trunc(n));
+  const baht = Math.floor(abs / 100), rem = abs % 100;
+  return (neg ? '-' : '') + '฿' + baht.toLocaleString('th-TH') + '.' + String(rem).padStart(2, '0');
+}
+
+let PAYDASH_ENABLED = false;
+
+// Nav probe — the ONLY thing that ever un-hides #menuPaydash. Runs once after bootstrap (cloud
+// mode only; the mock/offline mode has no payment platform backend so the item stays hidden).
+async function initPayDashNav() {
+  if (typeof isMockMode !== 'undefined' && isMockMode) return;
+  if (!paydashAllowed()) return;
+  try {
+    const s = await API.get('/api/payments/status');
+    if (s && s.enabled) {
+      PAYDASH_ENABLED = true;
+      const m = $('menuPaydash'); if (m) { m.classList.remove('hidden'); renderIcons(m); }
+    }
+  } catch (_) { /* 503 = flag OFF, 403 = no permission — nav stays hidden either way */ }
+}
+
+async function loadPayDash() {
+  const tbody = $('pdRows'); if (!tbody) return;
+  const q = [];
+  const v = (id) => { const el = $(id); return el ? el.value.trim() : ''; };
+  if (v('pdFilterStatus'))  q.push('status='   + encodeURIComponent(v('pdFilterStatus')));
+  if (v('pdFilterMethod'))  q.push('method='   + encodeURIComponent(v('pdFilterMethod')));
+  if (v('pdFilterFrom'))    q.push('date_from=' + encodeURIComponent(v('pdFilterFrom') + 'T00:00:00'));
+  if (v('pdFilterTo'))      q.push('date_to='   + encodeURIComponent(v('pdFilterTo') + 'T23:59:59.999'));
+  if (v('pdFilterOrderNo')) q.push('order_no=' + encodeURIComponent(v('pdFilterOrderNo')));
+  if (v('pdFilterBillNo'))  q.push('bill_no='  + encodeURIComponent(v('pdFilterBillNo')));
+  if ($('pdFilterManualReview') && $('pdFilterManualReview').checked) q.push('manual_review=1');
+  let rows = [];
+  try {
+    const res = await API.get('/api/payments/dashboard' + (q.length ? '?' + q.join('&') : ''));
+    rows = res.rows || [];
+  } catch (e) {
+    tbody.innerHTML = '';
+    const msg = e.status === 503 ? 'ระบบชำระเงินยังไม่เปิดใช้งาน (flag ปิด)'
+              : e.status === 403 ? 'ไม่มีสิทธิ์ดูข้อมูลการชำระเงิน'
+              : 'โหลดข้อมูลไม่สำเร็จ: ' + e.message;
+    $('pdEmpty').textContent = msg; $('pdEmpty').classList.remove('hidden');
+    return;
+  }
+  renderPayDashRows(rows);
+}
+
+function renderPayDashRows(rows) {
+  const tbody = $('pdRows'); if (!tbody) return;
+  $('pdEmpty').classList.toggle('hidden', rows.length > 0);
+  if (!rows.length) { $('pdEmpty').textContent = 'ยังไม่มีรายการตามเงื่อนไขที่เลือก'; tbody.innerHTML = ''; return; }
+  tbody.innerHTML = rows.map((r, idx) => {
+    // verification state: provider-verified (dynamic QR webhook) vs manual confirm vs pending
+    let verify;
+    if (!r.transaction_id) verify = '<span style="color:var(--color-text-muted);">—</span>';
+    else if (r.provider_verified === true) verify = '<span class="pd-badge pd-ok pd-fam-txn" title="provider-verified">ตรวจสอบโดยผู้ให้บริการ</span>';
+    else verify = '<span class="pd-badge pd-info pd-fam-txn" title="manual confirm">ยืนยันด้วยมือ</span>';
+    const match = r.transaction_id == null ? '—'
+      : r.amount_matches === true ? '<span class="pd-badge pd-ok pd-fam-txn">ตรง</span>'
+      : r.amount_matches === false ? '<span class="pd-badge pd-bad pd-fam-txn">ไม่ตรง</span>' : '—';
+    const review = r.manual_review_flag === true
+      ? '<span class="pd-badge pd-warn pd-fam-txn">ต้องตรวจสอบ</span>'
+      : '<span style="color:var(--color-text-muted);">—</span>';
+    return '<tr style="cursor:pointer;" onclick="togglePayDashAudit(this, \'' + esc(r.bill_id) + '\')">'
+      + '<td>' + esc(r.order_no || '—') + '</td>'
+      + '<td style="font-weight:700;">' + esc(r.bill_no || '(ยังไม่มีเลข)') + '</td>'
+      + '<td class="r">' + paydashMoney(r.amount_satang) + ' ' + paydashBadge(PAYDASH_PAID_BADGES, r.paid_state, 'pd-fam-paid') + '</td>'
+      + '<td>' + esc(PAYDASH_METHOD_LABELS[r.method] || r.method || '—') + '</td>'
+      + '<td>' + paydashBadge(PAYDASH_INTENT_BADGES, r.intent_status, 'pd-fam-intent') + '</td>'
+      + '<td>' + paydashBadge(PAYDASH_TXN_BADGES, r.transaction_status, 'pd-fam-txn') + '</td>'
+      + '<td>' + verify + '</td>'
+      + '<td style="font-size:12px;">' + paydashTime(r.bill_created_at) + '</td>'
+      + '<td style="font-size:12px;">' + paydashTime(r.confirmed_at) + '</td>'
+      + '<td style="font-size:12px;">' + paydashTime(r.expires_at) + '</td>'
+      + '<td style="font-size:12px;">' + esc(r.confirmed_by_name || r.confirmed_by || '—') + '</td>'
+      + '<td style="font-size:12px;font-family:monospace;">' + esc(r.provider_txn_id || '—') + '</td>'
+      + '<td class="c">' + match + '</td>'
+      + '<td class="c">' + review + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+// Row expand → audit history for that bill (GET /api/payments/bills/:id/audit — permission-gated
+// identically to the dashboard itself). Toggles an inline detail row under the clicked row.
+async function togglePayDashAudit(tr, billId) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('pd-audit-row')) { next.remove(); return; }
+  // only one audit row open at a time
+  document.querySelectorAll('#pdRows .pd-audit-row').forEach((n) => n.remove());
+  const detail = document.createElement('tr');
+  detail.className = 'pd-audit-row';
+  detail.innerHTML = '<td colspan="14" style="background:var(--surface-2);font-size:12px;padding:10px 14px;">กำลังโหลดประวัติ…</td>';
+  tr.after(detail);
+  let audit = [];
+  try { audit = (await API.get('/api/payments/bills/' + billId + '/audit')).audit || []; }
+  catch (e) { detail.firstChild.textContent = 'โหลดประวัติไม่สำเร็จ: ' + e.message; return; }
+  detail.firstChild.innerHTML = !audit.length
+    ? 'ไม่มีประวัติสำหรับบิลนี้'
+    : '<div style="font-weight:700;margin-bottom:6px;"><span class="ico" data-icon="history"></span> ประวัติการทำรายการ (audit)</div>'
+      + audit.map((a) => '<div style="display:flex;gap:10px;padding:3px 0;border-bottom:1px dashed var(--border-soft);">'
+        + '<span style="min-width:120px;color:var(--color-text-muted);">' + paydashTime(a.created_at) + '</span>'
+        + '<span style="min-width:180px;font-weight:600;">' + esc(PAYDASH_AUDIT_LABELS[a.action] || a.action) + '</span>'
+        + '<span style="min-width:140px;">' + esc(a.actor_name || '—') + '</span>'
+        + '<span style="color:var(--color-text-muted);">' + esc(a.reason || '') + '</span>'
+        + '</div>').join('');
+  renderIcons(detail);
 }
 </script>
 
