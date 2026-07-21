@@ -1201,6 +1201,20 @@
             <input id="setPP" placeholder="08xxxxxxxx หรือ เลขบัตรประชาชน" onchange="saveSettings()">
           </div>
 
+          <!-- PC-1 ช่องทางรับเงิน (payment channel config layer) — ships hidden; the ONLY un-hide
+               path is initPayChSection(): payments-flag probe (GET /api/payments/status) succeeds
+               AND role owner/superadmin. Flag OFF or any other role = zero visual change. -->
+          <div id="payChSection" class="hidden">
+            <hr style="border:0; border-top:1px solid rgba(139,143,201,0.15); margin:20px 0;">
+            <h3><span class="ico" data-icon="qr-code"></span> ช่องทางรับเงิน</h3>
+            <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:10px;">
+              กำหนดปลายทางเงินของร้าน (พร้อมเพย์ / บัญชีธนาคาร / ผู้ให้บริการ) — ชั้นตั้งค่าเท่านั้น
+              ยังไม่มีผลกับหน้าขายจนกว่าเฟสถัดไป · เลขบัญชีเต็มเก็บฝั่งเซิร์ฟเวอร์ แสดงเฉพาะเลขท้าย 4 หลัก
+            </div>
+            <div id="payChList" style="overflow-x:auto; margin-bottom:10px;"></div>
+            <button class="btn btn-primary btn-sm" onclick="payChOpenForm()"><span class="ico" data-icon="plus"></span> เพิ่มช่องทาง</button>
+          </div>
+
           <hr style="border:0; border-top:1px solid rgba(139,143,201,0.15); margin:20px 0;">
           <h3><span class="ico" data-icon="settings-2"></span> โหมดการขาย</h3>
           <label style="display:flex; align-items:flex-start; gap:12px; cursor:pointer; padding:12px; background:var(--color-bg-base); border-radius:var(--r-small);">
@@ -4117,6 +4131,8 @@ async function boot() {
     // Payment Dashboard nav probe (fire-and-forget) — un-hides #menuPaydash only when the server
     // flag is ON and the user has billing_view/payment_review (see initPayDashNav)
     initPayDashNav();
+    // PC-1: payment-channel settings subsection (fire-and-forget) — same flag probe, owner-only
+    initPayChSection();
   }
 
   fillSettings();
@@ -16312,6 +16328,149 @@ async function initPayDashNav() {
       const m = $('menuPaydash'); if (m) { m.classList.remove('hidden'); renderIcons(m); }
     }
   } catch (_) { /* 503 = flag OFF, 403 = no permission — nav stays hidden either way */ }
+}
+
+// ─── PC-1: Payment Channels — settings subsection "ช่องทางรับเงิน" (config layer only) ───
+// Renders ONLY when the payments flag probe succeeds AND the user is owner/superadmin
+// (client display gate — the server enforces payment_channel_manage on every mutation anyway).
+// All data shown is masked; the full account_ref never reaches the browser.
+const PAYCH_METHOD_TH = { CASH: 'เงินสด', STATIC_QR: 'QR คงที่', DYNAMIC_QR: 'QR ไดนามิก', BANK_TRANSFER: 'โอนธนาคาร', CARD: 'บัตร', OTHER: 'อื่น ๆ' };
+const PAYCH_PROVIDER_TH = { MANUAL: 'กรอกเอง / บัญชีธนาคาร', PROMPTPAY_STATIC: 'พร้อมเพย์ (QR คงที่)', KASIKORN_KSHOP: 'K SHOP (กสิกร)', MOCK_PROVIDER: 'Mock (ทดสอบ)' };
+const PAYCH_BIZ_TH = { PERSONAL: 'ส่วนตัว', COMPANY: 'บริษัท', JURISTIC: 'นิติบุคคล', PARTNER: 'พาร์ทเนอร์', TEMPORARY: 'ชั่วคราว' };
+let PAYCH_LIST = [];
+
+async function initPayChSection() {
+  const sec = $('payChSection'); if (!sec) return;
+  if (typeof isMockMode !== 'undefined' && isMockMode) return;
+  if (!(USER_ROLE === 'owner' || USER_ROLE === 'superadmin')) return;
+  try {
+    const s = await API.get('/api/payments/status');
+    if (!(s && s.enabled)) return;
+  } catch (_) { return; }   // 503 = flag OFF / 403 = no view permission — section stays hidden
+  sec.classList.remove('hidden');
+  renderIcons(sec);
+  payChLoad();
+}
+
+async function payChLoad() {
+  const host = $('payChList'); if (!host) return;
+  try {
+    const res = await API.get('/api/payments/channels?include_inactive=1');
+    PAYCH_LIST = res.channels || [];
+  } catch (e) { host.innerHTML = '<div style="font-size:12px;color:var(--color-text-muted);">โหลดช่องทางไม่ได้: ' + esc(e.message) + '</div>'; return; }
+  if (!PAYCH_LIST.length) {
+    host.innerHTML = '<div style="font-size:12px;color:var(--color-text-muted);padding:8px 0;">ยังไม่มีช่องทางรับเงิน — กด "เพิ่มช่องทาง" เพื่อสร้างช่องทางแรก</div>';
+    return;
+  }
+  const rows = PAYCH_LIST.map((c) => {
+    const star = c.is_default
+      ? '<span title="ช่องทางหลักของสาขานี้" style="color:#f59e0b;font-size:16px;">★</span>'
+      : '<button class="btn btn-ghost btn-sm" title="ตั้งเป็นช่องทางหลักของสาขานี้" onclick="payChSetDefault(\'' + c.id + '\')" style="padding:2px 6px;">☆</button>';
+    const activeBadge = c.is_active
+      ? '<span style="font-size:11px;color:#16a34a;background:rgba(22,163,74,.1);border-radius:8px;padding:2px 8px;">ใช้งาน</span>'
+      : '<span style="font-size:11px;color:#b91c1c;background:rgba(185,28,28,.1);border-radius:8px;padding:2px 8px;">ปิดใช้งาน</span>';
+    const toggleBtn = c.is_active
+      ? '<button class="btn btn-ghost btn-sm" onclick="payChDeactivate(\'' + c.id + '\')">ปิดใช้งาน</button>'
+      : '<button class="btn btn-ghost btn-sm" onclick="payChActivate(\'' + c.id + '\')">เปิดใช้งาน</button>';
+    return '<tr>'
+      + '<td style="font-weight:600;">' + esc(c.display_name) + (c.source === 'LEGACY_SETTINGS' ? ' <span style="font-size:10px;color:var(--color-text-muted);">(จากตั้งค่าเดิม)</span>' : '') + '</td>'
+      + '<td>' + esc(PAYCH_METHOD_TH[c.method] || c.method) + '</td>'
+      + '<td>' + esc(PAYCH_PROVIDER_TH[c.provider_type] || c.provider_type) + '</td>'
+      + '<td>' + esc(PAYCH_BIZ_TH[c.business_type] || c.business_type) + '</td>'
+      + '<td style="font-family:monospace;">' + esc(c.account_ref_masked || '—') + '</td>'
+      + '<td style="text-align:center;">' + star + '</td>'
+      + '<td>' + activeBadge + '</td>'
+      + '<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" onclick="payChOpenForm(\'' + c.id + '\')">แก้ไข</button> ' + toggleBtn + '</td>'
+      + '</tr>';
+  }).join('');
+  host.innerHTML = '<table class="table" style="width:100%;font-size:13px;">'
+    + '<thead><tr><th>ชื่อช่องทาง</th><th>วิธี</th><th>ผู้ให้บริการ</th><th>ประเภทธุรกิจ</th><th>บัญชี</th><th style="text-align:center;">หลัก</th><th>สถานะ</th><th></th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table>';
+}
+
+function payChOpenForm(id) {
+  const c = id ? PAYCH_LIST.find((x) => x.id === id) : null;
+  const old = document.getElementById('payChOverlay'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay'; ov.id = 'payChOverlay';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const sel = (opts, cur) => Object.entries(opts).map(([v, t]) => '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + esc(t) + '</option>').join('');
+  ov.innerHTML = '<div style="background:var(--card,#fff);border-radius:16px;max-width:440px;width:94%;max-height:90vh;overflow-y:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:left;">'
+    + '<div style="font-size:15px;font-weight:800;margin-bottom:12px;">' + (c ? 'แก้ไขช่องทางรับเงิน' : 'เพิ่มช่องทางรับเงิน') + '</div>'
+    + '<div class="field"><label>ชื่อช่องทาง (แสดงหน้าขาย)</label><input id="pcfName" value="' + esc(c ? c.display_name : '') + '" placeholder="เช่น K SHOP — สาขาหลัก"></div>'
+    + '<div class="field"><label>วิธีรับเงิน</label><select id="pcfMethod" onchange="payChFormToggle()">' + sel(PAYCH_METHOD_TH, c ? c.method : 'STATIC_QR') + '</select></div>'
+    + '<div class="field"><label>ผู้ให้บริการ / ประเภทช่องทาง</label><select id="pcfProvider" onchange="payChFormToggle()">' + sel(PAYCH_PROVIDER_TH, c ? c.provider_type : 'PROMPTPAY_STATIC') + '</select></div>'
+    + '<div class="field"><label>ประเภทธุรกิจ (บังคับ)</label><select id="pcfBiz">' + sel(PAYCH_BIZ_TH, c ? c.business_type : 'PERSONAL') + '</select></div>'
+    + '<div id="pcfPPWrap" class="field"><label>เลขพร้อมเพย์ (เบอร์ 10 หลัก หรือเลข 13 หลัก)' + (c ? ' — เว้นว่าง = ไม่เปลี่ยน (ปัจจุบัน ' + esc(c.account_ref_masked || '—') + ')' : '') + '</label>'
+    + '<input id="pcfRef" placeholder="08xxxxxxxx หรือเลข 13 หลัก" inputmode="numeric"></div>'
+    + '<div id="pcfBankWrap">'
+    + '<div class="field"><label>ชื่อบัญชี / ชื่อร้านค้า</label><input id="pcfHolder" value="' + esc(c ? (c.account_holder_name || '') : '') + '" placeholder="เช่น บริษัท ตัวอย่าง จำกัด"></div>'
+    + '<div class="field"><label>ธนาคาร / ผู้ให้บริการ</label><input id="pcfBank" value="' + esc(c ? (c.bank_or_provider_name || '') : '') + '" placeholder="เช่น กสิกรไทย"></div>'
+    + '<div class="field"><label>ประเภทบัญชี</label><select id="pcfAccType"><option value="">—</option><option value="INDIVIDUAL"' + (c && c.account_type === 'INDIVIDUAL' ? ' selected' : '') + '>บุคคลธรรมดา</option><option value="JURISTIC"' + (c && c.account_type === 'JURISTIC' ? ' selected' : '') + '>นิติบุคคล</option></select></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;">'
+    + '<div class="field" style="flex:1;"><label>เริ่มใช้ (ไม่บังคับ)</label><input id="pcfFrom" type="date" value="' + esc(c && c.effective_from ? String(c.effective_from).slice(0, 10) : '') + '"></div>'
+    + '<div class="field" style="flex:1;"><label>สิ้นสุด (ไม่บังคับ)</label><input id="pcfUntil" type="date" value="' + esc(c && c.effective_until ? String(c.effective_until).slice(0, 10) : '') + '"></div>'
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--color-text-muted);background:var(--color-bg-base);border-radius:8px;padding:8px 10px;margin-bottom:12px;">อัปโหลดรูป QR จากธนาคาร: จะเปิดให้ใช้ในเฟสถัดไป (PC-2)</div>'
+    + '<button class="btn btn-primary" style="width:100%;margin-bottom:8px;" onclick="payChSave(' + (c ? '\'' + c.id + '\'' : 'null') + ')">' + (c ? 'บันทึกการแก้ไข' : 'สร้างช่องทาง') + '</button>'
+    + '<button class="btn btn-ghost" style="width:100%;" onclick="document.getElementById(\'payChOverlay\').remove()">ยกเลิก</button>'
+    + '</div>';
+  document.body.appendChild(ov);
+  payChFormToggle();
+}
+
+// provider_type toggles which detail fields make sense (PROMPTPAY_STATIC -> PromptPay id input;
+// bank/K SHOP/manual -> holder + bank name; MOCK -> neither is required).
+function payChFormToggle() {
+  const p = $('pcfProvider') ? $('pcfProvider').value : '';
+  const pp = $('pcfPPWrap'), bank = $('pcfBankWrap');
+  if (pp) pp.style.display = p === 'PROMPTPAY_STATIC' ? '' : 'none';
+  if (bank) bank.style.display = p === 'PROMPTPAY_STATIC' ? 'none' : '';
+}
+
+async function payChSave(id) {
+  const v = (x) => { const el = $(x); return el ? el.value.trim() : ''; };
+  const body = {
+    display_name: v('pcfName'),
+    method: v('pcfMethod'),
+    provider_type: v('pcfProvider'),
+    business_type: v('pcfBiz'),
+    account_holder_name: v('pcfHolder'),
+    bank_or_provider_name: v('pcfBank'),
+    account_type: v('pcfAccType'),
+    effective_from: v('pcfFrom') || null,
+    effective_until: v('pcfUntil') || null,
+  };
+  // account_ref: only send when the user typed one (edit form leaves it blank = unchanged;
+  // the server never echoes the full value back, only the masked projection).
+  const ref = v('pcfRef');
+  if (ref || !id) body.account_ref = ref;
+  try {
+    if (id) await API.put('/api/payments/channels/' + id, body);
+    else await API.post('/api/payments/channels', body);
+    const ov = document.getElementById('payChOverlay'); if (ov) ov.remove();
+    await payChLoad();
+  } catch (e) { ui.alert('บันทึกช่องทางไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+
+async function payChSetDefault(id) {
+  try {
+    await API.post('/api/payments/channels/' + id + '/shops', { shop_id: CURRENT_SHOP, is_default: true });
+    await payChLoad();
+  } catch (e) { ui.alert('ตั้งช่องทางหลักไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+
+async function payChDeactivate(id) {
+  const c = PAYCH_LIST.find((x) => x.id === id);
+  if (!(await ui.confirm('ปิดใช้งานช่องทาง "' + (c ? c.display_name : '') + '" ?\nช่องทางจะหายจากหน้าขาย แต่ประวัติเดิมยังอยู่ (เปิดกลับได้)', { okText: 'ปิดใช้งาน', danger: true }))) return;
+  try { await API.post('/api/payments/channels/' + id + '/deactivate', {}); await payChLoad(); }
+  catch (e) { ui.alert('ปิดใช้งานไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
+}
+
+async function payChActivate(id) {
+  try { await API.post('/api/payments/channels/' + id + '/activate', {}); await payChLoad(); }
+  catch (e) { ui.alert('เปิดใช้งานไม่สำเร็จ: ' + e.message, { icon: 'alert-triangle' }); }
 }
 
 async function loadPayDash() {
