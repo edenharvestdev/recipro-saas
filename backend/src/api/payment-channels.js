@@ -72,8 +72,11 @@ function toPublic(c, assignment) {
     qr_image_ref: c.qr_image_ref,
     qr_version: c.qr_version,
     is_active: c.is_active,
-    effective_from: c.effective_from,
-    effective_until: c.effective_until,
+    // dbYmd (M1 fix): raw pg Dates would JSON-serialize UTC-shifted ("2026-07-31T17:00:00Z" for
+    // an Aug-1 row on a UTC+7 machine) — the edit form then wrote the shifted day back, moving
+    // the stored date one day earlier per edit round-trip. Responses carry plain YYYY-MM-DD.
+    effective_from: dbYmd(c.effective_from),
+    effective_until: dbYmd(c.effective_until),
     source: c.source,
     created_at: c.created_at,
     updated_at: c.updated_at,
@@ -94,7 +97,7 @@ function auditSnapshot(c) {
     bank_or_provider_name: c.bank_or_provider_name, account_ref_masked: maskRef(c.account_ref),
     account_type: c.account_type, business_type: c.business_type, qr_image_ref: c.qr_image_ref,
     qr_version: c.qr_version, is_active: c.is_active,
-    effective_from: c.effective_from, effective_until: c.effective_until, source: c.source,
+    effective_from: dbYmd(c.effective_from), effective_until: dbYmd(c.effective_until), source: c.source,
   };
 }
 

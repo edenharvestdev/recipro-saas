@@ -562,3 +562,40 @@ test('PC23 error responses never echo the submitted account_ref', async () => {
   assert.strictEqual(bad.status, 400);
   assert.ok(!JSON.stringify(bad.body).includes('12345678901234567890'), 'validation error echoed the ref');
 });
+
+test('PC24 M1 regression: response dates are plain YYYY-MM-DD; UI round-trip never shifts the stored day', async () => {
+  const owner = await registerOwner('chtz');
+  const created = await req('POST', '/api/payments/channels', Object.assign(PP_BODY(), {
+    effective_from: '2026-08-01', effective_until: '2026-12-31',
+  }), owner.token, owner.shopId);
+  assert.strictEqual(created.status, 201);
+  // Response must carry the exact civil date — never a UTC-shifted ISO timestamp.
+  assert.strictEqual(created.body.channel.effective_from, '2026-08-01', 'create response date must be plain YYYY-MM-DD');
+  assert.strictEqual(created.body.channel.effective_until, '2026-12-31');
+  const id = created.body.channel.id;
+
+  const listed = await req('GET', '/api/payments/channels?include_inactive=1', null, owner.token, owner.shopId);
+  const row = listed.body.channels.find((c) => c.id === id);
+  assert.strictEqual(row.effective_from, '2026-08-01', 'list response date must be plain YYYY-MM-DD');
+
+  // UI round-trip: the edit form prefills from the response and sends the values back verbatim.
+  const roundTrip = await req('PUT', '/api/payments/channels/' + id, {
+    display_name: 'แก้ชื่อเฉย ๆ',
+    effective_from: row.effective_from,
+    effective_until: row.effective_until,
+  }, owner.token, owner.shopId);
+  assert.strictEqual(roundTrip.status, 200, JSON.stringify(roundTrip.body));
+  assert.strictEqual(roundTrip.body.channel.effective_from, '2026-08-01');
+
+  // The stored civil date must be EXACTLY what was created — no drift after the round-trip.
+  const db = (await query(
+    "SELECT to_char(effective_from,'YYYY-MM-DD') f, to_char(effective_until,'YYYY-MM-DD') u FROM payment_channels WHERE id=$1", [id])).rows[0];
+  assert.strictEqual(db.f, '2026-08-01', 'M1: stored date must not shift after a UI round-trip');
+  assert.strictEqual(db.u, '2026-12-31');
+
+  // Audit snapshots carry plain dates too (they feed the same masked snapshot shape).
+  const lastAudit = (await query(
+    "SELECT detail FROM logs WHERE shop_id=$1 AND action='payment_channel.update' ORDER BY id DESC LIMIT 1", [owner.shopId])).rows[0];
+  const d = JSON.stringify(lastAudit.detail);
+  assert.ok(!/T\d\d:\d\d:\d\d/.test(d), 'audit snapshot must not contain UTC-shifted ISO timestamps for dates');
+});
