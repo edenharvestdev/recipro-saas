@@ -121,6 +121,16 @@ api.use('/delivery', (req, res, next) => {
 // Payment Platform (mock-only, feat/billing-payment-state-machine) — default OFF. Set
 // PAYMENT_PLATFORM_ENABLED=1 to activate. Every /api/payments/* route 503s while OFF, and menu
 // display / every existing route is completely untouched either way.
+// PC-1 Payment Channel config layer (inert) — same flag gate as the platform itself: while
+// PAYMENT_PLATFORM_ENABLED is unset every /api/payments/channels* route 503s identically.
+// Registered BEFORE the '/payments' mount so the more specific path matches first.
+const paymentChannelsRouter = require('./api/payment-channels');
+api.use('/payments/channels', (req, res, next) => {
+  if (process.env.PAYMENT_PLATFORM_ENABLED !== '1') {
+    return res.status(503).json({ error: 'PAYMENT_PLATFORM_DISABLED' });
+  }
+  return paymentChannelsRouter(req, res, next);
+});
 const paymentsRouter = require('./api/payments');
 api.use('/payments', (req, res, next) => {
   if (process.env.PAYMENT_PLATFORM_ENABLED !== '1') {

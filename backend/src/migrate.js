@@ -61,6 +61,7 @@ const files = [
   '../db/schema-printers.sql',
   '../db/schema-option-authoring.sql',
   '../db/schema-payment-platform.sql',
+  '../db/schema-payment-channels.sql',   // PC-1: payment channel config layer (inert) + legacy bridge
   '../db/seed.sql',
 ];
 

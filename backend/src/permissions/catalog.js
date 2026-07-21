@@ -104,6 +104,9 @@ const GROUPS = [
     { key: 'payment_refund_approve', label: 'อนุมัติคืนเงิน', sensitive: true },
     { key: 'reconciliation_view', label: 'ดูการกระทบยอดชำระเงิน' },
     { key: 'reconciliation_resolve', label: 'ปิดรายการกระทบยอด', sensitive: true },
+    // PC-1 payment channel config: changing the money destination = changing the company bank
+    // account — owner-only (MANAGER_EXCLUDE below), same sensitivity tier as payment_refund_approve.
+    { key: 'payment_channel_manage', label: 'จัดการช่องทางรับเงิน', sensitive: true },
   ] },
 ];
 
@@ -191,7 +194,7 @@ const PRESETS = {
 // reconciliation_resolve — those stay Owner/superadmin-only (matches void_bill/correct_bill's
 // existing owner-only-by-convention sensitivity tier, enforced here explicitly).
 const MANAGER_EXCLUDE = new Set(['team_edit_role', 'team_edit_permissions', 'team_invite', 'team_remove', 'system_admin_view', 'system_admin_manage',
-  'payment_refund_approve', 'reconciliation_resolve']);
+  'payment_refund_approve', 'reconciliation_resolve', 'payment_channel_manage']);
 PRESETS.manager = ALL_KEYS.reduce((m, k) => { if (!MANAGER_EXCLUDE.has(k)) m[k] = true; return m; }, {});
 
 const PRESET_LABELS = { manager: 'ผู้จัดการ', front_store: 'พนักงานหน้าร้าน', production_staff: 'ฝ่ายผลิต', read_only: 'ดูอย่างเดียว', custom: 'กำหนดเอง' };
