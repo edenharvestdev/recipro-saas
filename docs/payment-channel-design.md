@@ -94,6 +94,8 @@ CREATE INDEX idx_pcs_shop ON payment_channel_shops (shop_id);
 - Rule เดียวทั้งระบบ ต่อสาขา X: `EXISTS (SELECT 1 FROM payment_channel_shops pcs WHERE pcs.channel_id = c.id AND pcs.shop_id = X) AND c.is_active AND วันนี้อยู่ในช่วง effective` — **ไม่มีข้อยกเว้น owner shop** (owner shop ได้ assignment row อัตโนมัติตอนสร้าง channel)
 - **บังคับฝั่งเซิร์ฟเวอร์** ตอนสร้าง intent/confirm (`CHANNEL_NOT_ALLOWED_FOR_SHOP` 403) — UI filter เป็นแค่ความสะดวก
 - เพิ่ม/ถอดสาขา = INSERT/DELETE แถวใน `payment_channel_shops` → audit log ต่อแถว (actor + channel + shop) — ถอดจาก owner shop ก็ทำได้แบบมี audit เช่นกัน · server ตรวจว่า actor เป็น owner ของ shop ที่เพิ่ม (กันชี้ข้าม tenant)
+- **หมายเหตุเจตนา (close-out 2026-07-21):** การ 'ถอด' (DELETE assignment) เป็นทิศ revoke — เจ้าของ channel ถอดสาขาใดออกได้เสมอแม้ไม่ได้เป็น owner ของสาขานั้น (ต่างจากการ 'เพิ่ม' ที่ต้องเป็น owner ของสาขาเป้าหมาย) — ตั้งใจให้เป็นเช่นนี้: การเพิกถอนสิทธิ์ต้องทำได้ฝ่ายเดียวและมี audit เสมอ
+- **หมายเหตุเจตนา bridge:** bridge สร้าง channel จาก settings.promptpay ครั้งแรกครั้งเดียว — แก้เบอร์ใน settings ภายหลังจะ**ไม่** sync เข้า channel เดิม (ตาม §8; แก้ที่ตัว channel ตรง ๆ ผ่านหน้า admin) — ไม่ใช่บั๊ก
 - **Default ต่อสาขา (REV 3):** POS ของสาขา X auto-เลือกแถว assignment ที่ `is_default=true` ของสาขา X — DB บังคับ 1 ตัวต่อสาขาด้วย `uq_payment_channel_shop_default` · ไม่มี default → ตัวแรกตาม `sort_order` ของสาขานั้น · พนักงานเปลี่ยนได้เสมอ · ช่องเดียวกันจึงเป็น default ของบางสาขาและไม่ใช่ของสาขาอื่นได้ตามที่ Founder ระบุ
 
 ## 7. Audit + permissions
