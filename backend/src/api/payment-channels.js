@@ -48,6 +48,9 @@ function handleError(e, res) {
 function maskRef(ref) {
   if (ref == null || ref === '') return null;
   const s = String(ref);
+  // N1 (review 2026-07-20): a ref of <= 4 chars would be fully revealed by "last 4" — return a
+  // fixed mask instead so no length of account_ref is ever shown in full.
+  if (s.length <= 4) return 'xxx-xxx-xxxx';
   return 'xxx-xxx-' + s.slice(-4);
 }
 
@@ -138,9 +141,27 @@ function validateChannelFields(f, forCreate) {
   for (const k of ['effective_from', 'effective_until']) {
     if (f[k] != null && f[k] !== '' && !DATE_RE.test(String(f[k]))) throw httpError(400, 'INVALID_DATE', k + ' must be YYYY-MM-DD');
   }
+  // N2 (review 2026-07-20): reject an inverted window — a channel that can never be visible.
+  // Equality IS allowed: the window is inclusive on both ends, so from = until means "valid on
+  // exactly that one day" (documented business policy, design doc §11). Runs on the merged
+  // field set, so it guards both create and update. Values reaching here are YYYY-MM-DD strings
+  // (the PUT path normalizes DB Date objects via dbYmd before validation) — compare directly.
+  if (f.effective_from && f.effective_until && String(f.effective_from) > String(f.effective_until)) {
+    throw httpError(400, 'INVALID_EFFECTIVE_WINDOW', 'effective_from must not be after effective_until');
+  }
 }
 
 const normDate = (v) => (v == null || v === '' ? null : String(v));
+// DB `date` columns come back from pg as local-midnight Date objects. Format with LOCAL
+// components (never toISOString — UTC shift would move the day for TH/UTC+7).
+const dbYmd = (v) => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) {
+    const p = (n) => String(n).padStart(2, '0');
+    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+  }
+  return String(v);
+};
 const normText = (v) => (v == null || v === '' ? null : String(v).trim());
 
 async function loadOwnChannel(c, req, id) {
@@ -248,8 +269,10 @@ router.put('/:id', requirePerm('payment_channel_manage'), async (req, res) => {
         account_type: has('account_type') ? normText(b.account_type) : cur.account_type,
         business_type: has('business_type') ? b.business_type : cur.business_type,
         qr_image_ref: has('qr_image_ref') ? normText(b.qr_image_ref) : cur.qr_image_ref,
-        effective_from: has('effective_from') ? normDate(b.effective_from) : cur.effective_from,
-        effective_until: has('effective_until') ? normDate(b.effective_until) : cur.effective_until,
+        // dbYmd: DB rows carry Date objects — without normalization, ANY update to a channel
+        // that has effective dates failed INVALID_DATE (found by PC20's update-path probe).
+        effective_from: has('effective_from') ? normDate(b.effective_from) : dbYmd(cur.effective_from),
+        effective_until: has('effective_until') ? normDate(b.effective_until) : dbYmd(cur.effective_until),
       };
       if (!fields.display_name) throw httpError(400, 'DISPLAY_NAME_REQUIRED', 'display_name required');
       if (!fields.business_type) throw httpError(400, 'BUSINESS_TYPE_REQUIRED', 'business_type required');

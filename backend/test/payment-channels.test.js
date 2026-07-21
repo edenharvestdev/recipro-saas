@@ -3,6 +3,9 @@
 // intent/transaction binding scenarios are PC-2).
 // Harness pattern: payment-platform.test.js — real HTTP against the REAL express app + REAL
 // local Postgres, throwaway shops per run, deleted in after().
+// NODE_ENV=test uses rate-limit.js's built-in test escape: this suite registers >10 throwaway
+// owners, which would otherwise trip the 10/hour/IP register limiter mid-suite.
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('dotenv').config();
 const test = require('node:test');
 const assert = require('node:assert');
@@ -400,4 +403,162 @@ test('PC15 shop B cannot mutate shop A\'s channel (404, tenant scope — never c
   assert.strictEqual(r2.status, 404);
   const r3 = await req('POST', '/api/payments/channels/' + ch.id + '/shops', { shop_id: ownerB.shopId }, ownerB.token, ownerB.shopId);
   assert.strictEqual(r3.status, 404, 'owner of B owns B but channel is scoped to A -> 404');
+});
+
+// ─── PC16–PC23: review-gate additions (F1 regression + N1–N3 + coverage gaps) ────────────────
+
+test('PC16 F1 regression: bridge never resurrects an owner-removed assignment (reboot-safe)', async () => {
+  const owner = await registerOwner('chf1');
+  await query('UPDATE shop_settings SET promptpay=$1 WHERE shop_id=$2', ['0877777777', owner.shopId]);
+  const sql = bridgeSql();
+  await pool.query(sql);
+  const ch = (await query(
+    "SELECT * FROM payment_channels WHERE shop_id=$1 AND source='LEGACY_SETTINGS'", [owner.shopId])).rows[0];
+  assert.ok(ch, 'bridge created the channel');
+  let asg = (await query('SELECT * FROM payment_channel_shops WHERE channel_id=$1', [ch.id])).rows;
+  assert.strictEqual(asg.length, 1, 'exactly one assignment after first bridge run');
+
+  // Owner intentionally removes the owner-shop assignment (design §19 — supported + audited).
+  const del = await req('DELETE', '/api/payments/channels/' + ch.id + '/shops/' + owner.shopId, null, owner.token, owner.shopId);
+  assert.strictEqual(del.status, 200, JSON.stringify(del.body));
+  asg = (await query('SELECT * FROM payment_channel_shops WHERE channel_id=$1', [ch.id])).rows;
+  assert.strictEqual(asg.length, 0, 'assignment removed');
+  const auditBefore = (await query(
+    "SELECT count(*)::int c FROM logs WHERE shop_id=$1 AND action LIKE 'payment_channel.%'", [owner.shopId])).rows[0].c;
+  assert.ok(auditBefore >= 1, 'unassign was audited');
+
+  // "Reboot": rerun the full bridge twice. The deleted assignment must STAY deleted.
+  await pool.query(sql);
+  await pool.query(sql);
+  asg = (await query('SELECT * FROM payment_channel_shops WHERE channel_id=$1', [ch.id])).rows;
+  assert.strictEqual(asg.length, 0, 'F1: rerun must NOT resurrect the removed assignment');
+  const defaults = (await query(
+    'SELECT count(*)::int c FROM payment_channel_shops WHERE shop_id=$1 AND is_default=TRUE', [owner.shopId])).rows[0].c;
+  assert.strictEqual(defaults, 0, 'F1: rerun must NOT recreate a default');
+  const chans = (await query(
+    "SELECT count(*)::int c FROM payment_channels WHERE shop_id=$1 AND source='LEGACY_SETTINGS'", [owner.shopId])).rows[0].c;
+  assert.strictEqual(chans, 1, 'channel row itself remains (historical integrity)');
+  const auditAfter = (await query(
+    "SELECT count(*)::int c FROM logs WHERE shop_id=$1 AND action LIKE 'payment_channel.%'", [owner.shopId])).rows[0].c;
+  assert.strictEqual(auditAfter, auditBefore, 'bridge rerun writes no audit rows and removes none');
+});
+
+test('PC17 default is per-branch: default at shop A does not imply default at shop B', async () => {
+  const owner = await registerOwner('chd2');
+  const other = await registerOwner('chd2b');
+  // Make the actor owner of BOTH shops so cross-assign is legal.
+  await query(`INSERT INTO memberships(user_id, shop_id, role) VALUES ($1,$2,'owner') ON CONFLICT DO NOTHING`,
+    [owner.userId, other.shopId]);
+  const ch = await createChannel(owner, { display_name: 'ครัวกลาง' });   // default at owner shop
+  const add = await req('POST', '/api/payments/channels/' + ch.id + '/shops',
+    { shop_id: other.shopId, is_default: false }, owner.token, owner.shopId);
+  assert.strictEqual(add.status, 201, JSON.stringify(add.body));
+  const rows = (await query('SELECT shop_id, is_default FROM payment_channel_shops WHERE channel_id=$1', [ch.id])).rows;
+  assert.strictEqual(rows.length, 2);
+  const atA = rows.find((r) => r.shop_id === owner.shopId);
+  const atB = rows.find((r) => r.shop_id === other.shopId);
+  assert.strictEqual(atA.is_default, true, 'default at A');
+  assert.strictEqual(atB.is_default, false, 'same channel NOT default at B');
+});
+
+test('PC18 qr_version: bumps exactly once per sensitive change, never for same value or name-only', async () => {
+  const owner = await registerOwner('chqr');
+  const ch = await createChannel(owner, { account_ref: '0833333333' });
+  assert.strictEqual(ch.qr_version, 1);
+  // Same account_ref value -> no bump.
+  let r = await req('PUT', '/api/payments/channels/' + ch.id, { account_ref: '0833333333' }, owner.token, owner.shopId);
+  assert.strictEqual(r.body.channel.qr_version, 1, 'unchanged value must not bump');
+  // display_name only -> no bump.
+  r = await req('PUT', '/api/payments/channels/' + ch.id, { display_name: 'เปลี่ยนชื่อ' }, owner.token, owner.shopId);
+  assert.strictEqual(r.body.channel.qr_version, 1, 'name-only must not bump');
+  // account_ref change -> exactly +1.
+  r = await req('PUT', '/api/payments/channels/' + ch.id, { account_ref: '0844444444' }, owner.token, owner.shopId);
+  assert.strictEqual(r.body.channel.qr_version, 2, 'ref change bumps exactly once');
+  // qr_image_ref change -> exactly +1.
+  r = await req('PUT', '/api/payments/channels/' + ch.id, { qr_image_ref: 'asset-demo-1' }, owner.token, owner.shopId);
+  assert.strictEqual(r.body.channel.qr_version, 3, 'qr image change bumps exactly once');
+});
+
+test('PC19 N1 masking: refs of length 1-4 are never revealed; 5 keeps only last 4', async () => {
+  const owner = await registerOwner('chmask');
+  for (const ref of ['7', '99', '333', '4444']) {
+    const r = await req('POST', '/api/payments/channels', {
+      display_name: 'สั้น ' + ref.length, method: 'BANK_TRANSFER', provider_type: 'MANUAL',
+      verification_mode: 'MANUAL', business_type: 'COMPANY', account_ref: ref,
+    }, owner.token, owner.shopId);
+    assert.strictEqual(r.status, 201, JSON.stringify(r.body));
+    assert.strictEqual(r.body.channel.account_ref_masked, 'xxx-xxx-xxxx', 'len ' + ref.length + ' must be fully masked');
+    assert.ok(!JSON.stringify(r.body).includes('"' + ref + '"'), 'short ref value must not appear in response');
+  }
+  const r5 = await req('POST', '/api/payments/channels', {
+    display_name: 'ห้าตัว', method: 'BANK_TRANSFER', provider_type: 'MANUAL',
+    verification_mode: 'MANUAL', business_type: 'COMPANY', account_ref: '56789',
+  }, owner.token, owner.shopId);
+  assert.strictEqual(r5.body.channel.account_ref_masked, 'xxx-xxx-6789');
+  // Audit rows for the short-ref channels: fixed mask only.
+  const logsRows = (await query(
+    "SELECT detail FROM logs WHERE shop_id=$1 AND action='payment_channel.create'", [owner.shopId])).rows;
+  for (const l of logsRows) {
+    const d = JSON.stringify(l.detail);
+    for (const ref of ['"7"', '"99"', '"333"', '"4444"']) assert.ok(!d.includes(ref), 'short ref leaked into audit');
+  }
+});
+
+test('PC20 N2 effective window: inverted rejected on create AND update; equality (one-day) allowed', async () => {
+  const owner = await registerOwner('chwin');
+  const bad = await req('POST', '/api/payments/channels', Object.assign(PP_BODY(), {
+    effective_from: '2026-08-10', effective_until: '2026-08-01',
+  }), owner.token, owner.shopId);
+  assert.strictEqual(bad.status, 400);
+  assert.strictEqual(bad.body.code, 'INVALID_EFFECTIVE_WINDOW');
+  const ok = await req('POST', '/api/payments/channels', Object.assign(PP_BODY(), {
+    effective_from: '2026-08-01', effective_until: '2026-08-01',
+  }), owner.token, owner.shopId);
+  assert.strictEqual(ok.status, 201, 'from = until = valid for exactly one day (documented policy)');
+  const upd = await req('PUT', '/api/payments/channels/' + ok.body.channel.id,
+    { effective_until: '2026-07-01' }, owner.token, owner.shopId);
+  assert.strictEqual(upd.status, 400, 'update path must validate the MERGED window');
+  assert.strictEqual(upd.body.code, 'INVALID_EFFECTIVE_WINDOW');
+});
+
+test('PC21 N3 whitespace legacy promptpay: no junk channel, no assignment', async () => {
+  const owner = await registerOwner('chws');
+  await query('UPDATE shop_settings SET promptpay=$1 WHERE shop_id=$2', ['   ', owner.shopId]);
+  const sql = bridgeSql();
+  await pool.query(sql);
+  const chans = (await query(
+    "SELECT count(*)::int c FROM payment_channels WHERE shop_id=$1 AND source='LEGACY_SETTINGS'", [owner.shopId])).rows[0].c;
+  assert.strictEqual(chans, 0, 'whitespace-only legacy value must not create a channel');
+});
+
+test('PC22 concurrent set-default: DB always ends with exactly one default, no sensitive leak', async () => {
+  const owner = await registerOwner('chrace');
+  const chans = [];
+  for (let i = 0; i < 3; i++) chans.push(await createChannel(owner, { display_name: 'แข่ง ' + i, account_ref: '081111111' + i }));
+  const attempts = [];
+  for (let round = 0; round < 4; round++) {
+    for (const ch of chans) {
+      attempts.push(req('POST', '/api/payments/channels/' + ch.id + '/shops',
+        { shop_id: owner.shopId, is_default: true }, owner.token, owner.shopId));
+    }
+  }
+  const results = await Promise.all(attempts);
+  for (const r of results) {
+    const s = JSON.stringify(r.body || {});
+    for (const ref of ['0811111110', '0811111111', '0811111112']) {
+      assert.ok(!s.includes('"' + ref + '"'), 'full ref leaked through concurrent-error path');
+    }
+  }
+  const defaults = (await query(
+    'SELECT count(*)::int c FROM payment_channel_shops WHERE shop_id=$1 AND is_default=TRUE', [owner.shopId])).rows[0].c;
+  assert.strictEqual(defaults, 1, 'concurrency must never end with 0 or 2+ defaults');
+});
+
+test('PC23 error responses never echo the submitted account_ref', async () => {
+  const owner = await registerOwner('cherr');
+  const bad = await req('POST', '/api/payments/channels', Object.assign(PP_BODY(), {
+    account_ref: '12345678901234567890',
+  }), owner.token, owner.shopId);
+  assert.strictEqual(bad.status, 400);
+  assert.ok(!JSON.stringify(bad.body).includes('12345678901234567890'), 'validation error echoed the ref');
 });

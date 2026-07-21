@@ -70,34 +70,41 @@ ALTER TABLE payment_transactions           ADD COLUMN IF NOT EXISTS channel_snap
 ALTER TABLE payment_allocations            ADD COLUMN IF NOT EXISTS channel_id uuid NULL REFERENCES payment_channels(id);
 ALTER TABLE payment_reconciliation_records ADD COLUMN IF NOT EXISTS channel_id uuid NULL REFERENCES payment_channels(id);
 
--- ── Legacy bridge (design §8) — idempotent, survives any number of runs ────────────────────
--- Every shop whose shop_settings.promptpay is non-empty and that has no LEGACY_SETTINGS channel
--- yet gets one PROMPTPAY_STATIC channel mirroring the legacy setting. showQrReceive keeps
--- reading settings.pp unchanged until PC-3 — this only makes the config layer aware of it.
-INSERT INTO payment_channels
-  (shop_id, display_name, method, provider_type, verification_mode, account_ref, business_type, source)
-SELECT ss.shop_id, 'QR พร้อมเพย์ร้าน', 'STATIC_QR', 'PROMPTPAY_STATIC', 'MANUAL',
-       ss.promptpay, 'PERSONAL', 'LEGACY_SETTINGS'
-  FROM shop_settings ss
- WHERE COALESCE(ss.promptpay, '') <> ''
-   AND NOT EXISTS (
-         SELECT 1 FROM payment_channels c
-          WHERE c.shop_id = ss.shop_id AND c.source = 'LEGACY_SETTINGS'
-       );
+-- At-most-one legacy-bridged channel per shop, enforced by the DB itself. Also lets the
+-- bridge INSERT use ON CONFLICT DO NOTHING so concurrent boots are race-safe.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_channels_legacy_per_shop
+  ON payment_channels (shop_id) WHERE source = 'LEGACY_SETTINGS';
 
--- Owner-shop assignment row for every bridged channel (REV 3: the row IS the access — no
--- implicit owner rule). is_default = true ONLY if the shop has no default assignment yet, so
--- this never violates uq_payment_channel_shop_default no matter how often it runs.
+-- ── Legacy bridge (design §8) — idempotent, survives any number of runs ────────────────────
+-- Every shop whose shop_settings.promptpay is non-empty (whitespace-only = empty) and that has
+-- no LEGACY_SETTINGS channel yet gets one PROMPTPAY_STATIC channel mirroring the legacy
+-- setting. showQrReceive keeps reading settings.pp unchanged until PC-3.
+--
+-- F1 FIX (review 2026-07-20): the owner-shop assignment is inserted ONLY for channels newly
+-- inserted by THIS execution (CTE below). A rerun that inserts no channel inserts no
+-- assignment — so an owner's audited unassign (design §19, incl. the owner shop itself) is
+-- NEVER resurrected by a later boot/migration, and no default is silently recreated.
+-- Do NOT reintroduce a repair-scan that back-fills "missing" assignments for existing
+-- LEGACY_SETTINGS channels: a missing assignment is a deliberate, audited owner action.
+WITH inserted_channels AS (
+  INSERT INTO payment_channels
+    (shop_id, display_name, method, provider_type, verification_mode, account_ref, business_type, source)
+  SELECT ss.shop_id, 'QR พร้อมเพย์ร้าน', 'STATIC_QR', 'PROMPTPAY_STATIC', 'MANUAL',
+         btrim(ss.promptpay), 'PERSONAL', 'LEGACY_SETTINGS'
+    FROM shop_settings ss
+   WHERE btrim(COALESCE(ss.promptpay, '')) <> ''
+     AND NOT EXISTS (
+           SELECT 1 FROM payment_channels c
+            WHERE c.shop_id = ss.shop_id AND c.source = 'LEGACY_SETTINGS'
+         )
+  ON CONFLICT (shop_id) WHERE source = 'LEGACY_SETTINGS' DO NOTHING
+  RETURNING id, shop_id
+)
 INSERT INTO payment_channel_shops (channel_id, shop_id, is_default, sort_order)
-SELECT c.id, c.shop_id,
+SELECT ic.id, ic.shop_id,
        NOT EXISTS (
          SELECT 1 FROM payment_channel_shops d
-          WHERE d.shop_id = c.shop_id AND d.is_default = TRUE
+          WHERE d.shop_id = ic.shop_id AND d.is_default = TRUE
        ),
        0
-  FROM payment_channels c
- WHERE c.source = 'LEGACY_SETTINGS'
-   AND NOT EXISTS (
-         SELECT 1 FROM payment_channel_shops pcs
-          WHERE pcs.channel_id = c.id AND pcs.shop_id = c.shop_id
-       );
+  FROM inserted_channels ic;
